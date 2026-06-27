@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Utarus — A Generic Agent Framework</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface-2: #1c2330;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --orange: #db6d28;
+    --purple: #bc8cff;
+    --code-bg: #1e242c;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--purple);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.88em;
+    line-height: 1.5;
+  }
+  pre code { background: none; padding: 0; color: var(--text); }
+  .hero {
+    padding: 4rem 1.5rem 3rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    background: radial-gradient(ellipse at top, rgba(88, 166, 255, 0.08), transparent 70%);
+  }
+  .hero h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+  }
+  .hero .tagline {
+    font-size: 1.15rem;
+    color: var(--text-dim);
+    max-width: 720px;
+    margin: 0 auto 2rem;
+  }
+  .hero .meta {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+  .hero .meta span { margin: 0 0.5rem; }
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+  }
+  nav.toc {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+    padding: 0.75rem 1.5rem;
+  }
+  nav.toc ul {
+    list-style: none;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    max-width: 980px;
+    margin: 0 auto;
+    font-size: 0.9rem;
+  }
+  nav.toc a { color: var(--text-dim); }
+  nav.toc a:hover { color: var(--accent); }
+  section {
+    padding: 2.5rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  section:last-child { border-bottom: none; }
+  h2 {
+    font-size: 1.7rem;
+    margin-bottom: 1rem;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 1.2rem;
+    margin: 1.5rem 0 0.75rem;
+    color: var(--accent);
+  }
+  p { margin-bottom: 1rem; }
+  ul, ol { margin: 0 0 1rem 1.5rem; }
+  li { margin-bottom: 0.4rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--accent); font-weight: 600; }
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin: 1rem 0;
+  }
+  @media (max-width: 720px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 2.2rem; }
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+  }
+  .card h4 { color: var(--accent); font-size: 1rem; margin-bottom: 0.5rem; }
+  .card p { font-size: 0.92rem; color: var(--text-dim); margin-bottom: 0; }
+  .badge {
+    display: inline-block;
+    padding: 0.15em 0.6em;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .badge.green { background: rgba(63, 185, 80, 0.15); color: var(--green); border-color: rgba(63, 185, 80, 0.3); }
+  .badge.yellow { background: rgba(210, 153, 34, 0.15); color: var(--yellow); border-color: rgba(210, 153, 34, 0.3); }
+  .badge.purple { background: rgba(188, 140, 255, 0.15); color: var(--purple); border-color: rgba(188, 140, 255, 0.3); }
+  .diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem;
+    font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text);
+  }
+  .diagram .layer {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .callout {
+    background: rgba(88, 166, 255, 0.06);
+    border-left: 3px solid var(--accent);
+    padding: 1rem 1.25rem;
+    border-radius: 4px;
+    margin: 1rem 0;
+  }
+  .callout.warn {
+    background: rgba(210, 153, 34, 0.06);
+    border-left-color: var(--yellow);
+  }
+  .callout strong { color: var(--accent); }
+  .callout.warn strong { color: var(--yellow); }
+  .file-tree {
+    font-family: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+    font-size: 0.88rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .file-tree .dir { color: var(--accent); }
+  .file-tree .file { color: var(--text); }
+  .file-tree .cmt { color: var(--text-dim); }
+  footer {
+    text-align: center;
+    padding: 2rem 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Utarus</h1>
+  <p class="tagline">A small TypeScript framework for building LLM agents that have per-user state, admin-controlled onboarding, and tool-enforced rules.</p>
+  <p class="meta">
+    <span class="badge green">TypeScript</span>
+    <span class="badge purple">pi-agent-core</span>
+    <span class="badge">CLI + Telegram</span>
+    <span class="badge">YAML state</span>
+  </p>
+</div>
+
+<nav class="toc">
+  <ul>
+    <li><a href="#what">What it is</a></li>
+    <li><a href="#quickstart">Quickstart</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#data-model">Data model</a></li>
+    <li><a href="#tools">Tools</a></li>
+    <li><a href="#skills">Skills</a></li>
+    <li><a href="#extensions">Extending</a></li>
+    <li><a href="#ops">Operations</a></li>
+    <li><a href="#dependencies">Dependencies</a></li>
+  </ul>
+</nav>
+
+<div class="container">
+
+<section id="what">
+  <h2>What it is</h2>
+  <p>Utarus is the generic distillation of a production agent codebase — same skeleton, every domain concept stripped. What's left is a clean template you can fork into any vertical: support bots, internal-tools assistants, ops dashboards, research helpers.</p>
+
+  <p>The framework is opinionated about <strong>structure</strong> and silent on <strong>domain</strong>. You get:</p>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>Per-user agent pool</h4>
+      <p>One <code>pi-agent-core</code> Agent per user, 24h TTL eviction, 100-agent cap. CLI and Telegram share the same pool.</p>
+    </div>
+    <div class="card">
+      <h4>YAML state files</h4>
+      <p>One file per user at <code>data/users/&lt;slug&gt;.yaml</code>. The disk is the source of truth — re-read before any mutation.</p>
+    </div>
+    <div class="card">
+      <h4>Invite + admin onboard</h4>
+      <p><code>INV-</code> codes for new-user onboarding (Q&A flow), <code>ADM-</code> codes for granting admin rights. Single-use, revocable, audit-logged.</p>
+    </div>
+    <div class="card">
+      <h4>Skill framework</h4>
+      <p>Markdown knowledge docs loaded on demand via <code>use_skill</code>. Each skill stays in context for the rest of the conversation.</p>
+    </div>
+    <div class="card">
+      <h4>TypeBox tools</h4>
+      <p>Every tool parameter is validated by JSON-schema before your code runs. Hard rules live in the tool, not the prompt — the LLM cannot bypass them.</p>
+    </div>
+    <div class="card">
+      <h4>Fail-fast config</h4>
+      <p>No fallback defaults. Missing env vars exit at startup with a clear message. State-file accessors throw on shape violations.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>What it isn't:</strong> a vector store, a RAG framework, a multi-agent orchestrator, a chat UI, or a LangChain competitor. It's a small skeleton for stateful, tool-using agents with onboarding. If you need more, you add it — the framework doesn't ship it.
+  </div>
+</section>
+
+<section id="quickstart">
+  <h2>Quickstart</h2>
+
+  <h3>1. Clone and install</h3>
+<pre><code>git clone &lt;your-fork-url&gt;/utarus.git
+cd utarus
+npm install
+cp .env.example .env</code></pre>
+
+  <h3>2. Configure <code>.env</code></h3>
+<pre><code># Required — the agent will not start without these
+DEEPSEEK_API_KEY=sk-...
+UTARUS_AGENT_NAME=Acme Support Bot
+UTARUS_AGENT_PURPOSE=You are the support bot for Acme Corp. Help users file tickets, check order status, and answer FAQ. Decline anything off-scope.
+
+# Required for Telegram
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_ADMIN_IDS=123456789
+
+# Optional — defaults to ./data
+UTARUS_DATA_ROOT=./data</code></pre>
+
+  <h3>3. Run</h3>
+<pre><code>npm run dev</code></pre>
+
+  <p>Output:</p>
+<pre><code>Acme Support Bot starting...
+Initializing DeepSeek model...
+DeepSeek model: deepseek-v4-pro
+TELEGRAM_BOT_TOKEN not set — running in CLI-only mode.
+Acme Support Bot running. Type /help for commands.
+
+acme-support-bot&gt;</code></pre>
+
+  <h3>4. Try the flow</h3>
+  <p>At the prompt, ask the agent to create a user:</p>
+<pre><code>acme-support-bot&gt; set up a new user "Alice Wong", email alice@example.com</code></pre>
+
+  <p>The agent calls <code>init_user</code>, creates <code>data/users/alice-wong.yaml</code>, and links your CLI session to that user.</p>
+
+  <p>To exercise the invite flow (in Telegram):</p>
+  <ol>
+    <li>Admin runs <code>/invite for alice</code> → gets <code>INV-A1B2C3D4</code>.</li>
+    <li>Alice messages the bot with <code>INV-A1B2C3D4</code>.</li>
+    <li>Bot asks Alice for her display name and email.</li>
+    <li>Bot calls <code>redeem_invite_code</code> with Alice's Telegram ID + collected fields.</li>
+    <li>Alice's state file is created, and her Telegram account is linked.</li>
+  </ol>
+</section>
+
+<section id="architecture">
+  <h2>Architecture</h2>
+  <p>Five layers, top to bottom. Each layer has one job and is independently replaceable.</p>
+
+<div class="diagram"><span class="layer">┌─────────────────────────────────────────────────────────┐</span>
+<span class="layer">│ Interface</span>  — CLI (readline) + Telegram (telegraf)
+│   Per-user agent key: <code>cli_session</code> | <code>tg_&lt;userId&gt;</code>
+<span class="layer">└─────────────────────────────────────────────────────────┘</span>
+                          │
+<span class="layer">┌─────────────────────────────────────────────────────────┐</span>
+<span class="layer">│ Agent</span>  — <code>src/agent.ts</code>
+│   One <code>pi-agent-core</code> Agent per user (24h TTL, cap 100)
+│   System prompt composed from <code>UTARUS_AGENT_NAME</code>/<code>PURPOSE</code>
+<span class="layer">└─────────────────────────────────────────────────────────┘</span>
+                          │
+<span class="layer">┌─────────────────────────────────────────────────────────┐</span>
+<span class="layer">│ Skills</span>  — <code>src/skills/</code>
+│   Markdown knowledge docs loaded on demand via <code>use_skill</code>
+<span class="layer">└─────────────────────────────────────────────────────────┘</span>
+                          │
+<span class="layer">┌─────────────────────────────────────────────────────────┐</span>
+<span class="layer">│ Tools</span>  — <code>src/tools/</code>
+│   TypeBox-schematized. Hard rules live here as code.
+│   The LLM cannot bypass what the tool refuses.
+<span class="layer">└─────────────────────────────────────────────────────────┘</span>
+                          │
+<span class="layer">┌─────────────────────────────────────────────────────────┐</span>
+<span class="layer">│ Persistence</span>  — <code>src/state/</code>
+│   YAML per user at <code>data/users/&lt;slug&gt;.yaml</code>
+│   + <code>invites.yaml</code>, <code>admin_codes.yaml</code>, <code>admin_ids.yaml</code>
+<span class="layer">└─────────────────────────────────────────────────────────┘</span></div>
+
+  <h3>Why this layering</h3>
+  <p>The framework's job is to make <strong>rules</strong> live in code, not prompts. A tool that refuses an action with a typed error is a tool the LLM cannot argue with. A system-prompt instruction is a suggestion the LLM can drift from. Every hard rule belongs in a tool.</p>
+
+  <p>The flip side is the skill layer: knowledge that helps the agent <em>decide</em> belongs in markdown docs loaded on demand. The agent loads the right skill before it touches the relevant tool — so the skill shapes the call, and the tool enforces the call.</p>
+
+  <h3>Per-user agent key</h3>
+  <p>Every request is routed to a per-user agent via a key:</p>
+  <ul>
+    <li><code>cli_session</code> — single shared CLI agent (one operator, one context)</li>
+    <li><code>tg_&lt;userId&gt;</code> — one agent per Telegram user</li>
+  </ul>
+  <p>Two humans chatting with the same Telegram bot get isolated conversation contexts. The framework never crosses the streams.</p>
+</section>
+
+<section id="data-model">
+  <h2>Data model</h2>
+  <p>The framework reserves the load-bearing fields. Everything else is yours.</p>
+
+  <h3>User state file</h3>
+<pre><code># data/users/&lt;slug&gt;.yaml
+
+user:                       # framework-owned identity
+  id: &lt;uuid&gt;
+  slug: alice-wong          # lowercase kebab-case
+  created_at: 2026-06-27    # YYYY-MM-DD
+  telegram_user_ids: [123456789]
+  auth_token: &lt;uuid&gt;       # for any external portal/API
+
+profile:                    # framework reserves 2 fields
+  display_name: Alice Wong
+  contact_email: alice@example.com
+  # ↓ add your domain fields here
+  tier: pro
+  plan_expires: 2026-12-31
+
+log:                        # audit trail — auto-populated
+  - ts: 2026-06-27
+    action: created
+  - ts: 2026-06-27
+    action: telegram_linked
+    telegram_user_id: 123456789</code></pre>
+
+  <h3>Supporting files</h3>
+  <table>
+    <thead>
+      <tr><th>File</th><th>Shape</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>data/invites.yaml</code></td><td><code>InviteCode[]</code></td><td>Issued <code>INV-</code> codes, used and unused</td></tr>
+      <tr><td><code>data/admin_codes.yaml</code></td><td><code>AdminOnboardCode[]</code></td><td>Issued <code>ADM-</code> codes, with revoke tracking</td></tr>
+      <tr><td><code>data/admin_ids.yaml</code></td><td><code>number[]</code></td><td>Telegram IDs granted admin at runtime</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout warn">
+    <strong>No fallback.</strong> State-file accessors throw if a load-bearing field is missing. The framework never silently returns a default. If your extension needs optional fields, validate them in your own tool — don't ask the framework to guess.
+  </div>
+</section>
+
+<section id="tools">
+  <h2>Tools</h2>
+  <p>The framework ships three tool groups. Add your own in <code>src/tools/</code>.</p>
+
+  <h3>Framework tools</h3>
+  <table>
+    <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>use_skill</code></td><td>Load a knowledge skill into the agent's context.</td></tr>
+      <tr><td><code>list_users</code></td><td>List every user state file with display name + created date.</td></tr>
+      <tr><td><code>get_user</code></td><td>Load a user state. Returns the session announcement to print verbatim.</td></tr>
+      <tr><td><code>init_user</code></td><td>Create a new user state file. Slug derived from display name.</td></tr>
+      <tr><td><code>link_telegram</code></td><td>Link a Telegram user ID to a user record.</td></tr>
+      <tr><td><code>unlink_telegram</code></td><td>Remove a Telegram link.</td></tr>
+      <tr><td><code>resolve_user_by_telegram</code></td><td>Look up which user (if any) is linked to a Telegram ID.</td></tr>
+      <tr><td><code>update_profile</code></td><td>Update <code>display_name</code> or <code>contact_email</code>. (Domain fields need their own tool.)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Invite + admin onboard tools</h3>
+  <table>
+    <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>issue_invite_code</code></td><td>Generate <code>INV-XXXXXXXX</code>. Admin only.</td></tr>
+      <tr><td><code>redeem_invite_code</code></td><td>Validate + create user + link Telegram. Single-use.</td></tr>
+      <tr><td><code>list_invite_codes</code></td><td>List with filter <code>all|unused|used</code>.</td></tr>
+      <tr><td><code>issue_admin_onboard_code</code></td><td>Generate <code>ADM-XXXXXXXX</code>. Admin only.</td></tr>
+      <tr><td><code>redeem_admin_onboard_code</code></td><td>Validate + grant admin. Single-use.</td></tr>
+      <tr><td><code>list_admin_onboard_codes</code></td><td>List with filter.</td></tr>
+      <tr><td><code>revoke_admin_onboard_code</code></td><td>Revoke an unused admin code.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Writing a new tool</h3>
+<pre><code>// src/tools/my-tool.ts
+import { Type } from 'typebox';
+import type { AgentTool } from '@earendil-works/pi-agent-core';
+
+export function createMyTool(): AgentTool {
+  return {
+    name: 'my_tool',
+    label: 'My Tool',
+    description: 'One paragraph describing when the agent should call this.',
+    parameters: Type.Object({
+      foo: Type.String({ description: 'What foo means.' }),
+    }),
+    async execute(_id, raw) {
+      const { foo } = raw as { foo: string };
+      // Hard rules go here — the LLM cannot bypass what this code refuses.
+      if (!foo.trim()) {
+        return { content: [{ type: 'text', text: '❌ foo must be non-empty' }], details: null };
+      }
+      return {
+        content: [{ type: 'text', text: `Did the thing with ${foo}.` }],
+        details: { foo },
+      };
+    },
+  };
+}</code></pre>
+
+  <p>Register it in <code>src/agent.ts</code>:</p>
+<pre><code>function frameworkTools(): AgentTool[] {
+  const skillTool = createSkillTool();
+  const userTools = createUserStateTools();
+  const inviteTools = createInviteTools();
+  const myTool = createMyTool();   // ← add
+  return [skillTool, ...userTools, ...inviteTools, myTool];
+}</code></pre>
+
+  <div class="callout">
+    <strong>Tool = hard rule.</strong> If a behaviour must always hold (KYC verified before activation, payment confirmed before upgrade, etc.), put it in a tool. The LLM cannot bypass typed validation.
+  </div>
+</section>
+
+<section id="skills">
+  <h2>Skills</h2>
+  <p>Skills are markdown knowledge docs the agent loads on demand. The framework ships two:</p>
+
+  <ul>
+    <li><strong>getting-started</strong> — session protocol, state model, hard rules. Load at the start of any session that touches a user.</li>
+    <li><strong>admin</strong> — invite and admin-onboard flows, code patterns, failure modes.</li>
+  </ul>
+
+  <h3>Adding a skill</h3>
+  <ol>
+    <li>Write <code>src/skills/knowledge/&lt;id&gt;.md</code>.</li>
+    <li>Register it in <code>src/skills/registry.ts</code>:</li>
+  </ol>
+
+<pre><code>export const SKILLS: readonly Skill[] = [
+  // ...
+  {
+    id: 'my-skill',
+    name: 'My Skill',
+    description: 'Load when ... &lt;be specific — the LLM picks the skill from this description alone&gt;',
+    kind: 'knowledge',
+    keywords: ['my', 'skill', 'keywords'],
+  },
+];</code></pre>
+
+  <p>The <code>description</code> is the load-bearing field — the LLM never sees the file content until it calls <code>use_skill</code>, so the description has to be specific enough to pick the right skill from the catalog alone.</p>
+</section>
+
+<section id="extensions">
+  <h2>Extending the framework</h2>
+
+  <h3>Recipe 1: Phase-machine domain (e.g. onboarding lifecycle)</h3>
+  <p>Add a top-level <code>phase</code> field under <code>user</code> or as a separate top-level key, then write an <code>advance_phase</code> tool that enforces gates in code:</p>
+
+<pre><code>// src/tools/phase.ts
+export function createPhaseTools(): AgentTool[] {
+  const advance: AgentTool = {
+    name: 'advance_phase',
+    label: 'Advance Phase',
+    description: 'Move to the next phase. Enforces gate rules.',
+    parameters: Type.Object({
+      slug: Type.String(),
+      to: Type.String({ description: 'Target phase.' }),
+    }),
+    async execute(_id, raw) {
+      const p = raw as { slug: string; to: string };
+      // load state, check gate, throw with specific error if violated
+      // save state with new phase + log entry
+    },
+  };
+  return [advance];
+}</code></pre>
+
+  <p>Because the gate runs in TypeScript — not in the system prompt — the LLM cannot negotiate it down. The error message tells the user (and the agent) exactly what state to fix.</p>
+
+  <h3>Recipe 2: External integration (e.g. scrape / API call)</h3>
+  <p>Wrap the external service in a tool. Read API keys from <code>process.env</code>; throw if missing.</p>
+
+<pre><code>function getApiKey(): string {
+  const key = process.env.MY_API_KEY;
+  if (!key) throw new Error('MY_API_KEY not set in environment');
+  return key;
+}</code></pre>
+
+  <h3>Recipe 3: Multiple agents in one process</h3>
+  <p>Re-implement <code>getOrCreateAgent</code> in <code>src/agent.ts</code> with a different toolset per role. The framework's <code>userKey</code> scheme (cli_session / tg_&lt;id&gt;) is what isolates contexts — pick a different key scheme and you have separate agents.</p>
+
+  <h3>Recipe 4: Database instead of YAML</h3>
+  <p>Replace <code>src/state/state-file.ts</code> with a SQL/DocDB-backed implementation. The interface is the contract: <code>loadState</code>, <code>saveState</code>, <code>listUserSlugs</code>, <code>stateExists</code>, <code>blankState</code>, plus the invite/admin functions. Keep the same signatures and the rest of the framework doesn't notice.</p>
+</section>
+
+<section id="ops">
+  <h2>Operations</h2>
+
+  <h3>Running headless</h3>
+  <p>Set <code>TELEGRAM_ONLY=true</code> in <code>.env</code> to skip the CLI and run as a pure Telegram bot. Useful for <code>pm2</code> / <code>systemd</code> deployment:</p>
+
+<pre><code>TELEGRAM_ONLY=true npm start</code></pre>
+
+  <h3>Granting admin to a new Telegram user</h3>
+  <ol>
+    <li>Bootstrap admin (you) messages the bot with no special command.</li>
+    <li>Run <code>/admincode for ops team lead</code> → get <code>ADM-A1B2C3D4</code>.</li>
+    <li>Send the code out-of-band to the new admin.</li>
+    <li>They send <code>ADM-A1B2C3D4</code> to the bot.</li>
+    <li>Bot validates, appends their Telegram ID to <code>data/admin_ids.yaml</code>, marks the code used.</li>
+  </ol>
+
+  <h3>Revoking an unused admin code</h3>
+  <p>Run <code>/revoke ADM-A1B2C3D4</code>. Used codes cannot be revoked — the grant has already happened. To revoke an already-granted admin, remove their ID from <code>data/admin_ids.yaml</code>.</p>
+
+  <h3>File layout</h3>
+<div class="file-tree"><span class="dir">utarus/</span>
+├── <span class="file">.env</span>                        <span class="cmt"># gitignored — secrets + agent config</span>
+├── <span class="file">.env.example</span>
+├── <span class="file">package.json</span>
+├── <span class="file">tsconfig.json</span>
+├── <span class="file">README.md</span>
+├── <span class="dir">data/</span>                       <span class="cmt"># gitignored — runtime state</span>
+│   ├── <span class="dir">users/</span>
+│   │   └── &lt;slug&gt;.yaml
+│   ├── <span class="file">invites.yaml</span>
+│   ├── <span class="file">admin_codes.yaml</span>
+│   └── <span class="file">admin_ids.yaml</span>
+├── <span class="dir">src/</span>
+│   ├── <span class="file">index.ts</span>                   <span class="cmt"># entrypoint</span>
+│   ├── <span class="file">config.ts</span>                  <span class="cmt"># env loader + fail-fast validation</span>
+│   ├── <span class="file">agent.ts</span>                   <span class="cmt"># per-user agent pool</span>
+│   ├── <span class="dir">interfaces/</span>
+│   │   ├── <span class="file">cli.ts</span>
+│   │   └── <span class="file">telegram.ts</span>
+│   ├── <span class="dir">skills/</span>
+│   │   ├── <span class="file">registry.ts</span>             <span class="cmt"># ← edit to add skills</span>
+│   │   ├── <span class="file">types.ts</span>
+│   │   └── <span class="dir">knowledge/</span>              <span class="cmt"># ← drop new .md here</span>
+│   │       ├── <span class="file">getting-started.md</span>
+│   │       └── <span class="file">admin.md</span>
+│   ├── <span class="dir">state/</span>
+│   │   ├── <span class="file">types.ts</span>                <span class="cmt"># data model</span>
+│   │   └── <span class="file">state-file.ts</span>           <span class="cmt"># load/save/list + invites/admin</span>
+│   ├── <span class="dir">tools/</span>
+│   │   ├── <span class="file">skill-tool.ts</span>
+│   │   ├── <span class="file">user-state.ts</span>
+│   │   ├── <span class="file">invite.ts</span>
+│   │   └── <span class="file">index.ts</span>               <span class="cmt"># ← add domain tools here</span>
+│   └── <span class="dir">llm/</span>
+│       └── <span class="file">index.ts</span>               <span class="cmt"># DeepSeek model loader</span>
+├── <span class="dir">tests/</span>
+│   └── <span class="file">state.test.ts</span>
+└── <span class="dir">docs/</span>
+    └── <span class="file">index.html</span>                <span class="cmt"># this page</span></div>
+</section>
+
+<section id="dependencies">
+  <h2>Software dependencies</h2>
+
+  <h3>Runtime (npm)</h3>
+  <table>
+    <thead><tr><th>Package</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>@earendil-works/pi-agent-core</code></td><td>Agent runtime, tool loop, subscribe API</td></tr>
+      <tr><td><code>@earendil-works/pi-ai</code></td><td>DeepSeek model adapter</td></tr>
+      <tr><td><code>telegraf</code></td><td>Telegram bot client</td></tr>
+      <tr><td><code>typebox</code></td><td>JSON-schema-compatible parameter schemas</td></tr>
+      <tr><td><code>yaml</code></td><td>Parse/stringify state files</td></tr>
+      <tr><td><code>dotenv</code></td><td><code>.env</code> loader</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Dev (npm)</h3>
+  <table>
+    <thead><tr><th>Package</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td><code>typescript</code></td><td>Strict-mode compiler</td></tr>
+      <tr><td><code>tsx</code></td><td>TS runner for dev (hot reload via <code>tsx watch</code>)</td></tr>
+      <tr><td><code>vitest</code></td><td>Test runner</td></tr>
+      <tr><td><code>@types/node</code></td><td>Node stdlib types</td></tr>
+    </tbody>
+  </table>
+
+  <h3>External services</h3>
+  <table>
+    <thead><tr><th>Service</th><th>Required?</th><th>Get it</th></tr></thead>
+    <tbody>
+      <tr><td>DeepSeek API</td><td><span class="badge yellow">required</span></td><td><a href="https://platform.deepseek.com">platform.deepseek.com</a> → API Keys</td></tr>
+      <tr><td>Telegram Bot API</td><td><span class="badge">optional</span></td><td><a href="https://t.me/BotFather">@BotFather</a> → <code>/newbot</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>System</h3>
+  <ul>
+    <li><strong>Node.js 20+</strong> and npm</li>
+    <li>Any POSIX-ish OS (developed on macOS, deployed on Linux)</li>
+    <li>No database required (YAML state) — swap in Postgres / SQLite by reimplementing <code>src/state/state-file.ts</code></li>
+  </ul>
+</section>
+
+</div>
+
+<footer>
+  Utarus · ISC license · Built on <a href="https://www.npmjs.com/package/@earendil-works/pi-agent-core">pi-agent-core</a>
+</footer>
+
+</body>
+</html>

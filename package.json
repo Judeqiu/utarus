@@ -1,0 +1,38 @@
+{
+  "name": "utarus",
+  "version": "0.1.0",
+  "description": "Generic pi-agent-core based agent framework — CLI + Telegram, per-user YAML state, invite/onboard flow, skill-driven knowledge, tool-enforced rules.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "framework",
+    "telegram",
+    "pi-agent-core",
+    "blueprint"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.79.1",
+    "@earendil-works/pi-ai": "^0.79.3",
+    "dotenv": "^17.4.2",
+    "telegraf": "^4.16.3",
+    "typebox": "^1.1.38",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
