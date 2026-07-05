@@ -67,17 +67,19 @@ export function createInviteTools(): AgentTool[] {
   const redeem: AgentTool = {
     name: 'redeem_invite_code',
     label: 'Redeem Invite Code',
-    description: 'Redeem an invite code after collecting the user\'s information. Validates the code, creates the user record, and links the Telegram ID. Call this at the end of the onboarding Q&A, once you have display_name + contact_email.',
+    description: 'Redeem an invite code after collecting the user\'s information. Validates the code, creates the user record, and links the caller\'s channel ID (telegram_user_id OR slack_user_id). Call this at the end of the onboarding Q&A, once you have display_name + contact_email.',
     parameters: Type.Object({
       code: Type.String({ description: 'The invite code (starts with INV-).' }),
-      telegram_user_id: Type.Number({ description: 'Telegram user ID of the person redeeming the code.' }),
+      telegram_user_id: Type.Optional(Type.Number({ description: 'Telegram user ID (provide this OR slack_user_id).' })),
+      slack_user_id: Type.Optional(Type.String({ description: 'Slack user ID (provide this OR telegram_user_id).' })),
       display_name: Type.String({ description: 'User display name.' }),
       contact_email: Type.String({ description: 'Primary contact email.' }),
     }),
     async execute(_id, raw) {
       const p = raw as {
         code: string;
-        telegram_user_id: number;
+        telegram_user_id?: number;
+        slack_user_id?: string;
         display_name: string;
         contact_email: string;
       };
@@ -103,19 +105,27 @@ export function createInviteTools(): AgentTool[] {
           contactEmail: p.contact_email,
         });
 
-        state.user.telegram_user_ids = [p.telegram_user_id];
+        if (p.telegram_user_id) {
+          state.user.telegram_user_ids = [p.telegram_user_id];
+        }
+        if (p.slack_user_id) {
+          state.user.slack_user_ids = [p.slack_user_id];
+        }
         state.log.push({
           ts: new Date().toISOString().slice(0, 10),
           action: 'invite_redeemed',
           invite_code: p.code,
           telegram_user_id: p.telegram_user_id,
+          slack_user_id: p.slack_user_id,
         });
 
         const path = saveState(state);
-        markInviteUsed(p.code, p.telegram_user_id, slug);
+        markInviteUsed(p.code, p.telegram_user_id ?? 0, slug, p.slack_user_id);
 
+        const linkMsg = p.telegram_user_id ? `\nTelegram user ${p.telegram_user_id} linked.` : '';
+        const slackLinkMsg = p.slack_user_id ? `\nSlack user ${p.slack_user_id} linked.` : '';
         return ok(
-          `Invite code "${p.code}" redeemed!\nProfile created for "${p.display_name}" (slug: ${slug}).\nTelegram user ${p.telegram_user_id} linked.\nAuth token: ${state.user.auth_token}`,
+          `Invite code "${p.code}" redeemed!\nProfile created for "${p.display_name}" (slug: ${slug}).${linkMsg}${slackLinkMsg}\nAuth token: ${state.user.auth_token}`,
           { state, path, slug }
         );
       } catch (e) { return failFrom(e); }
@@ -186,19 +196,22 @@ export function createInviteTools(): AgentTool[] {
   const redeemAdminCode: AgentTool = {
     name: 'redeem_admin_onboard_code',
     label: 'Redeem Admin Onboard Code',
-    description: 'Redeem an admin onboard code: validate it and grant admin access to the user. The telegram_user_id is always provided in the message context. Call this when a user sends an admin onboard code.',
+    description: 'Redeem an admin onboard code: validate it and grant admin access to the user. Provide telegram_user_id OR slack_user_id from the message context. Call this when a user sends an admin onboard code.',
     parameters: Type.Object({
       code: Type.String({ description: 'The admin onboard code (starts with ADM-).' }),
-      telegram_user_id: Type.Number({ description: 'Telegram user ID of the person redeeming the code.' }),
+      telegram_user_id: Type.Optional(Type.Number({ description: 'Telegram user ID (provide this OR slack_user_id).' })),
+      slack_user_id: Type.Optional(Type.String({ description: 'Slack user ID (provide this OR telegram_user_id).' })),
     }),
     async execute(_id, raw) {
-      const p = raw as { code: string; telegram_user_id: number };
+      const p = raw as { code: string; telegram_user_id?: number; slack_user_id?: string };
       try {
         validateAdminOnboardCode(p.code);
-        addDynamicAdminId(p.telegram_user_id);
-        markAdminOnboardCodeUsed(p.code, p.telegram_user_id);
+        const tid = p.telegram_user_id ?? 0;
+        addDynamicAdminId(tid);
+        markAdminOnboardCodeUsed(p.code, tid, p.slack_user_id);
+        const who = p.telegram_user_id ? `Telegram user ${p.telegram_user_id}` : (p.slack_user_id ? `Slack user ${p.slack_user_id}` : 'User');
         return ok(
-          `Admin onboard code "${p.code}" redeemed!\nTelegram user ${p.telegram_user_id} is now an admin.`,
+          `Admin onboard code "${p.code}" redeemed!\n${who} is now an admin.`,
           { telegram_user_id: p.telegram_user_id }
         );
       } catch (e) { return failFrom(e); }

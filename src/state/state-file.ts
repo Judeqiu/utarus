@@ -117,6 +117,7 @@ export function blankState(params: {
       slug: params.slug,
       created_at: today,
       telegram_user_ids: [],
+      slack_user_ids: [],
       auth_token: randomUUID(),
     },
     profile: {
@@ -137,6 +138,25 @@ export function resolveUserByTelegramUser(telegramUserId: number): UserState | n
     try {
       const state = loadState(slug);
       if (state.user.telegram_user_ids?.includes(telegramUserId)) {
+        return state;
+      }
+    } catch {
+      // skip broken state files
+    }
+  }
+  return null;
+}
+
+/**
+ * Find a user by Slack user ID. Scans all user state files.
+ * Returns null if no user is linked to this Slack account.
+ */
+export function resolveUserBySlackUser(slackUserId: string): UserState | null {
+  const slugs = listUserSlugs();
+  for (const slug of slugs) {
+    try {
+      const state = loadState(slug);
+      if (state.user.slack_user_ids?.includes(slackUserId)) {
         return state;
       }
     } catch {
@@ -169,6 +189,7 @@ function generateInviteCode(): string {
 
 export function createInviteCode(params: {
   createdBy: number;
+  createdBySlack?: string;
   comment?: string;
   customCode?: string;
 }): InviteCode {
@@ -182,6 +203,7 @@ export function createInviteCode(params: {
     created_by: params.createdBy,
     created_at: new Date().toISOString().slice(0, 10),
   };
+  if (params.createdBySlack) invite.created_by_slack = params.createdBySlack;
   if (params.comment) invite.comment = params.comment;
   invites.push(invite);
   saveInvites(invites);
@@ -196,13 +218,14 @@ export function validateInviteCode(code: string): InviteCode {
   return invite;
 }
 
-export function markInviteUsed(code: string, telegramUserId: number, slug: string): InviteCode {
+export function markInviteUsed(code: string, telegramUserId: number, slug: string, slackUserId?: string): InviteCode {
   const invites = loadInvites();
   const idx = invites.findIndex(i => i.code === code);
   if (idx === -1) throw new Error(`Invite code "${code}" not found.`);
   invites[idx].used_by = telegramUserId;
   invites[idx].used_at = new Date().toISOString().slice(0, 10);
   invites[idx].slug = slug;
+  if (slackUserId) invites[idx].used_by_slack = slackUserId;
   saveInvites(invites);
   return invites[idx];
 }
@@ -234,6 +257,7 @@ function saveAdminCodes(codes: AdminOnboardCode[]): void {
 
 export function createAdminOnboardCode(params: {
   createdBy: number;
+  createdBySlack?: string;
   comment?: string;
   customCode?: string;
 }): AdminOnboardCode {
@@ -247,6 +271,7 @@ export function createAdminOnboardCode(params: {
     created_by: params.createdBy,
     created_at: new Date().toISOString().slice(0, 10),
   };
+  if (params.createdBySlack) entry.created_by_slack = params.createdBySlack;
   if (params.comment) entry.comment = params.comment;
   codes.push(entry);
   saveAdminCodes(codes);
@@ -262,12 +287,13 @@ export function validateAdminOnboardCode(code: string): AdminOnboardCode {
   return entry;
 }
 
-export function markAdminOnboardCodeUsed(code: string, telegramUserId: number): AdminOnboardCode {
+export function markAdminOnboardCodeUsed(code: string, telegramUserId: number, slackUserId?: string): AdminOnboardCode {
   const codes = loadAdminCodes();
   const idx = codes.findIndex(c => c.code === code);
   if (idx === -1) throw new Error(`Admin onboard code "${code}" not found.`);
   codes[idx].used_by = telegramUserId;
   codes[idx].used_at = new Date().toISOString().slice(0, 10);
+  if (slackUserId) codes[idx].used_by_slack = slackUserId;
   saveAdminCodes(codes);
   return codes[idx];
 }

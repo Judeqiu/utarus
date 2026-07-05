@@ -15,6 +15,7 @@ import {
   listUserSlugs,
   stateFilePath,
   resolveUserByTelegramUser,
+  resolveUserBySlackUser,
   type UserState,
 } from '../state/index.js';
 
@@ -35,16 +36,19 @@ function summary(state: UserState): Record<string, unknown> {
     display_name: state.profile.display_name,
     contact_email: state.profile.contact_email,
     telegram_user_ids: state.user.telegram_user_ids ?? [],
+    slack_user_ids: state.user.slack_user_ids ?? [],
     log_entries: state.log.length,
   };
 }
 
 function buildAnnouncement(state: UserState): string {
   const tgCount = state.user.telegram_user_ids?.length ?? 0;
+  const slackCount = state.user.slack_user_ids?.length ?? 0;
   return [
     `User "${state.user.slug}" — ${state.profile.display_name}.`,
     `Created ${state.user.created_at}. Contact: ${state.profile.contact_email}.`,
     tgCount > 0 ? `${tgCount} Telegram account(s) linked.` : 'No Telegram accounts linked.',
+    slackCount > 0 ? `${slackCount} Slack account(s) linked.` : 'No Slack accounts linked.',
     `${state.log.length} log entr${state.log.length === 1 ? 'y' : 'ies'}.`,
   ].join(' ');
 }
@@ -108,14 +112,15 @@ export function createUserStateTools(): AgentTool[] {
   const init: AgentTool = {
     name: 'init_user',
     label: 'Init User',
-    description: 'Create a new user state file. Refuses to overwrite an existing user — load it instead. Always pass telegram_user_id from the message context to auto-link the user. The slug is derived from display_name (lowercase kebab-case).',
+    description: 'Create a new user state file. Refuses to overwrite an existing user — load it instead. Always pass telegram_user_id or slack_user_id from the message context to auto-link the user. The slug is derived from display_name (lowercase kebab-case).',
     parameters: Type.Object({
       display_name: Type.String({ description: 'Display name. Will be slugified for the filename.' }),
       contact_email: Type.String({ description: 'Primary contact email.' }),
       telegram_user_id: Type.Optional(Type.Number({ description: 'Telegram user ID from the message context. Always provide this to auto-link the user.' })),
+      slack_user_id: Type.Optional(Type.String({ description: 'Slack user ID from the message context. Always provide this to auto-link the user.' })),
     }),
     async execute(_id, raw) {
-      const p = raw as { display_name: string; contact_email: string; telegram_user_id?: number };
+      const p = raw as { display_name: string; contact_email: string; telegram_user_id?: number; slack_user_id?: string };
       try {
         const slug = p.display_name
           .toLowerCase()
@@ -134,10 +139,15 @@ export function createUserStateTools(): AgentTool[] {
           state.user.telegram_user_ids = [p.telegram_user_id];
           state.log.push({ ts: new Date().toISOString().slice(0, 10), action: 'telegram_linked', telegram_user_id: p.telegram_user_id });
         }
+        if (p.slack_user_id) {
+          state.user.slack_user_ids = [p.slack_user_id];
+          state.log.push({ ts: new Date().toISOString().slice(0, 10), action: 'slack_linked', slack_user_id: p.slack_user_id });
+        }
         const path = saveState(state);
         const linkMsg = p.telegram_user_id ? `\nTelegram user ${p.telegram_user_id} auto-linked.` : '';
+        const slackLinkMsg = p.slack_user_id ? `\nSlack user ${p.slack_user_id} auto-linked.` : '';
         return ok(
-          `Initialized ${path}.\nAuth token: ${state.user.auth_token}. Share this token with the user if they need portal/API access.${linkMsg}`,
+          `Initialized ${path}.\nAuth token: ${state.user.auth_token}. Share this token with the user if they need portal/API access.${linkMsg}${slackLinkMsg}`,
           { state, path, slug }
         );
       } catch (e) { return failFrom(e); }
@@ -226,6 +236,88 @@ export function createUserStateTools(): AgentTool[] {
     },
   };
 
+  const linkSlack: AgentTool = {
+    name: 'link_slack',
+    label: 'Link Slack User',
+    description: 'Link a Slack user ID to a user record. Once linked, that Slack user will auto-load this user\'s context when they message the bot. The slack_user_id is always provided in the message context — never ask the user for it.',
+    parameters: Type.Object({
+      slug: Type.String({ description: 'User slug to link.' }),
+      slack_user_id: Type.String({ description: 'Slack user ID (alphanumeric). Always available from the message context.' }),
+    }),
+    async execute(_id, raw) {
+      const p = raw as { slug: string; slack_user_id: string };
+      try {
+        if (!p.slack_user_id || typeof p.slack_user_id !== 'string') {
+          return fail('slack_user_id must be a non-empty string.');
+        }
+        const existing = resolveUserBySlackUser(p.slack_user_id);
+        if (existing && existing.user.slug !== p.slug) {
+          return fail(`Slack user ${p.slack_user_id} is already linked to user "${existing.user.slug}". Unlink them first with unlink_slack.`);
+        }
+        const state = loadState(p.slug);
+        const ids = new Set(state.user.slack_user_ids ?? []);
+        if (ids.has(p.slack_user_id)) {
+          return ok(`Slack user ${p.slack_user_id} is already linked to "${p.slug}".`, { state });
+        }
+        ids.add(p.slack_user_id);
+        const next: UserState = {
+          ...structuredClone(state),
+          user: { ...state.user, slack_user_ids: [...ids] },
+          log: [...state.log, { ts: new Date().toISOString().slice(0, 10), action: 'slack_linked', slack_user_id: p.slack_user_id }],
+        };
+        const path = saveState(next);
+        return ok(`Linked Slack user ${p.slack_user_id} to user "${p.slug}".`, { state: next, path });
+      } catch (e) { return failFrom(e); }
+    },
+  };
+
+  const unlinkSlack: AgentTool = {
+    name: 'unlink_slack',
+    label: 'Unlink Slack User',
+    description: 'Remove a Slack user ID link from a user record.',
+    parameters: Type.Object({
+      slug: Type.String({ description: 'User slug to unlink from.' }),
+      slack_user_id: Type.String({ description: 'Slack user ID to remove.' }),
+    }),
+    async execute(_id, raw) {
+      const p = raw as { slug: string; slack_user_id: string };
+      try {
+        const state = loadState(p.slug);
+        const ids = state.user.slack_user_ids ?? [];
+        if (!ids.includes(p.slack_user_id)) {
+          return fail(`Slack user ${p.slack_user_id} is not linked to "${p.slug}".`);
+        }
+        const next: UserState = {
+          ...structuredClone(state),
+          user: { ...state.user, slack_user_ids: ids.filter(id => id !== p.slack_user_id) },
+          log: [...state.log, { ts: new Date().toISOString().slice(0, 10), action: 'slack_unlinked', slack_user_id: p.slack_user_id }],
+        };
+        const path = saveState(next);
+        return ok(`Unlinked Slack user ${p.slack_user_id} from user "${p.slug}".`, { state: next, path });
+      } catch (e) { return failFrom(e); }
+    },
+  };
+
+  const resolveBySlack: AgentTool = {
+    name: 'resolve_user_by_slack',
+    label: 'Resolve User by Slack User',
+    description: 'Look up which user (if any) is linked to a Slack user ID. Returns the user state if linked, or null if unlinked.',
+    parameters: Type.Object({
+      slack_user_id: Type.String({ description: 'Slack user ID to look up.' }),
+    }),
+    async execute(_id, raw) {
+      const p = raw as { slack_user_id: string };
+      try {
+        const state = resolveUserBySlackUser(p.slack_user_id);
+        if (!state) {
+          return ok(`No user linked to Slack user ${p.slack_user_id}.`, { linked: false });
+        }
+        const announcement = buildAnnouncement(state);
+        return ok(`Slack user ${p.slack_user_id} is linked to user "${state.user.slug}".\n\n${announcement}`, { linked: true, slug: state.user.slug, state, summary: summary(state) });
+      } catch (e) { return failFrom(e); }
+    },
+  };
+
   const updateProfile: AgentTool = {
     name: 'update_profile',
     label: 'Update Profile Field',
@@ -258,5 +350,5 @@ export function createUserStateTools(): AgentTool[] {
     },
   };
 
-  return [list, get, init, linkTelegram, unlinkTelegram, resolveByTelegram, updateProfile];
+  return [list, get, init, linkTelegram, unlinkTelegram, resolveByTelegram, linkSlack, unlinkSlack, resolveBySlack, updateProfile];
 }

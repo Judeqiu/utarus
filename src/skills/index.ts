@@ -1,2 +1,2 @@
-export { SKILLS, getSkill, loadSkill } from './registry.js';
-export type { Skill, SkillKind, LoadedSkill } from './types.js';
+export { SKILLS, getSkill, loadSkill, registerDomainSkill, allSkillIds } from './registry.js';
+export type { Skill, LoadedSkill } from '../extension.js';

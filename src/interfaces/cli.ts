@@ -1,13 +1,18 @@
 import * as readline from 'node:readline';
 import { stdin, stdout } from 'node:process';
-import { getOrCreateAgent, clearAgentContext } from '../agent.js';
+import type { FrameworkHandle } from '../framework.js';
+import { clearAgentContext } from '../agent.js';
 import { listUserSlugs, loadState } from '../state/index.js';
 import { config } from '../config.js';
 
-const CLI_USER_KEY = 'cli_session';
+export interface CliOptions {
+  handle: FrameworkHandle;
+}
 
-async function callAgent(text: string): Promise<string> {
-  const agent = getOrCreateAgent(CLI_USER_KEY);
+const CLI_USER_SLUG = 'cli-session';
+
+async function callAgent(handle: FrameworkHandle, text: string): Promise<string> {
+  const agent = handle.getOrCreateAgent(CLI_USER_SLUG, true);
   let fullResponse = '';
   const unsubscribe = agent.subscribe((event) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -57,7 +62,7 @@ async function handleSlash(line: string): Promise<boolean> {
       console.log('bye.');
       process.exit(0);
     case 'clear':
-      clearAgentContext(CLI_USER_KEY);
+      clearAgentContext(CLI_USER_SLUG);
       console.log('✅ Context cleared.');
       return true;
     case 'list': {
@@ -101,7 +106,8 @@ async function handleSlash(line: string): Promise<boolean> {
   }
 }
 
-export async function startCli(): Promise<void> {
+export async function startCli(opts: CliOptions): Promise<void> {
+  const { handle } = opts;
   const name = config.agent.name ?? 'Utarus';
   const rl = readline.createInterface({ input: stdin, output: stdout, prompt: `${name.toLowerCase()}> ` });
 
@@ -119,7 +125,7 @@ export async function startCli(): Promise<void> {
     try {
       const handled = await handleSlash(text);
       if (!handled) {
-        await callAgent(text);
+        await callAgent(handle, text);
       }
     } catch (err) {
       console.error('Error:', err instanceof Error ? err.message : err);

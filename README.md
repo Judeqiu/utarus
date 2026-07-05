@@ -10,10 +10,10 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 
 ## What you get out of the box
 
-- **CLI + Telegram interfaces** that share a per-user agent pool (24h TTL eviction, 100-agent cap).
+- **CLI + Telegram + Slack interfaces** that share a per-user agent pool (24h TTL eviction, 100-agent cap).
 - **Per-user YAML state** at `data/users/<slug>.yaml`. The state file is the source of truth.
 - **Invite-code onboarding** (`INV-XXXXXXXX`) — admins issue codes, recipients redeem via a short Q&A.
-- **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram users at runtime.
+- **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram/Slack users at runtime.
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
 - **TypeBox-schematized tools** — every tool parameter is validated by the runtime before your code runs.
 - **Dynamic admin list** — file-backed, no restart needed when new admins are granted.
@@ -31,6 +31,7 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 - **Node.js 20+** and npm
 - A **DeepSeek API key** (the LLM). Get one at https://platform.deepseek.com → API Keys
 - A **Telegram bot token** — optional, only if you want the Telegram interface. Talk to [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.
+- A **Slack app** — optional, only if you want the Slack interface. Create one at https://api.slack.com/apps, enable Socket Mode, and add Bot Token Scopes: `chat:write`, `commands`, `im:write`.
 
 ## Install
 
@@ -53,6 +54,12 @@ UTARUS_AGENT_PURPOSE=You are the support bot for Acme Corp. Help users file tick
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_ADMIN_IDS=123456789
 
+# Required for Slack
+SLACK_BOT_TOKEN=
+SLACK_APP_TOKEN=
+SLACK_SIGNING_SECRET=
+SLACK_ADMIN_IDS=
+
 # Optional — defaults to ./data
 UTARUS_DATA_ROOT=./data
 ```
@@ -71,13 +78,14 @@ On startup you'll see:
 Acme Support Bot starting...
 Initializing DeepSeek model...
 DeepSeek model: deepseek-v4-pro
-TELEGRAM_BOT_TOKEN not set — running in CLI-only mode.
+TELEGRAM_BOT_TOKEN not set — Telegram interface disabled.
+Slack tokens not set — Slack interface disabled.
 Acme Support Bot running. Type /help for commands.
 
 acme-support-bot>
 ```
 
-If `TELEGRAM_BOT_TOKEN` is set, the bot starts in parallel with the CLI. You can use either interface; they share the same per-user agent pool.
+If `TELEGRAM_BOT_TOKEN` is set, the Telegram bot starts in parallel with the CLI. If Slack tokens are set, the Slack bot starts as well. All interfaces share the same per-user agent pool.
 
 ---
 
@@ -109,6 +117,22 @@ Slash commands bypass the LLM for speed. Anything else is sent to the agent as a
 
 Each Telegram user gets an isolated conversation context (keyed by `tg_<userId>`).
 
+## Slack commands
+
+| Command | What it does |
+|---|---|
+| `/help` | Show help |
+| `/list` | List all users (admin only) |
+| `/get <slug>` | Show user record (admin only) |
+| `/clear` | Clear your conversation context |
+| `/invite [comment]` | Issue invite code (admin only) |
+| `/invites [all\|unused\|used]` | List invite codes (admin only) |
+| `/admincode [comment]` | Issue admin onboard code (admin only) |
+| `/admincodes [all\|unused\|used]` | List admin onboard codes (admin only) |
+| `/revoke <code>` | Revoke unused admin code (admin only) |
+
+Each Slack user gets an isolated conversation context (keyed by `slack_<userId>`).
+
 ---
 
 ## Architecture
@@ -117,8 +141,9 @@ Five layers, top to bottom:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Interface — CLI (readline) + Telegram (telegraf)        │
-│   Per-user agent key: cli_session | tg_<userId>         │
+│ Interface — CLI (readline) + Telegram (telegraf) + Slack│
+│   Per-user agent key: cli_session | tg_<userId> |       │
+│   slack_<userId> | slack_channel_<channelId>            │
 └─────────────────────────────────────────────────────────┘
                           │
 ┌─────────────────────────────────────────────────────────┐
@@ -214,7 +239,7 @@ The agent will start offering the skill via `use_skill` automatically.
 
 ### Extend the user state
 
-The framework reserves `user.{id,slug,created_at,telegram_user_ids,auth_token}`, `profile.{display_name,contact_email}`, and `log[]`. Add anything else under `profile` or as a new top-level key — the load/save machinery only enforces the load-bearing shape:
+The framework reserves `user.{id,slug,created_at,telegram_user_ids,slack_user_ids,auth_token}`, `profile.{display_name,contact_email}`, and `log[]`. Add anything else under `profile` or as a new top-level key — the load/save machinery only enforces the load-bearing shape:
 
 ```yaml
 user:
@@ -222,6 +247,7 @@ user:
   slug: acme-trading
   created_at: 2026-06-27
   telegram_user_ids: [123456]
+  slack_user_ids: [U01ABCDEF]
   auth_token: ...
 profile:
   display_name: Acme Trading
@@ -263,8 +289,11 @@ The `data/` directory is gitignored. Files are created on first use.
 **`Telegram bot doesn't respond`**
 → Check `TELEGRAM_BOT_TOKEN` is set and valid. The CLI prints `[Telegram] Failed to start: ...` on launch if the token is rejected. The bot must be started via `/start` in Telegram before it accepts messages.
 
+**`Slack bot doesn't respond`**
+→ Check `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_SIGNING_SECRET` are set and valid. The CLI prints `[Slack] Failed to start: ...` on launch if the tokens are rejected. Ensure Socket Mode is enabled in your Slack app settings.
+
 **`You need an invite code to use this bot`**
-→ Non-admin Telegram users must redeem an `INV-XXXXXXXX` code before they can chat. Admins issue codes via `/invite`.
+→ Non-admin Telegram/Slack users must redeem an `INV-XXXXXXXX` code before they can chat. Admins issue codes via `/invite`.
 
 ---
 

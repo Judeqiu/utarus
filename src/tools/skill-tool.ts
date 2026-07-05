@@ -1,14 +1,7 @@
-import { Type } from 'typebox';
+import { Type, type Static } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { SKILLS, loadSkill } from '../skills/index.js';
-
-const skillCatalog = SKILLS.map(s => `  - ${s.id}: ${s.description}`).join('\n');
-
-const paramsSchema = Type.Object({
-  skill_id: Type.String({
-    description: `ID of the skill to load. Available skills:\n${skillCatalog}`,
-  }),
-});
+import type { Skill } from '../extension.js';
 
 interface SkillToolDetails {
   skillId: string;
@@ -16,7 +9,18 @@ interface SkillToolDetails {
   contentLength: number;
 }
 
-export function createSkillTool(): AgentTool<typeof paramsSchema, SkillToolDetails | null> {
+/**
+ * Build the use_skill tool against an explicit skill catalog so the
+ * framework can inject framework + domain skills together.
+ */
+const paramsSchema = Type.Object({
+  skill_id: Type.String({ description: 'ID of the skill to load.' }),
+});
+
+export function createSkillTool(skills?: Skill[]): AgentTool<typeof paramsSchema, SkillToolDetails | null> {
+  const resolved = skills ?? SKILLS;
+  const skillCatalog = resolved.map(s => `  - ${s.id}: ${s.description}`).join('\n');
+
   return {
     name: 'use_skill',
     label: 'Use Skill',

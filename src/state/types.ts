@@ -17,6 +17,7 @@ export interface UserIdentity {
   slug: string;        // lowercase kebab-case, used as filename
   created_at: string;  // YYYY-MM-DD
   telegram_user_ids?: number[];
+  slack_user_ids?: string[];
   /** Auth token for any external portal/API the user needs to reach. */
   auth_token?: string;
 }
@@ -45,20 +46,24 @@ export interface UserState {
 
 export interface InviteCode {
   code: string;
-  created_by: number;        // admin telegram id
-  created_at: string;        // YYYY-MM-DD
+  created_by: number;              // admin telegram id
+  created_by_slack?: string;       // admin slack id (when issued from Slack)
+  created_at: string;              // YYYY-MM-DD
   comment?: string;
-  used_by?: number;          // telegram id of user who redeemed
+  used_by?: number;                // telegram id of user who redeemed
+  used_by_slack?: string;          // slack id of user who redeemed
   used_at?: string;
-  slug?: string;             // user slug created from this invite
+  slug?: string;                   // user slug created from this invite
 }
 
 export interface AdminOnboardCode {
   code: string;
   created_by: number;
+  created_by_slack?: string;
   created_at: string;
   comment?: string;
   used_by?: number;
+  used_by_slack?: string;
   used_at?: string;
   revoked?: boolean;
   revoked_at?: string;

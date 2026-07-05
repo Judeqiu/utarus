@@ -4,6 +4,14 @@
   "description": "Generic pi-agent-core based agent framework — CLI + Telegram, per-user YAML state, invite/onboard flow, skill-driven knowledge, tool-enforced rules.",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist", "README.md"],
   "scripts": {
     "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
     "build": "tsc",
@@ -24,12 +32,17 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.79.1",
     "@earendil-works/pi-ai": "^0.79.3",
+    "@slack/bolt": "^4.2.1",
+    "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "telegraf": "^4.16.3",
     "typebox": "^1.1.38",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.9.3",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",

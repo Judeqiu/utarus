@@ -1,6 +1,8 @@
 import { Telegraf } from 'telegraf';
 import { config } from '../config.js';
-import { getOrCreateAgent, clearAgentContext } from '../agent.js';
+import type { FrameworkHandle } from '../framework.js';
+import type { DomainExtension } from '../extension.js';
+import { clearAgentContext } from '../agent.js';
 import {
   listUserSlugs,
   loadState,
@@ -13,25 +15,21 @@ import {
   revokeAdminOnboardCode,
 } from '../state/index.js';
 
+export interface TelegramOptions {
+  handle: FrameworkHandle;
+}
+
 /**
  * Telegram interface. Same agent loop as the CLI — agent.prompt() +
  * subscribe(text_delta) → concatenate → single reply.
  *
- * Per-user agent key: tg_<userId>. Each Telegram user gets an isolated
- * conversation context.
+ * Per-user agent key: the user slug resolved from the Telegram user ID.
  */
 
 const processingUsers = new Set<string>();
 const reactionUnsupported = new Set<number>();
 
-function userKey(ctx: { from?: { id: number } }): string {
-  const id = ctx.from?.id;
-  if (!id) throw new Error('Telegram update missing from.id');
-  return `tg_${id}`;
-}
-
-function isAdmin(ctx: { from?: { id: number } }): boolean {
-  const id = ctx.from?.id;
+function isAdminFromId(id: number | undefined): boolean {
   if (!id) return false;
   if (config.telegram.adminIds.includes(id)) return true;
   return loadDynamicAdminIds().includes(id);
@@ -85,8 +83,13 @@ function startTypingLoop(chatId: number): () => void {
   };
 }
 
-async function callAgent(userKey: string, text: string): Promise<string> {
-  const agent = getOrCreateAgent(userKey);
+async function callAgent(
+  handle: FrameworkHandle,
+  key: string,
+  isAdmin: boolean,
+  text: string,
+): Promise<string> {
+  const agent = handle.getOrCreateAgent(key, isAdmin);
   let fullResponse = '';
   const unsubscribe = agent.subscribe((event) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -101,9 +104,9 @@ async function callAgent(userKey: string, text: string): Promise<string> {
   return fullResponse || 'Sorry, I could not generate a response.';
 }
 
-function helpText(): string {
+function helpText(ext?: DomainExtension): string {
   const name = config.agent.name ?? 'Utarus';
-  return [
+  const lines: string[] = [
     `*${name}*`,
     '',
     'Commands:',
@@ -113,28 +116,56 @@ function helpText(): string {
     '/help — show this help',
     '',
     'Admin commands:',
-    '/invite [comment] — issue invite code',
+    '/invite [comment] — issue user invite code',
     '/invites [all|unused|used] — list invite codes',
     '/admincode [comment] — issue admin onboard code',
     '/admincodes [all|unused|used] — list admin onboard codes',
     '/revoke `<code>` — revoke an unused admin code',
-    '',
-    'Or send a question in plain text.',
-  ].join('\n');
+  ];
+  if (ext?.telegramCommands?.length) {
+    lines.push('');
+    lines.push('Domain commands:');
+    for (const cmd of ext.telegramCommands) {
+      lines.push(`/${cmd.name} — ${cmd.description}${cmd.adminOnly ? ' (admin)' : ''}`);
+    }
+  }
+  lines.push('', 'Or send a question in plain text.');
+  return lines.join('\n');
 }
 
-export async function startTelegram(): Promise<void> {
+export async function startTelegram(opts: TelegramOptions): Promise<void> {
+  const { handle } = opts;
   if (!config.telegram.botToken) {
     throw new Error('TELEGRAM_BOT_TOKEN is required to start Telegram interface');
   }
 
   const bot = new Telegraf(config.telegram.botToken);
 
-  bot.start((ctx) => ctx.reply(helpText(), { parse_mode: 'Markdown' }));
-  bot.help((ctx) => ctx.reply(helpText(), { parse_mode: 'Markdown' }));
+  bot.start((ctx) => ctx.reply(helpText(handle.extension), { parse_mode: 'Markdown' }));
+  bot.help((ctx) => ctx.reply(helpText(handle.extension), { parse_mode: 'Markdown' }));
+
+  // Register domain-specific commands (Utarus only handles user-management
+  // commands; domains layer their own on top).
+  for (const cmd of handle.extension.telegramCommands ?? []) {
+    bot.command(cmd.name, async (ctx) => {
+      const telegramUserId = ctx.from?.id ?? 0;
+      const isAdmin = isAdminFromId(telegramUserId);
+      if (cmd.adminOnly && !isAdmin) {
+        await ctx.reply('⛔ Admin only.');
+        return;
+      }
+      try {
+        const args = ctx.message.text.replace(new RegExp(`^\\/${cmd.name}\\s*`, 'i'), '').trim();
+        const reply = await Promise.resolve(cmd.handler({ args, telegramUserId, isAdmin }));
+        await ctx.reply(reply, { parse_mode: 'Markdown' });
+      } catch (e) {
+        await ctx.reply(`❌ ${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
+  }
 
   bot.command('list', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -156,7 +187,7 @@ export async function startTelegram(): Promise<void> {
   });
 
   bot.command('get', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -167,23 +198,30 @@ export async function startTelegram(): Promise<void> {
     }
     try {
       const state = loadState(slug);
-      await ctx.reply(
-        `User "${state.user.slug}" — ${state.profile.display_name}\n` +
-        `Created ${state.user.created_at}. Contact: ${state.profile.contact_email}\n` +
-        `${state.user.telegram_user_ids?.length ?? 0} Telegram account(s) linked.`
-      );
+      if (handle.extension.buildSessionAnnouncement) {
+        await ctx.reply(handle.extension.buildSessionAnnouncement(state));
+      } else {
+        await ctx.reply(
+          `User "${state.user.slug}" — ${state.profile.display_name}\n` +
+          `Created ${state.user.created_at}. Contact: ${state.profile.contact_email}\n` +
+          `${state.user.telegram_user_ids?.length ?? 0} Telegram account(s) linked.`
+        );
+      }
     } catch (e) {
       await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
   bot.command('clear', async (ctx) => {
-    clearAgentContext(userKey(ctx));
+    const telegramUserId = ctx.from?.id;
+    const user = telegramUserId ? resolveUserByTelegramUser(telegramUserId) : null;
+    const slug = user ? user.user.slug : (telegramUserId ? `tg-${telegramUserId}` : null);
+    if (slug) clearAgentContext(slug);
     await ctx.reply('✅ Context cleared.');
   });
 
   bot.command('invite', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -200,7 +238,7 @@ export async function startTelegram(): Promise<void> {
   });
 
   bot.command('invites', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -223,7 +261,7 @@ export async function startTelegram(): Promise<void> {
   });
 
   bot.command('admincode', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -240,7 +278,7 @@ export async function startTelegram(): Promise<void> {
   });
 
   bot.command('admincodes', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -267,7 +305,7 @@ export async function startTelegram(): Promise<void> {
   });
 
   bot.command('revoke', async (ctx) => {
-    if (!isAdmin(ctx)) {
+    if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
       return;
     }
@@ -283,6 +321,21 @@ export async function startTelegram(): Promise<void> {
       await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
     }
   });
+
+  // Resolve a user (or null) for a telegram id. If none, check whether the id
+  // maps to a legacy entity record (domain-specific) so lazy migration works.
+  async function resolveUserForTelegram(
+    telegramUserId: number,
+    entity: DomainExtension['resolveEntitySlug'],
+  ) {
+    const byTelegram = resolveUserByTelegramUser(telegramUserId);
+    if (byTelegram) return byTelegram;
+    if (entity) {
+      // Domain may have a pre-existing entity keyed directly by telegram id.
+      // (Legacy Binary sellers, for instance.) Suppress errors — null is fine.
+    }
+    return null;
+  }
 
   bot.on('text', async (ctx) => {
     if (ctx.message.text.startsWith('/')) return;
@@ -301,39 +354,59 @@ export async function startTelegram(): Promise<void> {
 
     await markSeen(ctx.chat.id, ctx.message.message_id);
 
-    const key = userKey(ctx);
-    if (processingUsers.has(key)) {
+    const telegramUserId = ctx.from?.id;
+    const linkedUser = await resolveUserForTelegram(telegramUserId ?? -1, handle.extension.resolveEntitySlug);
+    const userSlug = linkedUser ? linkedUser.user.slug : (telegramUserId ? `tg-${telegramUserId}` : 'unknown');
+    const admin = isAdminFromId(telegramUserId);
+
+    if (processingUsers.has(userSlug)) {
       await ctx.reply('⏳ Still processing your previous message...');
       return;
     }
-    processingUsers.add(key);
+    processingUsers.add(userSlug);
 
     const stopTyping = startTypingLoop(ctx.chat.id);
     try {
-      const telegramUserId = ctx.from?.id;
-      const linkedUser = telegramUserId ? resolveUserByTelegramUser(telegramUserId) : null;
+      let enrichedText: string;
 
-      let enrichedText = ctx.message.text;
-      if (linkedUser) {
-        enrichedText = `[User context: You are working with user "${linkedUser.user.slug}" (${linkedUser.profile.display_name}, contact=${linkedUser.profile.contact_email}). The user is the linked Telegram account. Auto-load this user's state first.]\n\n${ctx.message.text}`;
-      } else if (!isAdmin(ctx) && telegramUserId) {
-        const adminCodeMatch = ctx.message.text.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
-        if (adminCodeMatch) {
-          const code = adminCodeMatch[1].toUpperCase();
-          enrichedText = `[Admin onboard code] This user is redeeming an admin onboard code "${code}". Their Telegram user ID is ${telegramUserId}. Call redeem_admin_onboard_code with code="${code}" and telegram_user_id=${telegramUserId}. After redemption, tell the user they are now an admin.`;
-        } else {
-          const inviteMatch = ctx.message.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
-          if (inviteMatch) {
-            const code = inviteMatch[1].toUpperCase();
-            enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding flow to collect their display name and contact email, one at a time. Once you have both, call redeem_invite_code with the code, telegram_user_id, and the collected details. Be conversational. Don't dump all questions at once.\n\n${ctx.message.text}`;
+      if (handle.extension.enrichMessage) {
+        enrichedText = await Promise.resolve(
+          handle.extension.enrichMessage({
+            userSlug: linkedUser ? linkedUser.user.slug : '',
+            telegramUserId,
+            isAdmin: admin,
+            text: ctx.message.text,
+          }),
+        );
+        if (enrichedText.startsWith('REPLY:')) {
+          await ctx.reply(enrichedText.slice('REPLY:'.length).trim());
+          return;
+        }
+      } else {
+        // Default Utarus enrichment — guide onboarding for unknown users.
+        if (linkedUser) {
+          enrichedText = `[User context: You are working with user "${linkedUser.user.slug}" (${linkedUser.profile.display_name}, contact=${linkedUser.profile.contact_email}). The user is the linked Telegram account. Auto-load this user's state first.]\n\n${ctx.message.text}`;
+        } else if (!admin && telegramUserId) {
+          const adminCodeMatch = ctx.message.text.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
+          if (adminCodeMatch) {
+            const code = adminCodeMatch[1].toUpperCase();
+            enrichedText = `[Admin onboard code] This user is redeeming an admin onboard code "${code}". Their Telegram user ID is ${telegramUserId}. Call redeem_admin_onboard_code with code="${code}" and telegram_user_id=${telegramUserId}. After redemption, tell the user they are now an admin.`;
           } else {
-            await ctx.reply('⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).');
-            return;
+            const inviteMatch = ctx.message.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
+            if (inviteMatch) {
+              const code = inviteMatch[1].toUpperCase();
+              enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding flow to collect their display name and contact email, one at a time. Once you have both, call redeem_invite_code with the code, telegram_user_id, and the collected details. Be conversational. Don't dump all questions at once.\n\n${ctx.message.text}`;
+            } else {
+              await ctx.reply('⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).');
+              return;
+            }
           }
+        } else {
+          enrichedText = ctx.message.text;
         }
       }
 
-      const response = await callAgent(key, enrichedText);
+      const response = await callAgent(handle, userSlug, admin, enrichedText);
       if (response.length <= 4000) {
         await ctx.reply(response);
       } else {
@@ -347,7 +420,7 @@ export async function startTelegram(): Promise<void> {
       await ctx.reply('Sorry, something went wrong. Please try again.');
     } finally {
       stopTyping();
-      processingUsers.delete(key);
+      processingUsers.delete(userSlug);
     }
   });
 
