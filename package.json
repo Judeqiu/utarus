@@ -11,10 +11,11 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": ["dist", "src", "README.md"],
   "scripts": {
     "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
     "build": "tsc",
+    "prepare": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest"
