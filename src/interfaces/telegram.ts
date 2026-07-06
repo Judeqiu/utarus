@@ -516,13 +516,13 @@ The record cannot be created until BOTH are provided. Be friendly and don't pres
   // It is SUPPOSED to hang while the bot is polling — do NOT await it with
   // a timeout, or you'll kill a healthy bot.
   //
-  // If another instance is already polling, the NEW bot's updates handler
-  // simply won't fire (Telegram routes updates to whichever instance polled
-  // last). The stale instance dies naturally when its systemd unit stops.
-  bot.launch().catch((err) => {
+  // Return this promise so callers (Binary's main) can keep the Node.js
+  // process alive by awaiting it.
+  const launchPromise = bot.launch().catch((err) => {
     console.error('[Telegram] bot.launch error:', err instanceof Error ? err.message : err);
   });
   console.log('Telegram bot is running.');
+  return launchPromise;
 
   const handleSignal = (sig: string) => {
     console.log(`\nReceived ${sig}, stopping Telegram bot...`);
