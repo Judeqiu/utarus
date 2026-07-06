@@ -6,6 +6,7 @@ export { config } from './config.js';
 export type { AppConfig } from './config.js';
 export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
+export { getCurrentChatId } from './interfaces/telegram.js';
 export { startBinDrive, createBinDriveApp } from './webapp/server.js';
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';

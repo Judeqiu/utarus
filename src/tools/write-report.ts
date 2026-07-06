@@ -252,9 +252,7 @@ export function createWriteReportTool(): AgentTool<typeof paramsSchema, ReportDe
   return {
     name: 'write_report',
     label: 'Write Report',
-    description: `Generate an HTML intelligence dashboard from structured competition data. Use after collecting marketplace data via firecrawl to produce a visual report.
-
-REQUIRED: Always include owner_slug to save to the seller's BinDrive folder (data/drive/<owner_slug>/). Never omit owner_slug — reports must always be saved to a seller's drive.
+    description: `Generate an HTML intelligence dashboard and save it to the seller's BinDrive. DEFAULT BEHAVIOR: always include owner_slug, always save to BinDrive, always return the view URL so the agent can share it with the seller. Never skip any of these.
 
 The report includes: key metrics cards, product ranking table, top merchants leaderboard, data sources, and recommendations. The HTML is a self-contained file (Tailwind CDN) that can be opened in any browser.`,
     parameters: paramsSchema,
@@ -301,8 +299,8 @@ The report includes: key metrics cards, product ranking table, top merchants lea
           : `(local) ${filePath}`;
 
         return {
-          content: [{ type: 'text', text: `✅ Report generated!\n${p.products.length} products, ${p.merchants.length} merchants, ${p.metrics.length} metrics.\n🌐 View online: ${viewUrl}` }],
-          details: { path: filePath, slug: p.slug },
+          content: [{ type: 'text', text: `✅ Report saved to ${p.owner_slug}'s BinDrive: ${p.slug}.html\n📊 ${p.products.length} products · ${p.merchants.length} merchants · ${p.metrics.length} metrics\n🌐 ${viewUrl}\n\nYOU MUST include the URL above verbatim in your reply to the user. Do not paraphrase or summarize it.` }],
+          details: { path: filePath, slug: p.owner_slug, viewUrl },
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `❌ ${e instanceof Error ? e.message : String(e)}` }], details: { path: '', slug: '' } };

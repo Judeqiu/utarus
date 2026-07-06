@@ -1,8 +1,11 @@
 import { Telegraf } from 'telegraf';
+import type { BotCommand } from '@telegraf/types';
 import { config } from '../config.js';
 import type { FrameworkHandle } from '../framework.js';
 import type { DomainExtension } from '../extension.js';
 import { clearAgentContext } from '../agent.js';
+import { existsSync, readFileSync } from 'fs';
+import { resolve, basename } from 'path';
 import {
   listUserSlugs,
   loadState,
@@ -27,6 +30,13 @@ export interface TelegramOptions {
  */
 
 const processingUsers = new Set<string>();
+
+// Track the current Telegram chat ID so tools can send files.
+// Set at the start of every inbound message; read by sendFileTool.
+let currentChatId: number | undefined;
+export function getCurrentChatId(): number | undefined {
+    return currentChatId;
+}
 const reactionUnsupported = new Set<number>();
 
 function isAdminFromId(id: number | undefined): boolean {
@@ -135,18 +145,23 @@ function helpText(ext?: DomainExtension): string {
 
 export async function startTelegram(opts: TelegramOptions): Promise<void> {
   const { handle } = opts;
+  console.log('[Telegram] startTelegram() called');
   if (!config.telegram.botToken) {
     throw new Error('TELEGRAM_BOT_TOKEN is required to start Telegram interface');
   }
 
   const bot = new Telegraf(config.telegram.botToken);
+  const telegramBotCommands: BotCommand[] = [];
 
-  bot.start((ctx) => ctx.reply(helpText(handle.extension), { parse_mode: 'Markdown' }));
-  bot.help((ctx) => ctx.reply(helpText(handle.extension), { parse_mode: 'Markdown' }));
+  bot.start((ctx) => ctx.reply(helpText(handle.extension), {}));
+  bot.help((ctx) => ctx.reply(helpText(handle.extension), {}));
+  telegramBotCommands.push({ command: 'start', description: 'start the bot — show help' });
+  telegramBotCommands.push({ command: 'help', description: 'show help and command list' });
 
   // Register domain-specific commands (Utarus only handles user-management
   // commands; domains layer their own on top).
   for (const cmd of handle.extension.telegramCommands ?? []) {
+    telegramBotCommands.push({ command: cmd.name, description: cmd.description });
     bot.command(cmd.name, async (ctx) => {
       const telegramUserId = ctx.from?.id ?? 0;
       const isAdmin = isAdminFromId(telegramUserId);
@@ -157,13 +172,14 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       try {
         const args = ctx.message.text.replace(new RegExp(`^\\/${cmd.name}\\s*`, 'i'), '').trim();
         const reply = await Promise.resolve(cmd.handler({ args, telegramUserId, isAdmin }));
-        await ctx.reply(reply, { parse_mode: 'Markdown' });
+        await ctx.reply(reply, {});
       } catch (e) {
         await ctx.reply(`❌ ${e instanceof Error ? e.message : String(e)}`);
       }
     });
   }
 
+  telegramBotCommands.push({ command: 'list', description: 'list all linked users' });
   bot.command('list', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -183,9 +199,10 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
         lines.push(`• \`${slug}\` — ERROR: ${e instanceof Error ? e.message : e}`);
       }
     }
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    await ctx.reply(lines.join('\n'), {});
   });
 
+  telegramBotCommands.push({ command: 'get', description: 'show a linked user\'s record (admin)' });
   bot.command('get', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -212,6 +229,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     }
   });
 
+  telegramBotCommands.push({ command: 'clear', description: 'clear your conversation context' });
   bot.command('clear', async (ctx) => {
     const telegramUserId = ctx.from?.id;
     const user = telegramUserId ? resolveUserByTelegramUser(telegramUserId) : null;
@@ -220,6 +238,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     await ctx.reply('✅ Context cleared.');
   });
 
+  telegramBotCommands.push({ command: 'invite', description: 'issue a new user invite code (admin)' });
   bot.command('invite', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -231,12 +250,13 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       if (!telegramUserId) return;
       const entry = createInviteCode({ createdBy: telegramUserId, comment });
       const commentLine = entry.comment ? `\nComment: ${entry.comment}` : '';
-      await ctx.reply(`✅ Invite code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Invite code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, {});
     } catch (e) {
       await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
+  telegramBotCommands.push({ command: 'invites', description: 'list invite codes (admin)' });
   bot.command('invites', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -257,9 +277,10 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       const status = inv.used_by ? `✅ used by ${inv.used_by} → ${inv.slug ?? '?'} on ${inv.used_at}` : '⏳ unused';
       lines.push(`• \`${inv.code}\` — ${inv.created_at} by ${inv.created_by} — ${status}`);
     }
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    await ctx.reply(lines.join('\n'), {});
   });
 
+  telegramBotCommands.push({ command: 'admincode', description: 'issue a new admin onboard code (admin)' });
   bot.command('admincode', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -271,12 +292,13 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       if (!telegramUserId) return;
       const entry = createAdminOnboardCode({ createdBy: telegramUserId, comment });
       const commentLine = entry.comment ? `\nComment: ${entry.comment}` : '';
-      await ctx.reply(`✅ Admin onboard code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Admin onboard code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, {});
     } catch (e) {
       await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
+  telegramBotCommands.push({ command: 'admincodes', description: 'list admin onboard codes (admin)' });
   bot.command('admincodes', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -301,9 +323,10 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       const comment = c.comment ? ` — _${c.comment}_` : '';
       lines.push(`• \`${c.code}\`${comment} — ${c.created_at} by ${c.created_by} — ${status}`);
     }
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    await ctx.reply(lines.join('\n'), {});
   });
 
+  telegramBotCommands.push({ command: 'revoke', description: 'revoke an unused admin onboard code (admin)' });
   bot.command('revoke', async (ctx) => {
     if (!isAdminFromId(ctx.from?.id)) {
       await ctx.reply('⛔ Admin only.');
@@ -316,7 +339,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     }
     try {
       const entry = revokeAdminOnboardCode(code);
-      await ctx.reply(`✅ Admin code \`${entry.code}\` revoked.${entry.comment ? ` Comment was: _${entry.comment}_` : ''}`, { parse_mode: 'Markdown' });
+      await ctx.reply(`✅ Admin code \`${entry.code}\` revoked.${entry.comment ? ` Comment was: _${entry.comment}_` : ''}`, {});
     } catch (e) {
       await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
     }
@@ -337,8 +360,19 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     return null;
   }
 
-  bot.on('text', async (ctx) => {
+  // Debug: log ALL incoming updates to diagnose handler issues.
+  bot.use((ctx, next) => {
+    console.log(`[Telegram] Update type: ${ctx.updateType}, keys: ${Object.keys(ctx.update).join(',')}`);
+    return next();
+  });
+
+  bot.on('message', async (ctx) => {
+    console.log(`[Telegram] Received message: updateType=${ctx.updateType}, hasText=${!!ctx.message?.text}, text=${(ctx.message?.text || '').slice(0, 50)}`);
+    if (!ctx.message?.text) return;
     if (ctx.message.text.startsWith('/')) return;
+
+    // Track chat ID so tools (e.g. send_file) can send documents.
+    if (ctx.chat?.id) currentChatId = ctx.chat.id;
 
     const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
     if (isGroup) {
@@ -395,7 +429,12 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
             const inviteMatch = ctx.message.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
             if (inviteMatch) {
               const code = inviteMatch[1].toUpperCase();
-              enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding flow to collect their display name and contact email, one at a time. Once you have both, call redeem_invite_code with the code, telegram_user_id, and the collected details. Be conversational. Don't dump all questions at once.\n\n${ctx.message.text}`;
+              enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding Q&A to collect these TWO mandatory fields (the user can provide them at their own pace — one field per turn is fine):
+
+  1. display_name — their name or nickname
+  2. contact_email — a valid email address
+
+The record cannot be created until BOTH are provided. Be friendly and don't pressure. If the user sends a valid-looking value for one field, accept it and gently prompt for the other. If a value looks wrong (e.g. malformed email), say so once and ask again nicely. Once you have both, call redeem_invite_code with code="${code}", telegram_user_id=${telegramUserId}, display_name, and contact_email. After redeeming, tell them they now have access and can start using the bot.\n\n${ctx.message.text}`;
             } else {
               await ctx.reply('⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).');
               return;
@@ -407,6 +446,44 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       }
 
       const response = await callAgent(handle, userSlug, admin, enrichedText);
+
+      // Auto-detect BinDrive file references in the response and send them as documents.
+      // Matches both raw paths (data/drive/<seller>/<file>.html) and URLs
+      // (http://host/api/files/<file>.html/view?slug=<seller>).
+      const rawPathRegex = /data\/drive\/([a-z0-9-]+)\/([a-z0-9-]+\.(html|csv|pdf|txt|md))/g;
+      const urlRegex = /https?:\/\/[^\s]+\/api\/files\/([a-z0-9-]+\.(html|csv|pdf|txt|md))\/view\?slug=([a-z0-9-]+)/g;
+
+      const filesToSend: Array<{ path: string; name: string }> = [];
+
+      let m: RegExpExecArray | null;
+      while ((m = rawPathRegex.exec(response)) !== null) {
+        filesToSend.push({ path: `data/drive/${m[1]}/${m[2]}`, name: m[2] });
+      }
+      while ((m = urlRegex.exec(response)) !== null) {
+        const name = m[1];
+        const seller = m[3];
+        filesToSend.push({ path: `data/drive/${seller}/${name}`, name });
+      }
+
+      // Dedupe by path
+      const seen = new Set<string>();
+      for (const f of filesToSend) {
+        if (seen.has(f.path)) continue;
+        seen.add(f.path);
+        const absPath = resolve(process.cwd(), f.path);
+        if (existsSync(absPath)) {
+          try {
+            await ctx.telegram.sendDocument(
+              ctx.chat.id,
+              { source: readFileSync(absPath), filename: f.name },
+              { caption: `📊 ${f.name}` },
+            );
+          } catch (e) {
+            console.error(`[Telegram] sendDocument failed for ${f.path}:`, e);
+          }
+        }
+      }
+
       if (response.length <= 4000) {
         await ctx.reply(response);
       } else {
@@ -428,7 +505,23 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     console.error('[Telegraf error]', err);
   });
 
-  await bot.launch();
+  try {
+    await bot.telegram.setMyCommands(telegramBotCommands);
+    console.log(`Registered ${telegramBotCommands.length} /commands with Telegram.`);
+  } catch (err) {
+    console.error('[Telegram] setMyCommands failed:', err instanceof Error ? err.message : err);
+  }
+
+  // bot.launch() returns a promise that resolves only when the bot stops.
+  // It is SUPPOSED to hang while the bot is polling — do NOT await it with
+  // a timeout, or you'll kill a healthy bot.
+  //
+  // If another instance is already polling, the NEW bot's updates handler
+  // simply won't fire (Telegram routes updates to whichever instance polled
+  // last). The stale instance dies naturally when its systemd unit stops.
+  bot.launch().catch((err) => {
+    console.error('[Telegram] bot.launch error:', err instanceof Error ? err.message : err);
+  });
   console.log('Telegram bot is running.');
 
   const handleSignal = (sig: string) => {
