@@ -360,16 +360,9 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     return null;
   }
 
-  // Debug: log ALL incoming updates to diagnose handler issues.
-  bot.use((ctx, next) => {
-    console.log(`[Telegram] Update type: ${ctx.updateType}, keys: ${Object.keys(ctx.update).join(',')}`);
-    return next();
-  });
-
-  bot.on('message', async (ctx) => {
-    console.log(`[Telegram] Received message: updateType=${ctx.updateType}, hasText=${!!ctx.message?.text}, text=${(ctx.message?.text || '').slice(0, 50)}`);
-    if (!ctx.message?.text) return;
-    if (ctx.message.text.startsWith('/')) return;
+  bot.on('text', async (ctx) => {
+    const msgText = (ctx.message as any)?.text ?? '';
+    if (msgText.startsWith('/')) return;
 
     // Track chat ID so tools (e.g. send_file) can send documents.
     if (ctx.chat?.id) currentChatId = ctx.chat.id;
@@ -379,11 +372,11 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       const botUsername = bot.botInfo?.username;
       if (!botUsername) return;
       const mentioned = ctx.message.entities?.some(
-        (e) => e.type === 'mention' && ctx.message.text.slice(e.offset, e.offset + e.length) === `@${botUsername}`
+        (e) => e.type === 'mention' && msgText.slice(e.offset, e.offset + e.length) === `@${botUsername}`
       );
       if (!mentioned) return;
-      ctx.message.text = ctx.message.text.replace(new RegExp(`@${botUsername}\\s*`, 'g'), '').trim();
-      if (!ctx.message.text) return;
+      (ctx.message as any).text = msgText.replace(new RegExp(`@${botUsername}\\s*`, 'g'), '').trim();
+      if (!(ctx.message as any).text) return;
     }
 
     await markSeen(ctx.chat.id, ctx.message.message_id);
@@ -418,15 +411,16 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
         }
       } else {
         // Default Utarus enrichment — guide onboarding for unknown users.
+        const msgText = (ctx.message as any)?.text ?? '';
         if (linkedUser) {
-          enrichedText = `[User context: You are working with user "${linkedUser.user.slug}" (${linkedUser.profile.display_name}, contact=${linkedUser.profile.contact_email}). The user is the linked Telegram account. Auto-load this user's state first.]\n\n${ctx.message.text}`;
+          enrichedText = `[User context: You are working with user "${linkedUser.user.slug}" (${linkedUser.profile.display_name}, contact=${linkedUser.profile.contact_email}). The user is the linked Telegram account. Auto-load this user's state first.]\n\n${msgText}`;
         } else if (!admin && telegramUserId) {
-          const adminCodeMatch = ctx.message.text.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
+          const adminCodeMatch = msgText.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
           if (adminCodeMatch) {
             const code = adminCodeMatch[1].toUpperCase();
             enrichedText = `[Admin onboard code] This user is redeeming an admin onboard code "${code}". Their Telegram user ID is ${telegramUserId}. Call redeem_admin_onboard_code with code="${code}" and telegram_user_id=${telegramUserId}. After redemption, tell the user they are now an admin.`;
           } else {
-            const inviteMatch = ctx.message.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
+            const inviteMatch = msgText.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
             if (inviteMatch) {
               const code = inviteMatch[1].toUpperCase();
               enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding Q&A to collect these TWO mandatory fields (the user can provide them at their own pace — one field per turn is fine):
@@ -434,14 +428,14 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
   1. display_name — their name or nickname
   2. contact_email — a valid email address
 
-The record cannot be created until BOTH are provided. Be friendly and don't pressure. If the user sends a valid-looking value for one field, accept it and gently prompt for the other. If a value looks wrong (e.g. malformed email), say so once and ask again nicely. Once you have both, call redeem_invite_code with code="${code}", telegram_user_id=${telegramUserId}, display_name, and contact_email. After redeeming, tell them they now have access and can start using the bot.\n\n${ctx.message.text}`;
+The record cannot be created until BOTH are provided. Be friendly and don't pressure. If the user sends a valid-looking value for one field, accept it and gently prompt for the other. If a value looks wrong (e.g. malformed email), say so once and ask again nicely. Once you have both, call redeem_invite_code with code="${code}", telegram_user_id=${telegramUserId}, display_name, and contact_email. After redeeming, tell them they now have access and can start using the bot.\n\n${msgText}`;
             } else {
               await ctx.reply('⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).');
               return;
             }
           }
         } else {
-          enrichedText = ctx.message.text;
+          enrichedText = msgText;
         }
       }
 
