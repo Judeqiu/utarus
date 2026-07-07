@@ -511,17 +511,20 @@ The record cannot be created until BOTH are provided. Be friendly and don't pres
   // a timeout, or you'll kill a healthy bot.
   //
   // Return this promise so callers (Binary's main) can keep the Node.js
-  // process alive by awaiting it.
-  const launchPromise = bot.launch().catch((err) => {
-    console.error('[Telegram] bot.launch error:', err instanceof Error ? err.message : err);
-  });
-  console.log('Telegram bot is running.');
-  return launchPromise;
-
+  // process alive by awaiting it. We re-throw launch errors after logging so
+  // callers can detect failure (e.g. exit non-zero in TELEGRAM_ONLY mode) —
+  // swallowing them lets the process exit 0 and systemd won't restart.
   const handleSignal = (sig: string) => {
     console.log(`\nReceived ${sig}, stopping Telegram bot...`);
     bot.stop(sig);
   };
   process.once('SIGINT', () => handleSignal('SIGINT'));
   process.once('SIGTERM', () => handleSignal('SIGTERM'));
+
+  const launchPromise = bot.launch().catch((err) => {
+    console.error('[Telegram] bot.launch error:', err instanceof Error ? err.message : err);
+    throw err;
+  });
+  console.log('Telegram bot is running.');
+  return launchPromise;
 }
