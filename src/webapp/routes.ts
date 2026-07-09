@@ -6,7 +6,20 @@ import { Router, type Request, type Response } from 'express';
 import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { config, resolveDataRoot } from '../config.js';
-import { requireAuth, requireAdmin, createSession, destroySession, authenticateAdmin, resolveByToken, type AuthUser, targetSlug } from './auth.js';
+import {
+  requireAuth,
+  requireAdmin,
+  createSession,
+  destroySession,
+  authenticateAdmin,
+  resolveByToken,
+  createLinkToken,
+  DEFAULT_LINK_TOKEN_TTL_MS,
+  MAX_LINK_TOKEN_TTL_MS,
+  MIN_LINK_TOKEN_TTL_MS,
+  type AuthUser,
+  targetSlug,
+} from './auth.js';
 import { loginPage, drivePage } from './views.js';
 
 const router = Router();
@@ -85,6 +98,67 @@ router.get('/', requireAuth, (req: Request, res: Response) => {
     res.send(drivePage(user, slug, files));
   } catch (e) {
     res.status(400).send((e as Error).message);
+  }
+});
+
+// ── API: Link tokens ────────────────────────────────────────────────
+
+/**
+ * POST /api/auth/link-token
+ *
+ * Mint a short-lived token for deep links (Slack/Telegram buttons, chat URLs).
+ * Requires an existing session, permanent auth_token, or admin credentials.
+ *
+ * Body (all optional):
+ *   { ttlSeconds?: number, pathPrefix?: string, maxUses?: number }
+ *
+ * Response:
+ *   { token, expiresAt, expiresInMs }
+ *
+ * Attach as `?t=<token>` on any BinDrive URL. First browser visit exchanges
+ * the token for a session cookie and redirects without `t`.
+ */
+router.post('/api/auth/link-token', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user as AuthUser;
+  const body = (req.body || {}) as {
+    ttlSeconds?: number;
+    pathPrefix?: string;
+    maxUses?: number;
+  };
+
+  let ttlMs = DEFAULT_LINK_TOKEN_TTL_MS;
+  if (body.ttlSeconds !== undefined) {
+    if (typeof body.ttlSeconds !== 'number' || !Number.isFinite(body.ttlSeconds)) {
+      res.status(400).json({ error: 'ttlSeconds must be a number' });
+      return;
+    }
+    ttlMs = Math.floor(body.ttlSeconds * 1000);
+  }
+
+  try {
+    if (ttlMs < MIN_LINK_TOKEN_TTL_MS) {
+      res.status(400).json({
+        error: `ttlSeconds must be at least ${MIN_LINK_TOKEN_TTL_MS / 1000}`,
+      });
+      return;
+    }
+    if (ttlMs > MAX_LINK_TOKEN_TTL_MS) {
+      ttlMs = MAX_LINK_TOKEN_TTL_MS;
+    }
+
+    const minted = createLinkToken({
+      user,
+      ttlMs,
+      pathPrefix: body.pathPrefix,
+      maxUses: body.maxUses,
+    });
+    res.json({
+      token: minted.token,
+      expiresAt: new Date(minted.expiresAt).toISOString(),
+      expiresInMs: minted.expiresInMs,
+    });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 

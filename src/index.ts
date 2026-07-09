@@ -8,6 +8,17 @@ export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
 export { getCurrentChatId } from './interfaces/telegram.js';
 export { startBinDrive, createBinDriveApp } from './webapp/server.js';
+export {
+  createLinkToken,
+  appendLinkToken,
+  buildAuthedUrl,
+  createSession,
+  resolveByToken,
+  DEFAULT_LINK_TOKEN_TTL_MS,
+  MAX_LINK_TOKEN_TTL_MS,
+  MIN_LINK_TOKEN_TTL_MS,
+} from './webapp/auth.js';
+export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/auth.js';
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
 
