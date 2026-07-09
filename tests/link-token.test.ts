@@ -58,6 +58,16 @@ describe('pathPrefix + maxUses', () => {
     expect(consumeLinkToken(token)).toBeNull();
     expect(peekLinkToken(token)).toBeNull();
   });
+
+  it('rejects URL slug that does not match token identity', () => {
+    const { token } = createLinkToken({
+      user,
+      pathPrefix: '/dl',
+      boundSlug: 'alice',
+    });
+    expect(peekLinkToken(token, '/dl/x.png?slug=alice')).not.toBeNull();
+    expect(peekLinkToken(token, '/dl/x.png?slug=bob')).toBeNull();
+  });
 });
 
 describe('appendLinkToken / buildAuthedUrl', () => {

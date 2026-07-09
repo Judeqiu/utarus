@@ -150,12 +150,19 @@ router.post('/api/auth/link-token', requireAuth, (req: Request, res: Response) =
       user,
       ttlMs,
       pathPrefix: body.pathPrefix,
+      boundSlug: user.slug,
       maxUses: body.maxUses,
     });
     res.json({
       token: minted.token,
       expiresAt: new Date(minted.expiresAt).toISOString(),
       expiresInMs: minted.expiresInMs,
+      identity: {
+        slug: user.slug,
+        displayName: user.displayName,
+        userId: user.userId,
+        type: user.type,
+      },
     });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : String(e) });

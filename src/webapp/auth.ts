@@ -20,6 +20,8 @@ export interface AuthUser {
   type: 'admin' | 'user';
   slug: string;
   displayName: string;
+  /** Stable UUID from user YAML when available. */
+  userId?: string;
 }
 
 // In-memory sessions (browser cookie-based flow)
@@ -57,6 +59,11 @@ interface LinkTokenRecord {
   expiresAt: number;
   /** If set, only valid when request path starts with this prefix. */
   pathPrefix?: string;
+  /**
+   * Drive owner this token is bound to. When the URL has `?slug=`, it must
+   * match (and match user.slug). Prevents cross-user access via query rewrite.
+   */
+  boundSlug?: string;
   /** Optional cap on redemptions (undefined = unlimited until expiry). */
   maxUses?: number;
   uses: number;
@@ -70,6 +77,8 @@ export interface CreateLinkTokenParams {
   ttlMs?: number;
   /** Restrict to paths under this prefix (e.g. "/dashboard"). */
   pathPrefix?: string;
+  /** Bind to this drive slug (defaults to user.slug). */
+  boundSlug?: string;
   /** Cap how many times the token can be redeemed. */
   maxUses?: number;
 }
@@ -96,21 +105,67 @@ export function createLinkToken(params: CreateLinkTokenParams): LinkTokenResult 
     ttl = MAX_LINK_TOKEN_TTL_MS;
   }
 
+  // Enrich identity from YAML when userId is missing.
+  let user = params.user;
+  if (!user.userId && user.type === 'user') {
+    try {
+      const state = loadState(user.slug);
+      user = {
+        ...user,
+        userId: state.user.id,
+        displayName: user.displayName || state.profile.display_name,
+      };
+    } catch {
+      // keep as-is
+    }
+  }
+
+  const boundSlug = params.boundSlug ?? user.slug;
+  if (boundSlug !== user.slug) {
+    throw new Error(
+      `createLinkToken boundSlug "${boundSlug}" must match user.slug "${user.slug}"`,
+    );
+  }
+
   const token = randomUUID();
   const expiresAt = Date.now() + ttl;
   linkTokens.set(token, {
-    user: params.user,
+    user,
     expiresAt,
     pathPrefix: params.pathPrefix,
+    boundSlug,
     maxUses: params.maxUses,
     uses: 0,
   });
   return { token, expiresAt, expiresInMs: ttl };
 }
 
+function slugFromPath(path?: string): string | null {
+  if (!path) return null;
+  try {
+    const u = new URL(path, 'http://localhost');
+    const s = u.searchParams.get('slug');
+    return s && s.length > 0 ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function validateLinkRecord(rec: LinkTokenRecord, path?: string): AuthUser | null {
+  if (Date.now() > rec.expiresAt) return null;
+  if (rec.pathPrefix && path) {
+    const bare = path.split('?')[0] || path;
+    if (!bare.startsWith(rec.pathPrefix)) return null;
+  }
+  const urlSlug = slugFromPath(path);
+  if (urlSlug && urlSlug !== rec.user.slug) return null;
+  if (rec.boundSlug && urlSlug && urlSlug !== rec.boundSlug) return null;
+  return rec.user;
+}
+
 /**
  * Resolve a link token without consuming a use. Returns null if missing/expired
- * or pathPrefix mismatch.
+ * or pathPrefix / identity mismatch.
  */
 export function peekLinkToken(token: string, path?: string): AuthUser | null {
   const rec = linkTokens.get(token);
@@ -119,16 +174,13 @@ export function peekLinkToken(token: string, path?: string): AuthUser | null {
     linkTokens.delete(token);
     return null;
   }
-  if (rec.pathPrefix && path) {
-    const bare = path.split('?')[0] || path;
-    if (!bare.startsWith(rec.pathPrefix)) return null;
-  }
-  return rec.user;
+  return validateLinkRecord(rec, path);
 }
 
 /**
  * Resolve and count one use of a link token. Deletes the record when maxUses
- * is reached or the token is expired.
+ * is reached or the token is expired. Session created from this user carries
+ * the full identity (slug, displayName, userId).
  */
 export function consumeLinkToken(token: string, path?: string): AuthUser | null {
   const rec = linkTokens.get(token);
@@ -137,15 +189,13 @@ export function consumeLinkToken(token: string, path?: string): AuthUser | null 
     linkTokens.delete(token);
     return null;
   }
-  if (rec.pathPrefix && path) {
-    const bare = path.split('?')[0] || path;
-    if (!bare.startsWith(rec.pathPrefix)) return null;
-  }
+  const user = validateLinkRecord(rec, path);
+  if (!user) return null;
   rec.uses += 1;
   if (rec.maxUses !== undefined && rec.uses >= rec.maxUses) {
     linkTokens.delete(token);
   }
-  return rec.user;
+  return user;
 }
 
 /** Append `t=<token>` to a relative or absolute URL. */
@@ -202,7 +252,12 @@ function findUserByAuthToken(authToken: string): UserState | null {
 export function resolveByToken(authToken: string): AuthUser | null {
   const state = findUserByAuthToken(authToken);
   if (!state) return null;
-  return { type: 'user', slug: state.user.slug, displayName: state.profile.display_name };
+  return {
+    type: 'user',
+    slug: state.user.slug,
+    displayName: state.profile.display_name,
+    userId: state.user.id,
+  };
 }
 
 /**
