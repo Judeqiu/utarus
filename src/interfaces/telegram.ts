@@ -45,12 +45,16 @@ function isAdminFromId(id: number | undefined): boolean {
   return loadDynamicAdminIds().includes(id);
 }
 
-async function sendTyping(chatId: number): Promise<void> {
+async function sendTyping(chatId: number, messageThreadId?: number): Promise<void> {
   try {
+    // Forum groups require message_thread_id so typing shows in the topic header
+    // (otherwise the API accepts the call but the client keeps showing "N members").
+    const body: Record<string, unknown> = { chat_id: chatId, action: 'typing' };
+    if (messageThreadId !== undefined) body.message_thread_id = messageThreadId;
     const res = await fetch(`https://api.telegram.org/bot${config.telegram.botToken}/sendChatAction`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, action: 'typing' }),
+      body: JSON.stringify(body),
     });
     const data = await res.json() as { ok: boolean; description?: string };
     if (!data.ok) {
@@ -83,12 +87,12 @@ async function markSeen(chatId: number, messageId: number): Promise<void> {
   }
 }
 
-function startTypingLoop(chatId: number): () => void {
+function startTypingLoop(chatId: number, messageThreadId?: number): () => void {
   let active = true;
   // Fire immediately so the user sees "typing…" right away (status lasts ~5s).
-  void sendTyping(chatId);
+  void sendTyping(chatId, messageThreadId);
   const interval = setInterval(() => {
-    if (active) void sendTyping(chatId);
+    if (active) void sendTyping(chatId, messageThreadId);
   }, 4000);
   return () => {
     active = false;
@@ -388,6 +392,8 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     const linkedUser = await resolveUserForTelegram(telegramUserId ?? -1, handle.extension.resolveEntitySlug);
     const userSlug = linkedUser ? linkedUser.user.slug : (telegramUserId ? `tg-${telegramUserId}` : 'unknown');
     const admin = isAdminFromId(telegramUserId);
+    // Present on messages inside forum topics; required for typing to appear under the title.
+    const messageThreadId = (ctx.message as { message_thread_id?: number }).message_thread_id;
 
     if (processingUsers.has(userSlug)) {
       await ctx.reply('⏳ Still processing your previous message...');
@@ -395,7 +401,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     }
     processingUsers.add(userSlug);
 
-    const stopTyping = startTypingLoop(ctx.chat.id);
+    const stopTyping = startTypingLoop(ctx.chat.id, messageThreadId);
     try {
       let enrichedText: string;
 
