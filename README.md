@@ -17,6 +17,12 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
 - **TypeBox-schematized tools** — every tool parameter is validated by the runtime before your code runs.
 - **Dynamic admin list** — file-backed, no restart needed when new admins are granted.
+- **Telegram UX (built into the interface — every domain agent inherits it):**
+  - Ack reaction (`👀`) on inbound messages
+  - `typing…` chat action while the agent works (immediate + refresh every 4s)
+  - Forum/topic groups: passes `message_thread_id` so typing shows under the title
+  - Markdown → Telegram HTML replies (`**bold**`, lists, links, code, tables→bullets)
+  - Safe chunking + plain-text fallback if Telegram rejects markup
 
 ## What you have to add
 
@@ -116,6 +122,38 @@ Slash commands bypass the LLM for speed. Anything else is sent to the agent as a
 | `/revoke <code>` | Revoke unused admin code (admin only) |
 
 Each Telegram user gets an isolated conversation context (keyed by `tg_<userId>`).
+
+### Telegram UX (shared by all domain agents)
+
+These behaviors live in Utarus (`src/interfaces/telegram.ts` + `telegram-format.ts`), not in Binary/Marie/etc. Any agent that calls `framework.startTelegram()` gets them automatically:
+
+| Capability | Behavior |
+|---|---|
+| Ack reaction | `setMessageReaction` with `👀` when a message is accepted |
+| Typing status | `sendChatAction(typing)` immediately, then every 4s until the reply is sent |
+| Forum topics | Forwards `message_thread_id` so the header shows typing (not just “N members”) |
+| Formatted replies | Agent Markdown is converted to Telegram HTML (`parse_mode: HTML`) |
+| Tables | GFM pipe tables are flattened to `• Key: value · …` bullets |
+| Chunking | Long replies split under Telegram’s 4096 limit without mid-tag cuts |
+| Fallback | If HTML is rejected, the same content is re-sent as plain text |
+
+Helpers are also exported for custom outbound messages:
+
+```ts
+import {
+  markdownToTelegramHtml,
+  splitTelegramHtml,
+  convertMarkdownTables,
+  escapeHtml,
+} from 'utarus';
+
+const html = markdownToTelegramHtml(agentText);
+for (const chunk of splitTelegramHtml(html)) {
+  await ctx.reply(chunk, { parse_mode: 'HTML' });
+}
+```
+
+Domain prompts may still guide *what* the model writes (prefer bullets over wide tables), but **rendering** is a framework concern.
 
 ## Slack commands
 

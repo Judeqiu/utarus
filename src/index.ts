@@ -7,6 +7,14 @@ export type { AppConfig } from './config.js';
 export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
 export { getCurrentChatId } from './interfaces/telegram.js';
+/** Shared Telegram formatting helpers (Markdown → HTML). Used by the built-in
+ *  Telegram interface; domain agents can reuse them for custom outbound messages. */
+export {
+  escapeHtml,
+  convertMarkdownTables,
+  markdownToTelegramHtml,
+  splitTelegramHtml,
+} from './interfaces/telegram-format.js';
 export { startBinDrive, createBinDriveApp } from './webapp/server.js';
 export {
   createLinkToken,
