@@ -64,10 +64,11 @@ async function sendTyping(chatId: number): Promise<void> {
 async function markSeen(chatId: number, messageId: number): Promise<void> {
   if (reactionUnsupported.has(chatId)) return;
   try {
+    // 👀 is in Telegram's official reaction set (✅ is not — it returns REACTION_INVALID).
     const res = await fetch(`https://api.telegram.org/bot${config.telegram.botToken}/setMessageReaction`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji: '✅' }] }),
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji: '👀' }] }),
     });
     const data = await res.json() as { ok: boolean; description?: string };
     if (!data.ok) {
@@ -84,8 +85,10 @@ async function markSeen(chatId: number, messageId: number): Promise<void> {
 
 function startTypingLoop(chatId: number): () => void {
   let active = true;
+  // Fire immediately so the user sees "typing…" right away (status lasts ~5s).
+  void sendTyping(chatId);
   const interval = setInterval(() => {
-    if (active) sendTyping(chatId);
+    if (active) void sendTyping(chatId);
   }, 4000);
   return () => {
     active = false;
