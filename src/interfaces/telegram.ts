@@ -1,4 +1,5 @@
 import { Telegraf } from 'telegraf';
+import type { Context } from 'telegraf';
 import type { BotCommand } from '@telegraf/types';
 import { config } from '../config.js';
 import type { FrameworkHandle } from '../framework.js';
@@ -17,6 +18,7 @@ import {
   listAdminOnboardCodes,
   revokeAdminOnboardCode,
 } from '../state/index.js';
+import { markdownToTelegramHtml, splitTelegramHtml } from './telegram-format.js';
 
 export interface TelegramOptions {
   handle: FrameworkHandle;
@@ -100,6 +102,38 @@ function startTypingLoop(chatId: number, messageThreadId?: number): () => void {
   };
 }
 
+/**
+ * Send agent/command text with Telegram HTML formatting.
+ * Converts Markdown (**bold**, tables, links, …) → HTML; falls back to plain
+ * text if Telegram rejects the markup (never leave the user with no reply).
+ */
+async function replyFormatted(ctx: Context, text: string): Promise<void> {
+  const html = markdownToTelegramHtml(text);
+  const chunks = splitTelegramHtml(html);
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    try {
+      await ctx.reply(chunk, {
+        parse_mode: 'HTML',
+        link_preview_options: { is_disabled: true },
+      });
+    } catch (err) {
+      console.error('[Telegram] HTML reply failed, falling back to plain text:', err instanceof Error ? err.message : err);
+      // Fall back to the original markdown slice approximated by chunk index.
+      // Prefer plain HTML-stripped content so the user still gets the message.
+      const plain = chunk
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&amp;/g, '&');
+      await ctx.reply(plain || text.slice(0, 4000));
+    }
+  }
+}
+
 async function callAgent(
   handle: FrameworkHandle,
   key: string,
@@ -124,7 +158,7 @@ async function callAgent(
 function helpText(ext?: DomainExtension): string {
   const name = config.agent.name ?? 'Utarus';
   const lines: string[] = [
-    `*${name}*`,
+    `**${name}**`,
     '',
     'Commands:',
     '/list — list all users',
@@ -160,8 +194,8 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
   const bot = new Telegraf(config.telegram.botToken);
   const telegramBotCommands: BotCommand[] = [];
 
-  bot.start((ctx) => ctx.reply(helpText(handle.extension), {}));
-  bot.help((ctx) => ctx.reply(helpText(handle.extension), {}));
+  bot.start((ctx) => replyFormatted(ctx, helpText(handle.extension)));
+  bot.help((ctx) => replyFormatted(ctx, helpText(handle.extension)));
   telegramBotCommands.push({ command: 'start', description: 'start the bot — show help' });
   telegramBotCommands.push({ command: 'help', description: 'show help and command list' });
 
@@ -179,9 +213,9 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       try {
         const args = ctx.message.text.replace(new RegExp(`^\\/${cmd.name}\\s*`, 'i'), '').trim();
         const reply = await Promise.resolve(cmd.handler({ args, telegramUserId, isAdmin }));
-        await ctx.reply(reply, {});
+        await replyFormatted(ctx, reply);
       } catch (e) {
-        await ctx.reply(`❌ ${e instanceof Error ? e.message : String(e)}`);
+        await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : String(e)}`);
       }
     });
   }
@@ -197,7 +231,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       await ctx.reply('No users yet.');
       return;
     }
-    const lines: string[] = ['Users:'];
+    const lines: string[] = ['**Users:**'];
     for (const slug of slugs) {
       try {
         const s = loadState(slug);
@@ -206,7 +240,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
         lines.push(`• \`${slug}\` — ERROR: ${e instanceof Error ? e.message : e}`);
       }
     }
-    await ctx.reply(lines.join('\n'), {});
+    await replyFormatted(ctx, lines.join('\n'));
   });
 
   telegramBotCommands.push({ command: 'get', description: 'show a linked user\'s record (admin)' });
@@ -223,16 +257,17 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     try {
       const state = loadState(slug);
       if (handle.extension.buildSessionAnnouncement) {
-        await ctx.reply(handle.extension.buildSessionAnnouncement(state));
+        await replyFormatted(ctx, handle.extension.buildSessionAnnouncement(state));
       } else {
-        await ctx.reply(
+        await replyFormatted(
+          ctx,
           `User "${state.user.slug}" — ${state.profile.display_name}\n` +
           `Created ${state.user.created_at}. Contact: ${state.profile.contact_email}\n` +
-          `${state.user.telegram_user_ids?.length ?? 0} Telegram account(s) linked.`
+          `${state.user.telegram_user_ids?.length ?? 0} Telegram account(s) linked.`,
         );
       }
     } catch (e) {
-      await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
@@ -257,9 +292,9 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       if (!telegramUserId) return;
       const entry = createInviteCode({ createdBy: telegramUserId, comment });
       const commentLine = entry.comment ? `\nComment: ${entry.comment}` : '';
-      await ctx.reply(`✅ Invite code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, {});
+      await replyFormatted(ctx, `✅ Invite code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`);
     } catch (e) {
-      await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
@@ -279,12 +314,12 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       await ctx.reply(`No ${filter === 'all' ? '' : filter + ' '}invite codes.`);
       return;
     }
-    const lines = [`*${invites.length} invite code${invites.length === 1 ? '' : 's'}${filter !== 'all' ? ` (${filter})` : ''}:*`];
+    const lines = [`**${invites.length} invite code${invites.length === 1 ? '' : 's'}${filter !== 'all' ? ` (${filter})` : ''}:**`];
     for (const inv of invites) {
       const status = inv.used_by ? `✅ used by ${inv.used_by} → ${inv.slug ?? '?'} on ${inv.used_at}` : '⏳ unused';
       lines.push(`• \`${inv.code}\` — ${inv.created_at} by ${inv.created_by} — ${status}`);
     }
-    await ctx.reply(lines.join('\n'), {});
+    await replyFormatted(ctx, lines.join('\n'));
   });
 
   telegramBotCommands.push({ command: 'admincode', description: 'issue a new admin onboard code (admin)' });
@@ -299,9 +334,9 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       if (!telegramUserId) return;
       const entry = createAdminOnboardCode({ createdBy: telegramUserId, comment });
       const commentLine = entry.comment ? `\nComment: ${entry.comment}` : '';
-      await ctx.reply(`✅ Admin onboard code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`, {});
+      await replyFormatted(ctx, `✅ Admin onboard code created: \`${entry.code}\`${commentLine}\n\nShare this code with the user.`);
     } catch (e) {
-      await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
@@ -321,7 +356,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       await ctx.reply(`No ${filter === 'all' ? '' : filter + ' '}admin onboard codes.`);
       return;
     }
-    const lines = [`*${codes.length} admin onboard code${codes.length === 1 ? '' : 's'}${filter !== 'all' ? ` (${filter})` : ''}:*`];
+    const lines = [`**${codes.length} admin onboard code${codes.length === 1 ? '' : 's'}${filter !== 'all' ? ` (${filter})` : ''}:**`];
     for (const c of codes) {
       let status: string;
       if (c.revoked) status = '🚫 REVOKED';
@@ -330,7 +365,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       const comment = c.comment ? ` — _${c.comment}_` : '';
       lines.push(`• \`${c.code}\`${comment} — ${c.created_at} by ${c.created_by} — ${status}`);
     }
-    await ctx.reply(lines.join('\n'), {});
+    await replyFormatted(ctx, lines.join('\n'));
   });
 
   telegramBotCommands.push({ command: 'revoke', description: 'revoke an unused admin onboard code (admin)' });
@@ -346,9 +381,9 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     }
     try {
       const entry = revokeAdminOnboardCode(code);
-      await ctx.reply(`✅ Admin code \`${entry.code}\` revoked.${entry.comment ? ` Comment was: _${entry.comment}_` : ''}`, {});
+      await replyFormatted(ctx, `✅ Admin code \`${entry.code}\` revoked.${entry.comment ? ` Comment was: _${entry.comment}_` : ''}`);
     } catch (e) {
-      await ctx.reply(`❌ ${e instanceof Error ? e.message : e}`);
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }
   });
 
@@ -415,7 +450,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
           }),
         );
         if (enrichedText.startsWith('REPLY:')) {
-          await ctx.reply(enrichedText.slice('REPLY:'.length).trim());
+          await replyFormatted(ctx, enrichedText.slice('REPLY:'.length).trim());
           return;
         }
       } else {
@@ -487,14 +522,7 @@ The record cannot be created until BOTH are provided. Be friendly and don't pres
         }
       }
 
-      if (response.length <= 4000) {
-        await ctx.reply(response);
-      } else {
-        const chunks = response.match(/[\s\S]{1,4000}/g) ?? [response];
-        for (const chunk of chunks) {
-          await ctx.reply(chunk);
-        }
-      }
+      await replyFormatted(ctx, response);
     } catch (err) {
       console.error('[Telegram handler]', err);
       await ctx.reply('Sorry, something went wrong. Please try again.');
