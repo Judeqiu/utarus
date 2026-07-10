@@ -12,6 +12,8 @@ export {
   createLinkToken,
   appendLinkToken,
   buildAuthedUrl,
+  signedBinDriveViewUrl,
+  publicBinDriveOrigin,
   createSession,
   resolveByToken,
   DEFAULT_LINK_TOKEN_TTL_MS,

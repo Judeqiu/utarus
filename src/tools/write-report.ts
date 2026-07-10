@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config.js';
+import { signedBinDriveViewUrl } from '../webapp/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -252,7 +253,7 @@ export function createWriteReportTool(): AgentTool<typeof paramsSchema, ReportDe
   return {
     name: 'write_report',
     label: 'Write Report',
-    description: `Generate an HTML intelligence dashboard and save it to the seller's BinDrive. DEFAULT BEHAVIOR: always include owner_slug, always save to BinDrive, always return the view URL so the agent can share it with the seller. Never skip any of these.
+    description: `Generate an HTML intelligence dashboard and save it to the seller's BinDrive. DEFAULT BEHAVIOR: always include owner_slug, always save to BinDrive, always return a short-lived signed view URL (?t=) so the seller can open the report without logging in (≈1 hour). Never skip any of these.
 
 The report includes: key metrics cards, product ranking table, top merchants leaderboard, data sources, and recommendations. The HTML is a self-contained file (Tailwind CDN) that can be opened in any browser.`,
     parameters: paramsSchema,
@@ -293,14 +294,32 @@ The report includes: key metrics cards, product ranking table, top merchants lea
         const filePath = resolve(dir, `${p.slug}.html`);
         writeFileSync(filePath, html, 'utf-8');
 
-        const base = (config.reportsUrl || '').replace(/\/$/, '');
-        const viewUrl = base
-          ? `${base}/api/files/${p.slug}.html/view?slug=${p.owner_slug}`
-          : `(local) ${filePath}`;
+        const filename = `${p.slug}.html`;
+        let viewUrl: string;
+        let expiresInMs: number | undefined;
+        try {
+          const signed = signedBinDriveViewUrl(p.owner_slug, filename);
+          viewUrl = signed.url;
+          expiresInMs = signed.expiresInMs;
+        } catch (signErr) {
+          // Fail fast — unsigned links force a login and break chat UX.
+          throw new Error(
+            `Failed to mint signed BinDrive URL: ${signErr instanceof Error ? signErr.message : String(signErr)}`,
+          );
+        }
 
+        const ttlMin = expiresInMs ? Math.round(expiresInMs / 60000) : 60;
         return {
-          content: [{ type: 'text', text: `✅ Report saved to ${p.owner_slug}'s BinDrive: ${p.slug}.html\n📊 ${p.products.length} products · ${p.merchants.length} merchants · ${p.metrics.length} metrics\n🌐 ${viewUrl}\n\nYOU MUST include the URL above verbatim in your reply to the user. Do not paraphrase or summarize it.` }],
-          details: { path: filePath, slug: p.owner_slug, viewUrl },
+          content: [{
+            type: 'text',
+            text:
+              `✅ Report saved to ${p.owner_slug}'s BinDrive: ${filename}\n` +
+              `📊 ${p.products.length} products · ${p.merchants.length} merchants · ${p.metrics.length} metrics\n` +
+              `🌐 ${viewUrl}\n` +
+              `⏱ Opens without login for ~${ttlMin} minutes (short-lived link token).\n\n` +
+              `YOU MUST include the URL above verbatim in your reply to the user. Do not paraphrase or summarize it.`,
+          }],
+          details: { path: filePath, slug: p.owner_slug, viewUrl, expiresInMs },
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `❌ ${e instanceof Error ? e.message : String(e)}` }], details: { path: '', slug: '' } };

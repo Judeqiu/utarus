@@ -12,7 +12,9 @@
  */
 
 import { randomUUID } from 'crypto';
-import { config } from '../config.js';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { config, resolveDataRoot } from '../config.js';
 import { listUserSlugs, loadState, type UserState } from '../state/index.js';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -69,7 +71,83 @@ interface LinkTokenRecord {
   uses: number;
 }
 
+/**
+ * Link tokens are file-backed under dataRoot so agent processes (e.g. Binary
+ * Telegram) and the BinDrive web process share the same store. Marie keeps
+ * working in-process; Binary's split systemd units also work.
+ */
 const linkTokens = new Map<string, LinkTokenRecord>();
+let linkStorePathOverride: string | null = null;
+
+function linkTokenStorePath(): string {
+  if (linkStorePathOverride) return linkStorePathOverride;
+  return join(resolveDataRoot(), '.link-tokens.json');
+}
+
+function loadLinkTokensFromDisk(): void {
+  const path = linkTokenStorePath();
+  linkTokens.clear();
+  if (!existsSync(path)) return;
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (e) {
+    throw new Error(
+      `Failed to read link token store ${path}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  if (!raw.trim()) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`link token store is corrupt JSON: ${path}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`link token store is not an object: ${path}`);
+  }
+  const now = Date.now();
+  for (const [token, rec] of Object.entries(parsed as Record<string, LinkTokenRecord>)) {
+    if (!rec?.user?.slug || typeof rec.expiresAt !== 'number') continue;
+    if (rec.expiresAt <= now) continue;
+    linkTokens.set(token, rec);
+  }
+}
+
+function persistLinkTokensToDisk(): void {
+  const path = linkTokenStorePath();
+  mkdirSync(dirname(path), { recursive: true });
+  const now = Date.now();
+  const out: Record<string, LinkTokenRecord> = {};
+  for (const [token, rec] of linkTokens.entries()) {
+    if (rec.expiresAt <= now) {
+      linkTokens.delete(token);
+      continue;
+    }
+    out[token] = rec;
+  }
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(out), 'utf-8');
+  renameSync(tmp, path);
+}
+
+function getLinkRecord(token: string): LinkTokenRecord | undefined {
+  // Always refresh from disk so another process's mint is visible.
+  loadLinkTokensFromDisk();
+  return linkTokens.get(token);
+}
+
+function setLinkRecord(token: string, rec: LinkTokenRecord): void {
+  loadLinkTokensFromDisk();
+  linkTokens.set(token, rec);
+  persistLinkTokensToDisk();
+}
+
+function deleteLinkRecord(token: string): void {
+  loadLinkTokensFromDisk();
+  linkTokens.delete(token);
+  persistLinkTokensToDisk();
+}
 
 export interface CreateLinkTokenParams {
   user: AuthUser;
@@ -92,6 +170,7 @@ export interface LinkTokenResult {
 /**
  * Mint a short-lived link token for deep links (Slack buttons, chat messages).
  * Attach as query param `t=<token>` — see appendLinkToken / buildLinkUrl.
+ * Tokens are persisted under dataRoot so other processes can redeem them.
  */
 export function createLinkToken(params: CreateLinkTokenParams): LinkTokenResult {
   if (!params.user?.slug) {
@@ -116,7 +195,7 @@ export function createLinkToken(params: CreateLinkTokenParams): LinkTokenResult 
         displayName: user.displayName || state.profile.display_name,
       };
     } catch {
-      // keep as-is
+      // keep as-is (domain slugs e.g. seller may not have a user YAML)
     }
   }
 
@@ -129,7 +208,7 @@ export function createLinkToken(params: CreateLinkTokenParams): LinkTokenResult 
 
   const token = randomUUID();
   const expiresAt = Date.now() + ttl;
-  linkTokens.set(token, {
+  setLinkRecord(token, {
     user,
     expiresAt,
     pathPrefix: params.pathPrefix,
@@ -168,10 +247,10 @@ function validateLinkRecord(rec: LinkTokenRecord, path?: string): AuthUser | nul
  * or pathPrefix / identity mismatch.
  */
 export function peekLinkToken(token: string, path?: string): AuthUser | null {
-  const rec = linkTokens.get(token);
+  const rec = getLinkRecord(token);
   if (!rec) return null;
   if (Date.now() > rec.expiresAt) {
-    linkTokens.delete(token);
+    deleteLinkRecord(token);
     return null;
   }
   return validateLinkRecord(rec, path);
@@ -183,17 +262,19 @@ export function peekLinkToken(token: string, path?: string): AuthUser | null {
  * the full identity (slug, displayName, userId).
  */
 export function consumeLinkToken(token: string, path?: string): AuthUser | null {
-  const rec = linkTokens.get(token);
+  const rec = getLinkRecord(token);
   if (!rec) return null;
   if (Date.now() > rec.expiresAt) {
-    linkTokens.delete(token);
+    deleteLinkRecord(token);
     return null;
   }
   const user = validateLinkRecord(rec, path);
   if (!user) return null;
   rec.uses += 1;
   if (rec.maxUses !== undefined && rec.uses >= rec.maxUses) {
-    linkTokens.delete(token);
+    deleteLinkRecord(token);
+  } else {
+    setLinkRecord(token, rec);
   }
   return user;
 }
@@ -226,8 +307,73 @@ export function buildAuthedUrl(
   };
 }
 
-/** Test helper — clear all link tokens. */
+/**
+ * Public site origin for BinDrive deep links (no trailing slash).
+ * Uses UTARUS_REPORTS_URL, stripping a trailing `/reports` segment so
+ * `/api/files/...` attaches to the host root (Caddy layout).
+ */
+export function publicBinDriveOrigin(): string {
+  const raw = (config.reportsUrl || process.env.UTARUS_REPORTS_URL || '').replace(/\/$/, '');
+  if (!raw) {
+    throw new Error(
+      'UTARUS_REPORTS_URL is required to build signed BinDrive URLs (e.g. http://host or http://host/reports)',
+    );
+  }
+  return raw.replace(/\/reports$/, '');
+}
+
+/**
+ * Short-lived signed URL for a BinDrive file view — opens without a separate
+ * login for the TTL window (default 1h). Same pattern as Marie's signedDownloadUrl.
+ *
+ * Path: `/api/files/<filename>/view?slug=<ownerSlug>&t=<token>`
+ */
+export function signedBinDriveViewUrl(
+  ownerSlug: string,
+  filename: string,
+  opts?: { displayName?: string; ttlMs?: number; baseUrl?: string },
+): { url: string; expiresAt: number; expiresInMs: number; token: string } {
+  if (!ownerSlug?.trim()) {
+    throw new Error('signedBinDriveViewUrl requires ownerSlug');
+  }
+  const safeName = filename.replace(/^.*\//, '');
+  if (!safeName || safeName.startsWith('.')) {
+    throw new Error(`Invalid file name for signed URL: "${filename}"`);
+  }
+  const path =
+    `/api/files/${encodeURIComponent(safeName)}/view` +
+    `?slug=${encodeURIComponent(ownerSlug)}`;
+  const base = (opts?.baseUrl || publicBinDriveOrigin()).replace(/\/+$/, '');
+  const built = buildAuthedUrl(base, path, {
+    user: {
+      type: 'user',
+      slug: ownerSlug,
+      displayName: opts?.displayName || ownerSlug,
+    },
+    boundSlug: ownerSlug,
+    ttlMs: opts?.ttlMs ?? DEFAULT_LINK_TOKEN_TTL_MS,
+    pathPrefix: '/api/files',
+  });
+  return {
+    url: built.url,
+    expiresAt: built.expiresAt,
+    expiresInMs: built.expiresInMs,
+    token: built.token,
+  };
+}
+
+/** Test helper — clear all link tokens (memory + disk). */
 export function _clearLinkTokensForTests(): void {
+  linkTokens.clear();
+  const path = linkTokenStorePath();
+  if (existsSync(path)) {
+    writeFileSync(path, '{}', 'utf-8');
+  }
+}
+
+/** Test helper — redirect the token store to a temp path. */
+export function _setLinkTokenStorePathForTests(path: string | null): void {
+  linkStorePathOverride = path;
   linkTokens.clear();
 }
 
