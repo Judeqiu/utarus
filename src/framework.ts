@@ -16,7 +16,7 @@ import { createWriteReportTool } from './tools/write-report.js';
 import { createBinDriveTools } from './tools/bindrive.js';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
 import { startTelegram } from './interfaces/telegram.js';
-import { startSlack } from './interfaces/slack.js';
+import { startSlack } from './interfaces/slack/index.js';
 import { startCli } from './interfaces/cli.js';
 import type { DomainExtension, Skill } from './extension.js';
 

@@ -85,7 +85,7 @@ async function main(): Promise<void> {
   if (!config.slack.botToken || !config.slack.appToken || !config.slack.signingSecret) {
     console.log('Slack tokens not set — Slack interface disabled.');
   } else {
-    const { startSlack } = await import('./interfaces/slack.js');
+    const { startSlack } = await import('./interfaces/slack/index.js');
     startSlack({ handle: await defaultFramework() }).catch((err) => {
       console.error('[Slack] Failed to start:', err instanceof Error ? err.message : err);
     });
