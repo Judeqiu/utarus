@@ -134,7 +134,8 @@ function helpText(): string {
     '/help — show this help',
     '',
     'Admin commands:',
-    '/invite [comment] — issue invite code',
+    // /invite is reserved by Slack (built-in); use /invitecode for custom apps.
+    '/invitecode [comment] — issue invite code',
     '/invites [all|unused|used] — list invite codes',
     '/admincode [comment] — issue admin onboard code',
     '/admincodes [all|unused|used] — list admin onboard codes',
@@ -232,8 +233,8 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     }
   });
 
-  // /invite command (admin only)
-  app.command('/invite', async ({ ack, command, respond }) => {
+  // /invitecode — Slack reserves built-in /invite, so custom apps cannot use that name.
+  app.command('/invitecode', async ({ ack, command, respond }) => {
     await ack();
     if (!isAdminFromSlackId(command.user_id)) {
       await respond({ response_type: 'ephemeral', text: '⛔ Admin only.' });
