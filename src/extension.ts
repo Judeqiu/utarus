@@ -68,6 +68,22 @@ export interface DomainExtension {
   }>;
 
   /**
+   * Optional: domain-specific Slack slash commands. Each entry registers
+   * `/{name}` on the Slack bot (Socket Mode). `handler` receives the text
+   * after the command (subcommand args) and the sender's Slack user ID.
+   * Command names must be Slack-valid (not reserved names like /invite).
+   * Also add the command in the Slack app manifest for the workspace.
+   */
+  slackCommands?: Array<{
+    name: string;
+    description: string;
+    adminOnly: boolean;
+    /** Shown in Slack slash UI as usage_hint (optional). */
+    usageHint?: string;
+    handler: (ctx: { args: string; slackUserId: string; isAdmin: boolean }) => Promise<string> | string;
+  }>;
+
+  /**
    * Optional: enrich the inbound message with domain context before it is
    * handed to the agent. Use this to prepend seller/campaign state, inject a
    * linked entity slug, or short-circuit fully (return empty string to skip

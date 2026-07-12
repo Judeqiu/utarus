@@ -530,9 +530,9 @@ async function getAgentResponse(
   return fullResponse || 'Sorry, I could not generate a response.';
 }
 
-function helpText(): string {
+function helpText(handle?: { extension: { slackCommands?: Array<{ name: string; description: string; adminOnly: boolean }> } }): string {
   const name = config.agent.name ?? 'Agent';
-  return [
+  const lines = [
     `*${name}*`,
     '',
     'Commands:',
@@ -542,14 +542,22 @@ function helpText(): string {
     '/help — show this help',
     '',
     'Admin commands:',
-    '/invite [comment] — issue invite code',
+    // /invite is reserved by Slack; custom apps must use /invitecode
+    '/invitecode [comment] — issue invite code',
     '/invites [all|unused|used] — list invite codes',
     '/admincode [comment] — issue admin onboard code',
     '/admincodes [all|unused|used] — list admin onboard codes',
     '/revoke `<code>` — revoke an unused admin code',
-    '',
-    'Or send a message in plain text.',
-  ].join('\n');
+  ];
+  const domain = handle?.extension?.slackCommands;
+  if (domain?.length) {
+    lines.push('', 'Domain commands:');
+    for (const cmd of domain) {
+      lines.push(`/${cmd.name} — ${cmd.description}${cmd.adminOnly ? ' (admin)' : ''}`);
+    }
+  }
+  lines.push('', 'Or send a message in plain text.');
+  return lines.join('\n');
 }
 
 export async function startSlack(opts: SlackOptions): Promise<void> {
@@ -574,7 +582,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
   // /help command
   app.command('/help', async ({ ack, respond }) => {
     await ack();
-    await respond({ response_type: 'ephemeral', text: helpText() });
+    await respond({ response_type: 'ephemeral', text: helpText(handle) });
   });
 
   // /clear command
@@ -636,8 +644,8 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     }
   });
 
-  // /invite command (admin only)
-  app.command('/invite', async ({ ack, command, respond }) => {
+  // /invitecode — Slack reserves built-in /invite
+  app.command('/invitecode', async ({ ack, command, respond }) => {
     await ack();
     if (!isAdminFromSlackId(command.user_id)) {
       await respond({ response_type: 'ephemeral', text: '⛔ Admin only.' });
@@ -752,6 +760,31 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
       await respond({ response_type: 'ephemeral', text: `❌ ${e instanceof Error ? e.message : e}` });
     }
   });
+
+  // Domain-specific slash commands (e.g. Invester /guidance)
+  for (const cmd of handle.extension.slackCommands ?? []) {
+    const slash = cmd.name.startsWith('/') ? cmd.name : `/${cmd.name}`;
+    app.command(slash, async ({ ack, command, respond }) => {
+      await ack();
+      const isAdmin = isAdminFromSlackId(command.user_id);
+      if (cmd.adminOnly && !isAdmin) {
+        await respond({ response_type: 'ephemeral', text: '⛔ Admin only.' });
+        return;
+      }
+      try {
+        const args = (command.text ?? '').trim();
+        const reply = await Promise.resolve(
+          cmd.handler({ args, slackUserId: command.user_id, isAdmin }),
+        );
+        await respond({ response_type: 'ephemeral', text: reply });
+      } catch (e) {
+        await respond({
+          response_type: 'ephemeral',
+          text: `❌ ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+    });
+  }
 
   // ── Direct messages ───────────────────────────────────────────────────
   app.message(async ({ message, say }) => {
