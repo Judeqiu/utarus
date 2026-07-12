@@ -290,7 +290,10 @@ router.get('/api/files/:name/view', requireAuth, (req: Request, res: Response) =
     }
 
     const content = readFileSync(filePath, 'utf-8');
-    res.setHeader('Content-Type', 'text/html');
+    // charset + inline so mobile browsers render instead of downloading as text
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.send(content);
   } catch (e) {
     res.status(500).send((e as Error).message);

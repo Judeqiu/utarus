@@ -38,8 +38,12 @@ import {
   splitSlackText,
   SLACK_MAX_TEXT_LENGTH,
 } from './deliver-text.js';
+import { writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
 import { markdownToHtml, wrapHtmlReport } from './markdown-to-html.js';
 import { runWithContext, resolveReplyThreadTs } from './run-context.js';
+import { resolveDataRoot } from '../../config.js';
+import { signedBinDriveViewUrl } from '../../webapp/auth.js';
 
 export interface SlackOptions {
   handle: FrameworkHandle;
@@ -211,6 +215,11 @@ async function uploadAssetToSlack(
   }
 }
 
+/**
+ * Long answers are saved as HTML and opened via BinDrive **view** URL
+ * (`Content-Type: text/html`). Slack mobile opens raw `.html` file
+ * attachments as source text — a browser link is required for rendering.
+ */
 async function deliverAsHtmlFile(
   client: Bolt.App['client'],
   channel: string,
@@ -223,7 +232,7 @@ async function deliverAsHtmlFile(
   const title = `${name} response · ` + new Date().toISOString().slice(0, 16).replace('T', ' ');
   const bodyHtml = markdownToHtml(text);
   const html = wrapHtmlReport(title, bodyHtml);
-  const filename = `${name.toLowerCase()}-response-${Date.now()}.html`;
+  const filename = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-response-${Date.now()}.html`;
   const htmlBytes = Buffer.byteLength(html, 'utf-8');
 
   const teaser = summarizeForTeaser(text);
@@ -231,16 +240,67 @@ async function deliverAsHtmlFile(
     `[Deliver] html user=${userSlug} channel=${channel} textLen=${text.length} ` +
       `htmlBytes=${htmlBytes} thread=${threadTs ?? 'none'}`,
   );
+
+  // Persist to BinDrive so we can mint a signed view URL (renders on mobile browsers).
+  const driveDir = join(resolveDataRoot(), 'drive', userSlug);
+  mkdirSync(driveDir, { recursive: true });
+  writeFileSync(join(driveDir, filename), html, 'utf-8');
+
+  let viewUrl: string | null = null;
+  try {
+    const signed = signedBinDriveViewUrl(userSlug, filename, {
+      displayName: userSlug,
+    });
+    viewUrl = signed.url;
+    console.log(
+      `[Deliver] html user=${userSlug} signed view url expiresInMs=${signed.expiresInMs}`,
+    );
+  } catch (err) {
+    console.error(
+      '[Deliver] signed BinDrive view URL failed (set UTARUS_REPORTS_URL); falling back to Slack file upload:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  if (viewUrl) {
+    // Slack mrkdwn link — opens external browser where HTML actually renders.
+    await client.chat.update({
+      channel,
+      ts: thinkingTs,
+      text:
+        teaser +
+        `\n\n📄 *Full report (open in browser):*\n${viewUrl}\n` +
+        `_Tap the link — Slack file previews show HTML source on mobile._`,
+    });
+    // Optional short comment in thread with the same link (no raw .html attachment).
+    try {
+      await client.chat.postMessage({
+        channel,
+        thread_ts: threadTs ?? thinkingTs,
+        text: `📄 <${viewUrl}|Open full HTML report in browser> (${text.length.toLocaleString('en-US')} chars)`,
+        unfurl_links: false,
+        unfurl_media: false,
+      });
+    } catch (err) {
+      console.error('[Deliver] thread link post failed:', err instanceof Error ? err.message : err);
+    }
+    console.log(`[Deliver] html user=${userSlug} delivered via BinDrive view URL filename=${filename}`);
+    return;
+  }
+
+  // Fallback when UTARUS_REPORTS_URL is missing — Slack will still show source on mobile.
   await client.chat.update({
     channel,
     ts: thinkingTs,
-    text: teaser + '\n\n📄 _Full response attached as an HTML file below._',
+    text:
+      teaser +
+      '\n\n📄 _Full response attached as HTML. On mobile, open in an external browser if you see source code._',
   });
 
   await uploadAssetToSlack(
     Buffer.from(html, 'utf-8'),
     filename,
-    '📄 Full response (' + text.length.toLocaleString('en-US') + ' chars)',
+    '📄 Full response (' + text.length.toLocaleString('en-US') + ' chars) — open with external browser',
     channel,
     threadTs,
   );
