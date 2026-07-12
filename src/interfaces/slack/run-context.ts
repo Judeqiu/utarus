@@ -13,6 +13,12 @@ export interface RunContext {
   /** Parent thread for replies (mention ts or existing thread_ts). */
   threadTs?: string;
   surface?: 'dm' | 'mention' | 'command' | 'other';
+  /**
+   * When true, final agent reply is packaged as browser-viewable HTML
+   * (BinDrive signed /view URL) even if short. Set when the user explicitly
+   * asks for an HTML report / page.
+   */
+  preferHtmlDelivery?: boolean;
 }
 
 const storage = new AsyncLocalStorage<RunContext>();

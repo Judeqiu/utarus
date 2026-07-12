@@ -31,6 +31,9 @@ export {
 export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/auth.js';
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
+export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
+export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';
+export { createPostHtmlReportTool } from './tools/post-html-report.js';
 
 // ── Standalone entry (running Utarus by itself) ────────────────────────
 import { config } from './config.js';

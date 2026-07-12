@@ -13,6 +13,7 @@ import { createUserStateTools } from './tools/user-state.js';
 import { createInviteTools } from './tools/invite.js';
 import { createFirecrawlTool } from './tools/firecrawl.js';
 import { createWriteReportTool } from './tools/write-report.js';
+import { createPostHtmlReportTool } from './tools/post-html-report.js';
 import { createBinDriveTools } from './tools/bindrive.js';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
 import { startTelegram } from './interfaces/telegram.js';
@@ -133,7 +134,16 @@ For key-value info:
 *Name:* Acme Trading
 *Email:* ops@acme.sg
 
-Always put a blank line between sections. Keep messages under 3000 chars.`;
+Always put a blank line between sections. Keep messages under 3000 chars.
+
+## HTML reports (generic)
+
+When the user **explicitly asks for HTML**, an HTML report/page, or a full report as a file/link:
+1. Prefer calling \`post_html_report\` with a clear title and structured markdown (or raw HTML) and the user's slug as \`owner_slug\`.
+2. Paste the returned **view URL** verbatim in your reply (opens in the browser and renders on mobile).
+3. Even without the tool, if they asked for HTML the platform may package your final answer as an HTML page and post the link — still write a complete, well-structured answer.
+
+Do **not** dump raw HTML tags into Slack chat. Do not rely on Slack file previews for HTML (they show source on phones).`;
 }
 
 export function createFramework(opts: FrameworkOptions): Framework {
@@ -148,6 +158,7 @@ export function createFramework(opts: FrameworkOptions): Framework {
       createSkillTool(allSkills),
       createFirecrawlTool(),
       createWriteReportTool(),
+      createPostHtmlReportTool(),
       ...createUserStateTools(),
       ...createInviteTools(),
       ...createBinDriveTools(),

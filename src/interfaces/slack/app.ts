@@ -38,12 +38,9 @@ import {
   splitSlackText,
   SLACK_MAX_TEXT_LENGTH,
 } from './deliver-text.js';
-import { writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import { markdownToHtml, wrapHtmlReport } from './markdown-to-html.js';
-import { runWithContext, resolveReplyThreadTs } from './run-context.js';
-import { resolveDataRoot } from '../../config.js';
-import { signedBinDriveViewUrl } from '../../webapp/auth.js';
+import { runWithContext, resolveReplyThreadTs, getRunContext } from './run-context.js';
+import { wantsHtmlDelivery, publishHtmlReport } from '../../report/html-delivery.js';
 
 export interface SlackOptions {
   handle: FrameworkHandle;
@@ -216,9 +213,8 @@ async function uploadAssetToSlack(
 }
 
 /**
- * Long answers are saved as HTML and opened via BinDrive **view** URL
- * (`Content-Type: text/html`). Slack mobile opens raw `.html` file
- * attachments as source text — a browser link is required for rendering.
+ * Long answers / explicit HTML requests → BinDrive **view** URL
+ * (`Content-Type: text/html`). Slack mobile shows raw .html attachments as source.
  */
 async function deliverAsHtmlFile(
   client: Bolt.App['client'],
@@ -230,65 +226,56 @@ async function deliverAsHtmlFile(
 ): Promise<void> {
   const name = config.agent.name ?? 'Agent';
   const title = `${name} response · ` + new Date().toISOString().slice(0, 16).replace('T', ' ');
-  const bodyHtml = markdownToHtml(text);
-  const html = wrapHtmlReport(title, bodyHtml);
-  const filename = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-response-${Date.now()}.html`;
-  const htmlBytes = Buffer.byteLength(html, 'utf-8');
-
   const teaser = summarizeForTeaser(text);
+
   console.log(
-    `[Deliver] html user=${userSlug} channel=${channel} textLen=${text.length} ` +
-      `htmlBytes=${htmlBytes} thread=${threadTs ?? 'none'}`,
+    `[Deliver] html user=${userSlug} channel=${channel} textLen=${text.length} thread=${threadTs ?? 'none'}`,
   );
 
-  // Persist to BinDrive so we can mint a signed view URL (renders on mobile browsers).
-  const driveDir = join(resolveDataRoot(), 'drive', userSlug);
-  mkdirSync(driveDir, { recursive: true });
-  writeFileSync(join(driveDir, filename), html, 'utf-8');
-
-  let viewUrl: string | null = null;
   try {
-    const signed = signedBinDriveViewUrl(userSlug, filename, {
-      displayName: userSlug,
+    const published = publishHtmlReport({
+      ownerSlug: userSlug,
+      title,
+      content: text,
+      contentFormat: 'markdown',
+      agentName: name,
     });
-    viewUrl = signed.url;
-    console.log(
-      `[Deliver] html user=${userSlug} signed view url expiresInMs=${signed.expiresInMs}`,
-    );
-  } catch (err) {
-    console.error(
-      '[Deliver] signed BinDrive view URL failed (set UTARUS_REPORTS_URL); falling back to Slack file upload:',
-      err instanceof Error ? err.message : err,
-    );
-  }
 
-  if (viewUrl) {
-    // Slack mrkdwn link — opens external browser where HTML actually renders.
     await client.chat.update({
       channel,
       ts: thinkingTs,
       text:
         teaser +
-        `\n\n📄 *Full report (open in browser):*\n${viewUrl}\n` +
-        `_Tap the link — Slack file previews show HTML source on mobile._`,
+        `\n\n📄 *Full report (open in browser):*\n${published.viewUrl}\n` +
+        `_Tap the link — do not open Slack file previews for HTML (source on mobile)._`,
     });
-    // Optional short comment in thread with the same link (no raw .html attachment).
     try {
       await client.chat.postMessage({
         channel,
         thread_ts: threadTs ?? thinkingTs,
-        text: `📄 <${viewUrl}|Open full HTML report in browser> (${text.length.toLocaleString('en-US')} chars)`,
+        text: `📄 <${published.viewUrl}|Open full HTML report in browser> (${text.length.toLocaleString('en-US')} chars)`,
         unfurl_links: false,
         unfurl_media: false,
       });
     } catch (err) {
       console.error('[Deliver] thread link post failed:', err instanceof Error ? err.message : err);
     }
-    console.log(`[Deliver] html user=${userSlug} delivered via BinDrive view URL filename=${filename}`);
+    console.log(
+      `[Deliver] html user=${userSlug} via BinDrive view filename=${published.filename} bytes=${published.bytes}`,
+    );
     return;
+  } catch (err) {
+    console.error(
+      '[Deliver] publishHtmlReport failed; falling back to Slack file upload:',
+      err instanceof Error ? err.message : err,
+    );
   }
 
-  // Fallback when UTARUS_REPORTS_URL is missing — Slack will still show source on mobile.
+  // Fallback when UTARUS_REPORTS_URL / publish fails
+  const bodyHtml = markdownToHtml(text);
+  const html = wrapHtmlReport(title, bodyHtml);
+  const filename = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-response-${Date.now()}.html`;
+
   await client.chat.update({
     channel,
     ts: thinkingTs,
@@ -315,10 +302,11 @@ async function deliverToSlack(
   userSlug: string,
   threadTs?: string,
 ): Promise<void> {
-  if (text.length > LONG_RESPONSE_THRESHOLD) {
+  const preferHtml = getRunContext()?.preferHtmlDelivery === true;
+  if (preferHtml || text.length > LONG_RESPONSE_THRESHOLD) {
     console.log(
       `[Deliver] branch=html user=${userSlug} textLen=${text.length} ` +
-        `threshold=${LONG_RESPONSE_THRESHOLD} thread=${threadTs ?? 'none'}`,
+        `preferHtml=${preferHtml} threshold=${LONG_RESPONSE_THRESHOLD} thread=${threadTs ?? 'none'}`,
     );
     await deliverAsHtmlFile(client, channel, thinkingTs, text, userSlug, threadTs);
     return;
@@ -920,11 +908,30 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
         return;
       }
 
+      const preferHtml = wantsHtmlDelivery(userMessage) || wantsHtmlDelivery(enriched.text);
+      let agentInput = enriched.text;
+      if (preferHtml) {
+        agentInput =
+          `[Delivery: User requested an HTML / browser report. Produce a complete, well-structured answer ` +
+          `(headings, bullets, numbers with sources). You may also call post_html_report for a custom page. ` +
+          `The platform will publish your final answer as a viewable HTML page with a link.]\n\n` +
+          enriched.text;
+      }
+
       await runWithContext(
-        { userSlug, slackUserId, channelId: channel, threadTs, surface: 'dm' },
+        {
+          userSlug,
+          slackUserId,
+          channelId: channel,
+          threadTs,
+          surface: 'dm',
+          preferHtmlDelivery: preferHtml,
+        },
         async () => {
           thinkingTs = await postThinking(say, threadTs);
-          console.log(`[Run] user=${userSlug} surface=dm phase=thinking_posted ts=${thinkingTs}`);
+          console.log(
+            `[Run] user=${userSlug} surface=dm phase=thinking_posted ts=${thinkingTs} preferHtml=${preferHtml}`,
+          );
           const updater = createThrottledUpdater(client, channel, thinkingTs, 800);
           const monitor = createRunMonitor(updater);
           heartbeat = setInterval(() => monitor.beat(), 3000);
@@ -933,7 +940,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
             handle,
             userSlug,
             admin,
-            enriched.text,
+            agentInput,
             (partial) => monitor.setText(partial),
             (id, name) => monitor.onToolStart(id, name),
             (id) => monitor.onToolEnd(id),
@@ -1039,11 +1046,30 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
         return;
       }
 
+      const preferHtml = wantsHtmlDelivery(userMessage) || wantsHtmlDelivery(enriched.text);
+      let agentInput = enriched.text;
+      if (preferHtml) {
+        agentInput =
+          `[Delivery: User requested an HTML / browser report. Produce a complete, well-structured answer ` +
+          `(headings, bullets, numbers with sources). You may also call post_html_report for a custom page. ` +
+          `The platform will publish your final answer as a viewable HTML page with a link.]\n\n` +
+          enriched.text;
+      }
+
       await runWithContext(
-        { userSlug, slackUserId, channelId: channel, threadTs, surface: 'mention' },
+        {
+          userSlug,
+          slackUserId,
+          channelId: channel,
+          threadTs,
+          surface: 'mention',
+          preferHtmlDelivery: preferHtml,
+        },
         async () => {
           thinkingTs = await postThinking(say, threadTs);
-          console.log(`[Run] user=${userSlug} surface=mention phase=thinking_posted ts=${thinkingTs}`);
+          console.log(
+            `[Run] user=${userSlug} surface=mention phase=thinking_posted ts=${thinkingTs} preferHtml=${preferHtml}`,
+          );
           const updater = createThrottledUpdater(client, channel, thinkingTs, 800);
           const monitor = createRunMonitor(updater);
           heartbeat = setInterval(() => monitor.beat(), 3000);
@@ -1052,7 +1078,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
             handle,
             userSlug,
             admin,
-            enriched.text,
+            agentInput,
             (partial) => monitor.setText(partial),
             (id, name) => monitor.onToolStart(id, name),
             (id) => monitor.onToolEnd(id),
