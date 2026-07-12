@@ -15,6 +15,7 @@
  * Identical event/reaction/delivery flow as misc/marie/src/slack/app.ts.
  */
 
+import { readFileSync } from 'fs';
 import Bolt from '@slack/bolt';
 const { App } = Bolt;
 import { WebClient } from '@slack/web-api';
@@ -213,8 +214,11 @@ async function uploadAssetToSlack(
 }
 
 /**
- * Long answers / explicit HTML requests → BinDrive **view** URL
- * (`Content-Type: text/html`). Slack mobile shows raw .html attachments as source.
+ * Long answers / explicit HTML requests:
+ * 1. BinDrive signed /view URL (renders in phone browser)
+ * 2. Slack .html file attachment (same as before — download/share)
+ *
+ * Opening the Slack attachment on mobile still shows source; prefer the link.
  */
 async function deliverAsHtmlFile(
   client: Bolt.App['client'],
@@ -232,6 +236,10 @@ async function deliverAsHtmlFile(
     `[Deliver] html user=${userSlug} channel=${channel} textLen=${text.length} thread=${threadTs ?? 'none'}`,
   );
 
+  let htmlBuffer: Buffer;
+  let filename: string;
+  let viewUrl: string | null = null;
+
   try {
     const published = publishHtmlReport({
       ownerSlug: userSlug,
@@ -240,58 +248,68 @@ async function deliverAsHtmlFile(
       contentFormat: 'markdown',
       agentName: name,
     });
+    filename = published.filename;
+    viewUrl = published.viewUrl;
+    // Same file as BinDrive — also attach to Slack for download/share
+    htmlBuffer = readFileSync(published.absolutePath);
+    console.log(
+      `[Deliver] html user=${userSlug} published filename=${filename} bytes=${published.bytes} viewUrl=yes`,
+    );
+  } catch (err) {
+    console.error(
+      '[Deliver] publishHtmlReport failed; building HTML in-memory only:',
+      err instanceof Error ? err.message : err,
+    );
+    const bodyHtml = markdownToHtml(text);
+    const html = wrapHtmlReport(title, bodyHtml);
+    filename = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-response-${Date.now()}.html`;
+    htmlBuffer = Buffer.from(html, 'utf-8');
+  }
 
-    await client.chat.update({
-      channel,
-      ts: thinkingTs,
-      text:
-        teaser +
-        `\n\n📄 *Full report (open in browser):*\n${published.viewUrl}\n` +
-        `_Tap the link — do not open Slack file previews for HTML (source on mobile)._`,
-    });
+  const linkBlock = viewUrl
+    ? `\n\n📄 *Full report (open in browser — recommended on mobile):*\n${viewUrl}\n` +
+      `_File also attached below. Slack’s in-app HTML preview shows source — use the link to render._`
+    : '\n\n📄 _Full response attached as HTML. On mobile, open the file in an external browser if you see source code._';
+
+  await client.chat.update({
+    channel,
+    ts: thinkingTs,
+    text: teaser + linkBlock,
+  });
+
+  if (viewUrl) {
     try {
       await client.chat.postMessage({
         channel,
         thread_ts: threadTs ?? thinkingTs,
-        text: `📄 <${published.viewUrl}|Open full HTML report in browser> (${text.length.toLocaleString('en-US')} chars)`,
+        text: `📄 <${viewUrl}|Open full HTML report in browser> (${text.length.toLocaleString('en-US')} chars)`,
         unfurl_links: false,
         unfurl_media: false,
       });
     } catch (err) {
       console.error('[Deliver] thread link post failed:', err instanceof Error ? err.message : err);
     }
-    console.log(
-      `[Deliver] html user=${userSlug} via BinDrive view filename=${published.filename} bytes=${published.bytes}`,
-    );
-    return;
-  } catch (err) {
-    console.error(
-      '[Deliver] publishHtmlReport failed; falling back to Slack file upload:',
-      err instanceof Error ? err.message : err,
-    );
   }
 
-  // Fallback when UTARUS_REPORTS_URL / publish fails
-  const bodyHtml = markdownToHtml(text);
-  const html = wrapHtmlReport(title, bodyHtml);
-  const filename = `${name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')}-response-${Date.now()}.html`;
-
-  await client.chat.update({
-    channel,
-    ts: thinkingTs,
-    text:
-      teaser +
-      '\n\n📄 _Full response attached as HTML. On mobile, open in an external browser if you see source code._',
-  });
-
-  await uploadAssetToSlack(
-    Buffer.from(html, 'utf-8'),
-    filename,
-    '📄 Full response (' + text.length.toLocaleString('en-US') + ' chars) — open with external browser',
-    channel,
-    threadTs,
-  );
-  console.log(`[Deliver] html user=${userSlug} uploaded filename=${filename} thread=${threadTs ?? 'none'}`);
+  // Always attach the .html file as well (previous behavior users expect).
+  try {
+    await uploadAssetToSlack(
+      htmlBuffer,
+      filename,
+      viewUrl
+        ? `📄 HTML file (${text.length.toLocaleString('en-US')} chars) — prefer the browser link above to render on mobile`
+        : `📄 Full response (${text.length.toLocaleString('en-US')} chars) — open with external browser on mobile`,
+      channel,
+      threadTs,
+    );
+    console.log(`[Deliver] html user=${userSlug} slack file uploaded filename=${filename}`);
+  } catch (err) {
+    console.error(
+      '[Deliver] Slack file upload failed (link may still work):',
+      err instanceof Error ? err.message : err,
+    );
+    if (!viewUrl) throw err;
+  }
 }
 
 async function deliverToSlack(
