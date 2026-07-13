@@ -4,6 +4,7 @@
  * Unlinked non-admin users:
  *   - INV-… → instant redeem (channel display name), then continue as linked
  *   - ADM-… → agent prompt to redeem admin code (no profile Q&A)
+ *   - demo mode on → auto-create profile (same as invite), then continue
  *   - else  → friendly deny (need invite)
  *
  * Domain enrichMessage runs after the gate and must not re-implement invite Q&A.
@@ -15,7 +16,9 @@ import {
   resolveUserByTelegramUser,
   type UserState,
 } from '../state/index.js';
+import { isDemoModeEnabled } from './demo-mode.js';
 import {
+  ensureChannelUser,
   fetchSlackDisplayName,
   redeemInviteInstantly,
   resolveUserAfterRedeem,
@@ -26,7 +29,8 @@ export type InboundResolveResult =
   | { kind: 'agent'; text: string };
 
 const NEED_INVITE =
-  'You need an invite code to use this bot. Ask an admin for a code that looks like INV-XXXXXXXX.';
+  'You need an invite code to use this bot. Ask an admin for a code that looks like INV-XXXXXXXX. ' +
+  '(When demo mode is on, anyone can join without a code.)';
 
 function stripInviteCodes(text: string): string {
   return text.replace(/\bINV-[A-F0-9]{8}\b/gi, '').trim();
@@ -35,13 +39,19 @@ function stripInviteCodes(text: string): string {
 function defaultLinkedContext(
   user: UserState,
   text: string,
-  justOnboarded?: { code: string; displayName: string },
+  justOnboarded?: { kind: 'invite' | 'demo'; label: string; displayName: string },
 ): string {
-  const onboard = justOnboarded
-    ? `[Access] ${justOnboarded.displayName} just joined via invite ${justOnboarded.code}. ` +
+  let onboard = '';
+  if (justOnboarded?.kind === 'invite') {
+    onboard =
+      `[Access] ${justOnboarded.displayName} just joined via invite ${justOnboarded.label}. ` +
       `Profile is ready — no signup or profile questions. Help them with their request right away. ` +
-      `Be warm, clear, and professional.\n\n`
-    : '';
+      `Be warm, clear, and professional.\n\n`;
+  } else if (justOnboarded?.kind === 'demo') {
+    onboard =
+      `[Access] ${justOnboarded.displayName} joined under **demo mode** (auto profile). ` +
+      `No signup questions. Help them with their request right away. Be warm, clear, and professional.\n\n`;
+  }
   return (
     `${onboard}` +
     `[User context: You are working with user "${user.user.slug}" ` +
@@ -64,7 +74,7 @@ async function resolveDisplayName(params: {
   if (params.telegramUserId != null) {
     return `Telegram ${params.telegramUserId}`;
   }
-  throw new Error('Invite redeem requires a channel identity');
+  throw new Error('Profile create requires a channel identity');
 }
 
 function adminOnboardAgentText(params: {
@@ -106,7 +116,7 @@ export async function resolveInboundMessage(params: {
 }): Promise<InboundResolveResult> {
   let linkedUser = params.linkedUser;
   let text = params.text;
-  let justOnboarded: { code: string; displayName: string } | undefined;
+  let justOnboarded: { kind: 'invite' | 'demo'; label: string; displayName: string } | undefined;
 
   // ── Framework access gate (all agents) ──────────────────────────────
   if (!linkedUser && !params.isAdmin) {
@@ -123,33 +133,53 @@ export async function resolveInboundMessage(params: {
     }
 
     const inviteMatch = params.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
-    if (!inviteMatch) {
+    if (inviteMatch) {
+      const code = inviteMatch[1].toUpperCase();
+      try {
+        const displayName = await resolveDisplayName(params);
+        const redeemed = redeemInviteInstantly({
+          code,
+          displayName,
+          slackUserId: params.slackUserId,
+          telegramUserId: params.telegramUserId,
+        });
+        linkedUser = resolveUserAfterRedeem({
+          slackUserId: params.slackUserId,
+          telegramUserId: params.telegramUserId,
+          slug: redeemed.slug,
+        });
+        justOnboarded = { kind: 'invite', label: code, displayName: redeemed.displayName };
+        const remainder = stripInviteCodes(params.text);
+        text =
+          remainder.length > 0
+            ? remainder
+            : 'I just joined with my invite code. Confirm I am set up and ask how you can help — no onboarding questions.';
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { kind: 'reply', text: msg };
+      }
+    } else if (isDemoModeEnabled()) {
+      try {
+        const displayName = await resolveDisplayName(params);
+        const created = ensureChannelUser({
+          displayName,
+          slackUserId: params.slackUserId,
+          telegramUserId: params.telegramUserId,
+          source: 'demo',
+        });
+        linkedUser = resolveUserAfterRedeem({
+          slackUserId: params.slackUserId,
+          telegramUserId: params.telegramUserId,
+          slug: created.slug,
+        });
+        justOnboarded = { kind: 'demo', label: 'demo', displayName: created.displayName };
+        // Keep their original message — they are already working.
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { kind: 'reply', text: msg };
+      }
+    } else {
       return { kind: 'reply', text: NEED_INVITE };
-    }
-
-    const code = inviteMatch[1].toUpperCase();
-    try {
-      const displayName = await resolveDisplayName(params);
-      const redeemed = redeemInviteInstantly({
-        code,
-        displayName,
-        slackUserId: params.slackUserId,
-        telegramUserId: params.telegramUserId,
-      });
-      linkedUser = resolveUserAfterRedeem({
-        slackUserId: params.slackUserId,
-        telegramUserId: params.telegramUserId,
-        slug: redeemed.slug,
-      });
-      justOnboarded = { code, displayName: redeemed.displayName };
-      const remainder = stripInviteCodes(params.text);
-      text =
-        remainder.length > 0
-          ? remainder
-          : 'I just joined with my invite code. Confirm I am set up and ask how you can help — no onboarding questions.';
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return { kind: 'reply', text: msg };
     }
   }
 
@@ -177,8 +207,11 @@ export async function resolveInboundMessage(params: {
     }
     if (justOnboarded) {
       const note =
-        `[Access] ${justOnboarded.displayName} just joined via invite ${justOnboarded.code}. ` +
-        `Profile ready — no signup questions. Be warm, clear, and professional.\n\n`;
+        justOnboarded.kind === 'demo'
+          ? `[Access] ${justOnboarded.displayName} joined under demo mode (auto profile). ` +
+            `No signup questions. Be warm, clear, and professional.\n\n`
+          : `[Access] ${justOnboarded.displayName} just joined via invite ${justOnboarded.label}. ` +
+            `Profile ready — no signup questions. Be warm, clear, and professional.\n\n`;
       return { kind: 'agent', text: note + result };
     }
     return { kind: 'agent', text: result };

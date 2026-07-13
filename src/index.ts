@@ -11,9 +11,18 @@ export { getCurrentChatId } from './interfaces/telegram.js';
 export { resolveInboundMessage } from './onboarding/access-gate.js';
 export {
   redeemInviteInstantly,
+  ensureChannelUser,
   fetchSlackDisplayName,
 } from './onboarding/instant-invite.js';
 export type { InstantRedeemParams, InstantRedeemResult } from './onboarding/instant-invite.js';
+export {
+  isDemoModeEnabled,
+  getDemoModeState,
+  setDemoMode,
+  parseDemoModeArgs,
+  formatDemoModeStatus,
+} from './onboarding/demo-mode.js';
+export type { DemoModeState } from './onboarding/demo-mode.js';
 /** Shared Telegram formatting helpers (Markdown → HTML). Used by the built-in
  *  Telegram interface; domain agents can reuse them for custom outbound messages. */
 export {

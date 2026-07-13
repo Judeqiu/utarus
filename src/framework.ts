@@ -90,6 +90,7 @@ Every user has a YAML state file at data/users/<slug>.yaml. State on disk is the
 
 - Access control and invite redeem are handled by the framework **before** your turn when possible.
 - **INV-** codes: redeemed instantly using the person's Slack/Telegram display name. No display-name or email Q&A. Profile is ready — serve their request immediately.
+- **Demo mode** (admin toggles via \`/demomode on|off\`): when on, anyone may chat; missing profiles are auto-created from channel display name (same as invite). When off, invite required.
 - **ADM-** codes: call \`redeem_admin_onboard_code\` with the code and channel user id from context, then confirm they are an admin.
 - Admins may still issue codes via tools or slash commands. Codes are single-use.
 - **Never** ask profile/setup questions (name, email, "do you have an account?", process menus). Channel IDs and profile come from context/tools.

@@ -559,6 +559,7 @@ function helpText(handle?: { extension: { slackCommands?: Array<{ name: string; 
     '/admincode [comment] — issue admin onboard code',
     '/admincodes [all|unused|used] — list admin onboard codes',
     '/revoke `<code>` — revoke an unused admin code',
+    '/demomode on|off|status — open access without invite (auto-create profiles)',
   ];
   const domain = handle?.extension?.slackCommands;
   if (domain?.length) {
@@ -594,6 +595,45 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
   app.command('/help', async ({ ack, respond }) => {
     await ack();
     await respond({ response_type: 'ephemeral', text: helpText(handle) });
+  });
+
+  // /demomode on|off|status — admin only; open access without invite
+  app.command('/demomode', async ({ ack, command, respond }) => {
+    await ack();
+    if (!isAdminFromSlackId(command.user_id)) {
+      await respond({ response_type: 'ephemeral', text: '⛔ Admin only.' });
+      return;
+    }
+    const {
+      parseDemoModeArgs,
+      setDemoMode,
+      getDemoModeState,
+      formatDemoModeStatus,
+    } = await import('../../onboarding/demo-mode.js');
+    try {
+      const action = parseDemoModeArgs(command.text ?? '');
+      if (action === 'status') {
+        await respond({
+          response_type: 'ephemeral',
+          text: formatDemoModeStatus(getDemoModeState()),
+        });
+        return;
+      }
+      const state = setDemoMode({
+        enabled: action === 'on',
+        updatedBySlack: command.user_id,
+      });
+      console.log(`[Demo mode] ${action} by Slack ${command.user_id}`);
+      await respond({
+        response_type: 'ephemeral',
+        text: formatDemoModeStatus(state),
+      });
+    } catch (e) {
+      await respond({
+        response_type: 'ephemeral',
+        text: e instanceof Error ? e.message : String(e),
+      });
+    }
   });
 
   // /clear command

@@ -172,6 +172,7 @@ function helpText(ext?: DomainExtension): string {
     '/admincode [comment] — issue admin onboard code',
     '/admincodes [all|unused|used] — list admin onboard codes',
     '/revoke `<code>` — revoke an unused admin code',
+    '/demomode on|off|status — open access without invite (auto-create profiles)',
   ];
   if (ext?.telegramCommands?.length) {
     lines.push('');
@@ -382,6 +383,39 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     try {
       const entry = revokeAdminOnboardCode(code);
       await replyFormatted(ctx, `✅ Admin code \`${entry.code}\` revoked.${entry.comment ? ` Comment was: _${entry.comment}_` : ''}`);
+    } catch (e) {
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
+    }
+  });
+
+  telegramBotCommands.push({
+    command: 'demomode',
+    description: 'demo mode on|off|status (admin) — open access without invite',
+  });
+  bot.command('demomode', async (ctx) => {
+    if (!isAdminFromId(ctx.from?.id)) {
+      await ctx.reply('⛔ Admin only.');
+      return;
+    }
+    const {
+      parseDemoModeArgs,
+      setDemoMode,
+      getDemoModeState,
+      formatDemoModeStatus,
+    } = await import('../onboarding/demo-mode.js');
+    const args = ctx.message.text.replace(/^\/demomode(?:@\w+)?\s*/i, '').trim();
+    try {
+      const action = parseDemoModeArgs(args);
+      if (action === 'status') {
+        await replyFormatted(ctx, formatDemoModeStatus(getDemoModeState()));
+        return;
+      }
+      const state = setDemoMode({
+        enabled: action === 'on',
+        updatedByTelegram: ctx.from?.id,
+      });
+      console.log(`[Demo mode] ${action} by Telegram ${ctx.from?.id}`);
+      await replyFormatted(ctx, formatDemoModeStatus(state));
     } catch (e) {
       await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }

@@ -66,29 +66,63 @@ function uniqueSlug(base: string, channelHint: string): string {
   return candidate;
 }
 
+export type EnsureChannelUserSource = 'invite' | 'demo';
+
 /**
- * Create the user profile and mark the invite used. Fail fast on any error.
+ * Create (or return existing) user linked to this Slack/Telegram identity.
+ * Same profile shape as invite redeem — used by invite + demo mode.
  */
-export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedeemResult {
-  const code = params.code.trim().toUpperCase();
+export function ensureChannelUser(params: {
+  displayName: string;
+  slackUserId?: string;
+  telegramUserId?: number;
+  source: EnsureChannelUserSource;
+  inviteCode?: string;
+}): InstantRedeemResult {
   if (!params.slackUserId && params.telegramUserId == null) {
-    throw new Error('redeemInviteInstantly requires slackUserId or telegramUserId');
+    throw new Error('ensureChannelUser requires slackUserId or telegramUserId');
   }
   const displayName = params.displayName.trim();
   if (!displayName) {
-    throw new Error('displayName is required for instant invite redeem');
+    throw new Error('displayName is required to create a user profile');
   }
 
-  validateInviteCode(code);
+  if (params.slackUserId) {
+    const existing = resolveUserBySlackUser(params.slackUserId);
+    if (existing) {
+      const token = existing.user.auth_token;
+      if (!token) throw new Error(`User "${existing.user.slug}" missing auth_token`);
+      return {
+        slug: existing.user.slug,
+        displayName: existing.profile.display_name,
+        authToken: token,
+        state: existing,
+      };
+    }
+  }
+  if (params.telegramUserId != null) {
+    const existing = resolveUserByTelegramUser(params.telegramUserId);
+    if (existing) {
+      const token = existing.user.auth_token;
+      if (!token) throw new Error(`User "${existing.user.slug}" missing auth_token`);
+      return {
+        slug: existing.user.slug,
+        displayName: existing.profile.display_name,
+        authToken: token,
+        state: existing,
+      };
+    }
+  }
 
   const channelHint = params.slackUserId ?? String(params.telegramUserId);
   const slug = uniqueSlug(slugBaseFromDisplayName(displayName, channelHint), channelHint);
+  const emailDomain = params.source === 'demo' ? 'demo.local' : 'invite.local';
 
   const state = blankState({
     slug,
     displayName,
-    // Email is not collected in the instant flow; placeholder satisfies schema.
-    contactEmail: `${slug}@invite.local`,
+    // Email is not collected; placeholder satisfies schema.
+    contactEmail: `${slug}@${emailDomain}`,
   });
 
   if (params.telegramUserId != null) {
@@ -99,15 +133,14 @@ export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedee
   }
   state.log.push({
     ts: new Date().toISOString().slice(0, 10),
-    action: 'invite_redeemed',
-    invite_code: code,
+    action: params.source === 'demo' ? 'demo_auto_created' : 'invite_redeemed',
+    invite_code: params.inviteCode,
     telegram_user_id: params.telegramUserId,
     slack_user_id: params.slackUserId,
-    mode: 'instant',
+    mode: params.source === 'demo' ? 'demo' : 'instant',
   });
 
   saveState(state);
-  markInviteUsed(code, params.telegramUserId ?? 0, slug, params.slackUserId);
 
   const authToken = state.user.auth_token;
   if (!authToken) {
@@ -115,6 +148,25 @@ export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedee
   }
 
   return { slug, displayName, authToken, state };
+}
+
+/**
+ * Create the user profile and mark the invite used. Fail fast on any error.
+ */
+export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedeemResult {
+  const code = params.code.trim().toUpperCase();
+  validateInviteCode(code);
+
+  const result = ensureChannelUser({
+    displayName: params.displayName,
+    slackUserId: params.slackUserId,
+    telegramUserId: params.telegramUserId,
+    source: 'invite',
+    inviteCode: code,
+  });
+
+  markInviteUsed(code, params.telegramUserId ?? 0, result.slug, params.slackUserId);
+  return result;
 }
 
 /** Resolve Slack display name via users.info. Fail fast if missing. */

@@ -41,8 +41,9 @@ State on disk is the source of truth. Re-read with `get_user` before any mutatio
 **You do not run multi-step invite Q&A.** The framework handles access for all agents:
 
 1. **Invite code (`INV-…`)** — redeemed **instantly** when the user sends the code. Display name comes from Slack/Telegram. Email is not collected. They are linked and ready in the same turn.
-2. **Admin code (`ADM-…`)** — call `redeem_admin_onboard_code` with the code and channel user id from context, then confirm they are an admin.
-3. **Admin direct-create** — if an admin asks you to create a user, call `init_user` with the fields they provide and the channel id from context.
+2. **Demo mode** — admins toggle with `/demomode on|off`. When **on**, anyone can chat; missing profiles are auto-created from channel display name (same as invite). When **off**, invite required.
+3. **Admin code (`ADM-…`)** — call `redeem_admin_onboard_code` with the code and channel user id from context, then confirm they are an admin.
+4. **Admin direct-create** — if an admin asks you to create a user, call `init_user` with the fields they provide and the channel id from context.
 
 Never ask for display name, email, invite status, or “which path” for access. Never ask profile/setup questions.
 
