@@ -1,0 +1,110 @@
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { stringify, parse } from 'yaml';
+
+const dataRoot = mkdtempSync(join(tmpdir(), 'utarus-instant-invite-'));
+process.env.UTARUS_LOADED_BY_HOST = '1';
+process.env.UTARUS_DATA_ROOT = dataRoot;
+
+const { redeemInviteInstantly } = await import('../src/onboarding/instant-invite.js');
+const { resolveInboundMessage } = await import('../src/onboarding/access-gate.js');
+const { resolveUserBySlackUser, validateInviteCode } = await import('../src/state/index.js');
+
+function seedInvite(code: string): void {
+  mkdirSync(join(dataRoot, 'users'), { recursive: true });
+  writeFileSync(
+    join(dataRoot, 'invites.yaml'),
+    stringify([
+      {
+        code,
+        created_by: 0,
+        created_at: '2026-07-13',
+        comment: 'test',
+      },
+    ]),
+  );
+}
+
+describe('framework instant invite (all agents)', () => {
+  beforeEach(() => {
+    rmSync(join(dataRoot, 'users'), { recursive: true, force: true });
+    mkdirSync(join(dataRoot, 'users'), { recursive: true });
+    seedInvite('INV-91B6F805');
+  });
+
+  afterAll(() => {
+    rmSync(dataRoot, { recursive: true, force: true });
+  });
+
+  it('redeems invite with display name and marks used', () => {
+    const result = redeemInviteInstantly({
+      code: 'INV-91B6F805',
+      displayName: 'CY',
+      slackUserId: 'U_CY',
+    });
+    expect(result.slug).toBe('cy');
+    expect(result.displayName).toBe('CY');
+
+    const user = resolveUserBySlackUser('U_CY');
+    expect(user?.profile.display_name).toBe('CY');
+    expect(user?.user.slack_user_ids).toContain('U_CY');
+
+    expect(() => validateInviteCode('INV-91B6F805')).toThrow(/already been used/i);
+
+    const invites = parse(readFileSync(join(dataRoot, 'invites.yaml'), 'utf-8')) as Array<{
+      used_by_slack?: string;
+    }>;
+    expect(invites[0].used_by_slack).toBe('U_CY');
+  });
+
+  it('access gate denies without code', async () => {
+    const r = await resolveInboundMessage({
+      text: 'hello',
+      linkedUser: null,
+      isAdmin: false,
+      slackUserId: 'U_STRANGER',
+    });
+    expect(r.kind).toBe('reply');
+    if (r.kind === 'reply') expect(r.text).toMatch(/invite code/i);
+  });
+
+  it('access gate instant-redeems and continues as linked (no Q&A)', async () => {
+    const r = await resolveInboundMessage({
+      text: 'INV-91B6F805 help me analyze markets',
+      linkedUser: null,
+      isAdmin: false,
+      slackUserId: 'U_NEW',
+      channelDisplayName: 'CY',
+    });
+    expect(r.kind).toBe('agent');
+    if (r.kind === 'agent') {
+      expect(r.text).toMatch(/just joined|Access/i);
+      expect(r.text).toMatch(/CY/);
+      expect(r.text).toMatch(/help me analyze markets/);
+      expect(r.text).not.toMatch(/contact_email|display name would you like|Option A/i);
+    }
+    expect(resolveUserBySlackUser('U_NEW')?.profile.display_name).toBe('CY');
+    expect(existsSync(join(dataRoot, 'users', 'cy.yaml'))).toBe(true);
+  });
+
+  it('domain enrichMessage receives linked user after redeem', async () => {
+    const r = await resolveInboundMessage({
+      text: 'INV-91B6F805',
+      linkedUser: null,
+      isAdmin: false,
+      slackUserId: 'U_DOMAIN',
+      channelDisplayName: 'Dana',
+      enrichMessage: async (ctx) => {
+        expect(ctx.userSlug).toBe('dana');
+        return `[Domain] user=${ctx.userSlug}\n\n${ctx.text}`;
+      },
+    });
+    expect(r.kind).toBe('agent');
+    if (r.kind === 'agent') {
+      expect(r.text).toMatch(/\[Access\]/);
+      expect(r.text).toMatch(/\[Domain\] user=dana/);
+    }
+  });
+});

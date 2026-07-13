@@ -67,7 +67,7 @@ export function createInviteTools(): AgentTool[] {
   const redeem: AgentTool = {
     name: 'redeem_invite_code',
     label: 'Redeem Invite Code',
-    description: 'Redeem an invite code after collecting the user\'s information. Validates the code, creates the user record, and links the caller\'s channel ID (telegram_user_id OR slack_user_id). Call this at the end of the onboarding Q&A, once you have display_name + contact_email.',
+    description: 'Redeem an invite code and create the user record (links telegram_user_id OR slack_user_id). Prefer framework instant onboard: users who paste INV-… are usually already redeemed before the agent runs. Use this tool only if you still need a manual redeem with known display_name + contact_email.',
     parameters: Type.Object({
       code: Type.String({ description: 'The invite code (starts with INV-).' }),
       telegram_user_id: Type.Optional(Type.Number({ description: 'Telegram user ID (provide this OR slack_user_id).' })),

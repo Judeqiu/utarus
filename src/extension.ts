@@ -31,8 +31,13 @@ export interface EnrichMessageContext {
   telegramUserId?: number;
   slackUserId?: string;
   isAdmin: boolean;
-  /** The raw inbound message text. */
+  /** The raw inbound message text (invite codes may already be handled by the framework gate). */
   text: string;
+  /**
+   * Display name from the channel when available (Slack profile / Telegram first name).
+   * Framework instant onboard uses this; domains may also use it.
+   */
+  channelDisplayName?: string;
 }
 
 export interface DomainExtension {

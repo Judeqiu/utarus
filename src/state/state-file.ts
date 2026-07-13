@@ -210,11 +210,27 @@ export function createInviteCode(params: {
   return invite;
 }
 
+function isInviteUsed(invite: InviteCode): boolean {
+  // used_by may be 0 for Slack-only redeem — treat used_by_slack / used_at as used too.
+  return (
+    (invite.used_by != null && invite.used_by !== 0) ||
+    !!invite.used_by_slack ||
+    !!invite.used_at ||
+    (invite.used_by === 0 && !!invite.slug)
+  );
+}
+
 export function validateInviteCode(code: string): InviteCode {
   const invites = loadInvites();
-  const invite = invites.find(i => i.code === code);
+  const invite = invites.find(i => i.code === code.toUpperCase() || i.code === code);
   if (!invite) throw new Error(`Invalid invite code "${code}".`);
-  if (invite.used_by) throw new Error(`Invite code "${code}" has already been used by Telegram user ${invite.used_by}.`);
+  if (isInviteUsed(invite)) {
+    const who =
+      invite.slug ??
+      (invite.used_by_slack ? `Slack ${invite.used_by_slack}` : null) ??
+      (invite.used_by != null ? `Telegram ${invite.used_by}` : 'another user');
+    throw new Error(`Invite code "${code}" has already been used (${who}).`);
+  }
   return invite;
 }
 
@@ -233,8 +249,8 @@ export function markInviteUsed(code: string, telegramUserId: number, slug: strin
 export function listInviteCodes(filter?: 'all' | 'unused' | 'used'): InviteCode[] {
   const invites = loadInvites();
   if (!filter || filter === 'all') return invites;
-  if (filter === 'unused') return invites.filter(i => !i.used_by);
-  if (filter === 'used') return invites.filter(i => !!i.used_by);
+  if (filter === 'unused') return invites.filter(i => !isInviteUsed(i));
+  if (filter === 'used') return invites.filter(i => isInviteUsed(i));
   return invites;
 }
 

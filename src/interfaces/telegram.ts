@@ -424,8 +424,8 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     await markSeen(ctx.chat.id, ctx.message.message_id);
 
     const telegramUserId = ctx.from?.id;
-    const linkedUser = await resolveUserForTelegram(telegramUserId ?? -1, handle.extension.resolveEntitySlug);
-    const userSlug = linkedUser ? linkedUser.user.slug : (telegramUserId ? `tg-${telegramUserId}` : 'unknown');
+    let linkedUser = await resolveUserForTelegram(telegramUserId ?? -1, handle.extension.resolveEntitySlug);
+    let userSlug = linkedUser ? linkedUser.user.slug : (telegramUserId ? `tg-${telegramUserId}` : 'unknown');
     const admin = isAdminFromId(telegramUserId);
     // Present on messages inside forum topics; required for typing to appear under the title.
     const messageThreadId = (ctx.message as { message_thread_id?: number }).message_thread_id;
@@ -438,51 +438,36 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
 
     const stopTyping = startTypingLoop(ctx.chat.id, messageThreadId);
     try {
-      let enrichedText: string;
+      const channelDisplayName = [ctx.from?.first_name, ctx.from?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || undefined;
 
-      if (handle.extension.enrichMessage) {
-        enrichedText = await Promise.resolve(
-          handle.extension.enrichMessage({
-            userSlug: linkedUser ? linkedUser.user.slug : '',
-            telegramUserId,
-            isAdmin: admin,
-            text: ctx.message.text,
-          }),
-        );
-        if (enrichedText.startsWith('REPLY:')) {
-          await replyFormatted(ctx, enrichedText.slice('REPLY:'.length).trim());
-          return;
-        }
-      } else {
-        // Default Utarus enrichment — guide onboarding for unknown users.
-        const msgText = (ctx.message as any)?.text ?? '';
-        if (linkedUser) {
-          enrichedText = `[User context: You are working with user "${linkedUser.user.slug}" (${linkedUser.profile.display_name}, contact=${linkedUser.profile.contact_email}). The user is the linked Telegram account. Auto-load this user's state first.]\n\n${msgText}`;
-        } else if (!admin && telegramUserId) {
-          const adminCodeMatch = msgText.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
-          if (adminCodeMatch) {
-            const code = adminCodeMatch[1].toUpperCase();
-            enrichedText = `[Admin onboard code] This user is redeeming an admin onboard code "${code}". Their Telegram user ID is ${telegramUserId}. Call redeem_admin_onboard_code with code="${code}" and telegram_user_id=${telegramUserId}. After redemption, tell the user they are now an admin.`;
-          } else {
-            const inviteMatch = msgText.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
-            if (inviteMatch) {
-              const code = inviteMatch[1].toUpperCase();
-              enrichedText = `[Invite code onboarding] This user is redeeming invite code "${code}". Their Telegram user ID is ${telegramUserId}. Run the onboarding Q&A to collect these TWO mandatory fields (the user can provide them at their own pace — one field per turn is fine):
+      const { resolveInboundMessage } = await import('../onboarding/access-gate.js');
+      const inbound = await resolveInboundMessage({
+        text: ctx.message.text,
+        linkedUser,
+        isAdmin: admin,
+        telegramUserId,
+        channelDisplayName,
+        enrichMessage: handle.extension.enrichMessage,
+      });
 
-  1. display_name — their name or nickname
-  2. contact_email — a valid email address
+      if (inbound.kind === 'reply') {
+        await replyFormatted(ctx, inbound.text);
+        return;
+      }
 
-The record cannot be created until BOTH are provided. Be friendly and don't pressure. If the user sends a valid-looking value for one field, accept it and gently prompt for the other. If a value looks wrong (e.g. malformed email), say so once and ask again nicely. Once you have both, call redeem_invite_code with code="${code}", telegram_user_id=${telegramUserId}, display_name, and contact_email. After redeeming, tell them they now have access and can start using the bot.\n\n${msgText}`;
-            } else {
-              await ctx.reply('⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).');
-              return;
-            }
-          }
-        } else {
-          enrichedText = msgText;
+      // Instant invite may have just created the user — switch agent key to real slug.
+      if (telegramUserId != null) {
+        const after = resolveUserByTelegramUser(telegramUserId);
+        if (after) {
+          linkedUser = after;
+          userSlug = after.user.slug;
         }
       }
 
+      const enrichedText = inbound.text;
       const response = await callAgent(handle, userSlug, admin, enrichedText);
 
       // Auto-detect BinDrive file references in the response and send them as documents.

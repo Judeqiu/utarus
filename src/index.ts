@@ -7,6 +7,13 @@ export type { AppConfig } from './config.js';
 export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
 export { getCurrentChatId } from './interfaces/telegram.js';
+/** Standard access gate + instant invite redeem (all domain agents). */
+export { resolveInboundMessage } from './onboarding/access-gate.js';
+export {
+  redeemInviteInstantly,
+  fetchSlackDisplayName,
+} from './onboarding/instant-invite.js';
+export type { InstantRedeemParams, InstantRedeemResult } from './onboarding/instant-invite.js';
 /** Shared Telegram formatting helpers (Markdown → HTML). Used by the built-in
  *  Telegram interface; domain agents can reuse them for custom outbound messages. */
 export {

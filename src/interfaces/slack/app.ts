@@ -55,13 +55,8 @@ function isAdminFromSlackId(userId: string): boolean {
 }
 
 /**
- * Per-user onboarding gate. Kept from the legacy Utarus flow: when the agent
- * extension provides its own enrichMessage, the gate lives there. Otherwise
- * unknown non-admin users must present an INV- or ADM- code; otherwise the
- * message is rejected before the agent runs.
- *
- * This is invoked before the eyes→gear swap, so it must complete (and either
- * post a reply or throw) before the agent run kicks off.
+ * Framework-owned access gate + optional domain enrichMessage.
+ * Instant INV- redeem lives in onboarding/ — domains must not re-implement it.
  */
 async function resolveEnrichedText(
   handle: FrameworkHandle,
@@ -71,68 +66,18 @@ async function resolveEnrichedText(
     isAdmin: boolean;
     userSlug: string;
     text: string;
+    channelDisplayName?: string;
   },
 ): Promise<{ kind: 'reply'; text: string } | { kind: 'agent'; text: string }> {
-  const enrich = handle.extension.enrichMessage;
-  if (enrich) {
-    const result = await Promise.resolve(
-      enrich({
-        userSlug: ctx.linkedUser ? ctx.linkedUser.user.slug : '',
-        slackUserId: ctx.slackUserId,
-        isAdmin: ctx.isAdmin,
-        text: ctx.text,
-      }),
-    );
-    if (result.startsWith('REPLY:')) {
-      return { kind: 'reply', text: result.slice('REPLY:'.length).trim() };
-    }
-    return { kind: 'agent', text: result };
-  }
-
-  // Default Utarus enrichment — guide onboarding for unknown users.
-  if (ctx.linkedUser) {
-    return {
-      kind: 'agent',
-      text:
-        `[User context: You are working with user "${ctx.linkedUser.user.slug}" ` +
-        `(${ctx.linkedUser.profile.display_name}, contact=${ctx.linkedUser.profile.contact_email}). ` +
-        `The user is the linked Slack account. Auto-load this user's state first.]\n\n${ctx.text}`,
-    };
-  }
-
-  if (ctx.isAdmin) {
-    return { kind: 'agent', text: ctx.text };
-  }
-
-  const adminCodeMatch = ctx.text.trim().match(/\b(ADM-[A-F0-9]{8})\b/i);
-  if (adminCodeMatch) {
-    const code = adminCodeMatch[1].toUpperCase();
-    return {
-      kind: 'agent',
-      text:
-        `[Admin onboard code] This user is redeeming an admin onboard code "${code}". ` +
-        `Their Slack user ID is ${ctx.slackUserId}. Call redeem_admin_onboard_code with ` +
-        `code="${code}" and slack_user_id="${ctx.slackUserId}". After redemption, tell the user they are now an admin.`,
-    };
-  }
-
-  const inviteMatch = ctx.text.trim().match(/\b(INV-[A-F0-9]{8})\b/i);
-  if (inviteMatch) {
-    const code = inviteMatch[1].toUpperCase();
-    return {
-      kind: 'agent',
-      text:
-        `[Invite code onboarding] This user is redeeming invite code "${code}". ` +
-        `Their Slack user ID is ${ctx.slackUserId}. Run the onboarding flow to collect their display name ` +
-        `and contact email, one at a time. Once you have both, call redeem_invite_code with the code, ` +
-        `slack_user_id, and the collected details. Be conversational. Don't dump all questions at once.\n\n${ctx.text}`,
-    };
-  }
-
-  return {
-    kind: 'reply',
-    text: '⛔ You need an invite code to use this bot. Ask an admin for an invite code (INV-XXXXXXXX).',
-  };
+  const { resolveInboundMessage } = await import('../../onboarding/access-gate.js');
+  return resolveInboundMessage({
+    text: ctx.text,
+    linkedUser: ctx.linkedUser,
+    isAdmin: ctx.isAdmin,
+    slackUserId: ctx.slackUserId,
+    channelDisplayName: ctx.channelDisplayName,
+    enrichMessage: handle.extension.enrichMessage,
+  });
 }
 
 async function safeSay(say: (msg: { text: string; thread_ts?: string }) => Promise<unknown>, text: string, threadTs?: string): Promise<void> {
@@ -865,8 +810,8 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     const userMsgTs = message.ts;
     const threadTs = resolveReplyThreadTs(message as { ts?: string; thread_ts?: string });
 
-    const linkedUser = resolveUserBySlackUser(slackUserId);
-    const userSlug = linkedUser ? linkedUser.user.slug : `slack-${slackUserId}`;
+    let linkedUser = resolveUserBySlackUser(slackUserId);
+    let userSlug = linkedUser ? linkedUser.user.slug : `slack-${slackUserId}`;
     const admin = isAdminFromSlackId(slackUserId);
 
     if (userMessage.toLowerCase() === '/clear' || userMessage.toLowerCase() === 'clear context') {
@@ -892,6 +837,13 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
       console.error('[Enrich error]', error);
       await failWith(client, channel, null, userMsgTs, '⚠️ Could not prepare your message. Please try again.');
       return;
+    }
+
+    // Instant invite may have just created the user — switch agent key to real slug.
+    const afterLink = resolveUserBySlackUser(slackUserId);
+    if (afterLink) {
+      linkedUser = afterLink;
+      userSlug = afterLink.user.slug;
     }
 
     if (enriched.kind === 'reply') {
@@ -1006,8 +958,8 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
 
     const slackUserId = event.user ?? 'unknown';
 
-    const linkedUser = resolveUserBySlackUser(slackUserId);
-    const userSlug = linkedUser ? linkedUser.user.slug : `slack-${slackUserId}`;
+    let linkedUser = resolveUserBySlackUser(slackUserId);
+    let userSlug = linkedUser ? linkedUser.user.slug : `slack-${slackUserId}`;
     const admin = isAdminFromSlackId(slackUserId);
 
     if (userMessage.toLowerCase() === '/clear' || userMessage.toLowerCase() === 'clear context') {
@@ -1033,6 +985,12 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
       console.error('[Enrich error]', error);
       await failWith(client, channel, null, userMsgTs, '⚠️ Could not prepare your message. Please try again.');
       return;
+    }
+
+    const afterLink = resolveUserBySlackUser(slackUserId);
+    if (afterLink) {
+      linkedUser = afterLink;
+      userSlug = afterLink.user.slug;
     }
 
     if (enriched.kind === 'reply') {
