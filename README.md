@@ -12,7 +12,8 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 
 - **CLI + Telegram + Slack interfaces** that share a per-user agent pool (24h TTL eviction, 100-agent cap).
 - **Per-user YAML state** at `data/users/<slug>.yaml`. The state file is the source of truth.
-- **Invite-code onboarding** (`INV-XXXXXXXX`) — admins issue codes, recipients redeem via a short Q&A.
+- **Instant invite onboarding** (`INV-XXXXXXXX`) — admins issue codes; recipients paste the code and get a profile immediately (channel display name, no name/email Q&A). See [docs/onboarding-integration.md](docs/onboarding-integration.md).
+- **Demo mode** (`/demomode on|off`) — admin-only open access; auto-create profiles for anyone who chats. Same doc as above.
 - **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram/Slack users at runtime.
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
 - **TypeBox-schematized tools** — every tool parameter is validated by the runtime before your code runs.
