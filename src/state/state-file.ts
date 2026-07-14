@@ -190,9 +190,13 @@ function generateInviteCode(): string {
 export function createInviteCode(params: {
   createdBy: number;
   createdBySlack?: string;
+  createdViaWeb?: string;
   comment?: string;
   customCode?: string;
 }): InviteCode {
+  if (params.createdBy === 0 && !params.createdBySlack && !params.createdViaWeb) {
+    throw new Error('createInviteCode requires a creator identity (telegram id, slack id, or web admin username).');
+  }
   const code = params.customCode || generateInviteCode();
   const invites = loadInvites();
   if (invites.some(i => i.code === code)) {
@@ -204,6 +208,7 @@ export function createInviteCode(params: {
     created_at: new Date().toISOString().slice(0, 10),
   };
   if (params.createdBySlack) invite.created_by_slack = params.createdBySlack;
+  if (params.createdViaWeb) invite.created_via_web = params.createdViaWeb;
   if (params.comment) invite.comment = params.comment;
   invites.push(invite);
   saveInvites(invites);
@@ -274,9 +279,13 @@ function saveAdminCodes(codes: AdminOnboardCode[]): void {
 export function createAdminOnboardCode(params: {
   createdBy: number;
   createdBySlack?: string;
+  createdViaWeb?: string;
   comment?: string;
   customCode?: string;
 }): AdminOnboardCode {
+  if (params.createdBy === 0 && !params.createdBySlack && !params.createdViaWeb) {
+    throw new Error('createAdminOnboardCode requires a creator identity (telegram id, slack id, or web admin username).');
+  }
   const code = params.customCode || `ADM-${randomUUID().slice(0, 8).toUpperCase()}`;
   const codes = loadAdminCodes();
   if (codes.some(c => c.code === code)) {
@@ -288,6 +297,7 @@ export function createAdminOnboardCode(params: {
     created_at: new Date().toISOString().slice(0, 10),
   };
   if (params.createdBySlack) entry.created_by_slack = params.createdBySlack;
+  if (params.createdViaWeb) entry.created_via_web = params.createdViaWeb;
   if (params.comment) entry.comment = params.comment;
   codes.push(entry);
   saveAdminCodes(codes);

@@ -23,6 +23,8 @@ export interface InstantRedeemParams {
   displayName: string;
   slackUserId?: string;
   telegramUserId?: number;
+  /** Set when redeeming from the web (no chat platform id available). */
+  web?: boolean;
 }
 
 export interface InstantRedeemResult {
@@ -69,18 +71,23 @@ function uniqueSlug(base: string, channelHint: string): string {
 export type EnsureChannelUserSource = 'invite' | 'demo';
 
 /**
- * Create (or return existing) user linked to this Slack/Telegram identity.
- * Same profile shape as invite redeem — used by invite + demo mode.
+ * Create (or return existing) user linked to this Slack/Telegram identity,
+ * or — when `web: true` — a web-onboarded user with no chat-platform id.
+ *
+ * Same profile shape as invite redeem — used by invite + demo mode + web.
  */
 export function ensureChannelUser(params: {
   displayName: string;
   slackUserId?: string;
   telegramUserId?: number;
+  /** Set when onboarding from the web (no chat platform id available). */
+  web?: boolean;
   source: EnsureChannelUserSource;
   inviteCode?: string;
 }): InstantRedeemResult {
-  if (!params.slackUserId && params.telegramUserId == null) {
-    throw new Error('ensureChannelUser requires slackUserId or telegramUserId');
+  const hasChannelId = !!params.slackUserId || params.telegramUserId != null;
+  if (!hasChannelId && !params.web) {
+    throw new Error('ensureChannelUser requires slackUserId, telegramUserId, or web: true');
   }
   const displayName = params.displayName.trim();
   if (!displayName) {
@@ -114,7 +121,10 @@ export function ensureChannelUser(params: {
     }
   }
 
-  const channelHint = params.slackUserId ?? String(params.telegramUserId);
+  // Web users have no chat-platform id; use 'web' as the channel hint so the
+  // slug-collision suffix (when needed) is meaningful.
+  const channelHint = params.slackUserId
+    ?? (params.telegramUserId != null ? String(params.telegramUserId) : 'web');
   const slug = uniqueSlug(slugBaseFromDisplayName(displayName, channelHint), channelHint);
   const emailDomain = params.source === 'demo' ? 'demo.local' : 'invite.local';
 
@@ -138,6 +148,7 @@ export function ensureChannelUser(params: {
     telegram_user_id: params.telegramUserId,
     slack_user_id: params.slackUserId,
     mode: params.source === 'demo' ? 'demo' : 'instant',
+    web: params.web === true ? true : undefined,
   });
 
   saveState(state);
@@ -161,6 +172,7 @@ export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedee
     displayName: params.displayName,
     slackUserId: params.slackUserId,
     telegramUserId: params.telegramUserId,
+    web: params.web,
     source: 'invite',
     inviteCode: code,
   });

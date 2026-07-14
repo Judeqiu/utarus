@@ -46,8 +46,9 @@ export interface UserState {
 
 export interface InviteCode {
   code: string;
-  created_by: number;              // admin telegram id
+  created_by: number;              // admin telegram id (0 when created via web admin)
   created_by_slack?: string;       // admin slack id (when issued from Slack)
+  created_via_web?: string;        // admin username (when issued from the WebUI admin console)
   created_at: string;              // YYYY-MM-DD
   comment?: string;
   used_by?: number;                // telegram id of user who redeemed
@@ -58,8 +59,9 @@ export interface InviteCode {
 
 export interface AdminOnboardCode {
   code: string;
-  created_by: number;
+  created_by: number;              // admin telegram id (0 when created via web admin)
   created_by_slack?: string;
+  created_via_web?: string;        // admin username (when issued from the WebUI admin console)
   created_at: string;
   comment?: string;
   used_by?: number;

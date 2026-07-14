@@ -25,11 +25,25 @@ export interface FrameworkOptions {
   extension: DomainExtension;
 }
 
+export type AgentChannelScope = 'web';
+
 export interface Framework {
-  /** Resolve or create the per-slug agent (prompt already composed). */
-  getOrCreateAgent: (userSlug: string, isAdmin: boolean) => Agent;
-  /** Drop the cached agent for a user (e.g. /clear). */
-  clearAgentContext: (userSlug: string) => boolean;
+  /**
+   * Resolve or create the per-user agent (prompt already composed).
+   *
+   * @param userSlug      the user's slug — used for tool resolution and usage caps.
+   * @param isAdmin       whether the user is an admin.
+   * @param channelScope  when set ('web'), the in-memory conversation is cached
+   *                      under `web:<userSlug>` so it is isolated from the
+   *                      shared `<userSlug>` conversation Slack/Telegram use.
+   *                      Undefined preserves existing shared-key behavior.
+   */
+  getOrCreateAgent: (userSlug: string, isAdmin: boolean, channelScope?: AgentChannelScope) => Agent;
+  /**
+   * Drop the cached agent for a user (e.g. /clear).
+   * `channelScope` must match the value used at getOrCreateAgent time.
+   */
+  clearAgentContext: (userSlug: string, channelScope?: AgentChannelScope) => boolean;
   /** The combined skill catalog (framework + domain skills). */
   readonly allSkills: Skill[];
   /** The registered domain extension (purpose, hooks, extra skills/tools). */
@@ -174,12 +188,19 @@ export function createFramework(opts: FrameworkOptions): Framework {
     return [...framework, ...domain];
   }
 
-  const getOrCreateAgent = (userSlug: string, isAdmin: boolean) =>
-    baseGetOrCreateAgent(userSlug, isAdmin, { systemPrompt, tools: allTools, enforceCaps: !isAdmin });
+  const getOrCreateAgent = (userSlug: string, isAdmin: boolean, channelScope?: AgentChannelScope) => {
+    const cacheKey = channelScope ? `${channelScope}:${userSlug}` : userSlug;
+    return baseGetOrCreateAgent(cacheKey, userSlug, isAdmin, { systemPrompt, tools: allTools, enforceCaps: !isAdmin });
+  };
+
+  const clearAgentContext = (userSlug: string, channelScope?: AgentChannelScope) => {
+    const cacheKey = channelScope ? `${channelScope}:${userSlug}` : userSlug;
+    return baseClearAgentContext(cacheKey);
+  };
 
   return {
     getOrCreateAgent,
-    clearAgentContext: baseClearAgentContext,
+    clearAgentContext,
     allSkills,
     extension,
     startTelegram: () => startTelegram({ handle: { getOrCreateAgent, allSkills, extension } }),

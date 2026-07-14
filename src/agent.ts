@@ -38,39 +38,47 @@ function evictStaleAgents() {
 export interface GetOrCreateAgentOptions {
   /** Full, ready-to-use system prompt (framework scaffolding + domain purpose + skill catalog). */
   systemPrompt: string;
-  /** Builder that returns the full tool list for this key/isAdmin. */
-  tools: (key: string, isAdmin: boolean) => AgentTool[];
+  /** Builder that returns the full tool list for this userSlug/isAdmin. */
+  tools: (userSlug: string, isAdmin: boolean) => AgentTool[];
   /** When false (default), tools are not wrapped with usage caps. Set via opts for callers that caps. */
   enforceCaps?: boolean;
 }
 
 /**
- * Resolve or create the per-key agent.
+ * Resolve or create the per-cacheKey agent.
  *
- * @param key      stable cache key — user.slug for known users, or a
- *                 channel-prefixed id (`tg:<telegramId>`, `slack:<slackId>`)
- *                 for admins still in bootstrap mode without a user record.
- * @param isAdmin  whether the key maps to an admin (gates admin-only tools
- *                 and, in future, usage-cap bypass).
- * @param opts     injected system prompt + tool builder from the framework.
+ * The cache key and the user slug are split so a single user can hold
+ * isolated conversation contexts per channel (web vs Slack/Telegram) while
+ * tools and usage caps remain keyed off the stable user slug.
+ *
+ * @param cacheKey   stable Map key isolating the in-memory conversation.
+ *                   For Slack/Telegram/CLI this equals `userSlug`; for the
+ *                   web channel the framework passes `web:<userSlug>`.
+ * @param userSlug   the user's slug — passed to the tools builder and to
+ *                   usage tracking so portfolio/YAML state and caps stay
+ *                   per-user across channels.
+ * @param isAdmin    whether the user is an admin (gates admin-only tools
+ *                   and, in future, usage-cap bypass).
+ * @param opts       injected system prompt + tool builder from the framework.
  */
 export function getOrCreateAgent(
-  key: string,
+  cacheKey: string,
+  userSlug: string,
   isAdmin: boolean,
   opts: GetOrCreateAgentOptions,
 ): Agent {
   evictStaleAgents();
 
-  const existing = userAgents.get(key);
+  const existing = userAgents.get(cacheKey);
   if (existing) {
     existing.lastUsed = Date.now();
     return existing.agent;
   }
 
   const model = getDeepSeekModel();
-  let tools = opts.tools(key, isAdmin);
+  let tools = opts.tools(userSlug, isAdmin);
   if (opts.enforceCaps) {
-    tools = wrapToolsWithCaps(tools, key);
+    tools = wrapToolsWithCaps(tools, userSlug);
   }
 
   const agent = new Agent({
@@ -82,14 +90,14 @@ export function getOrCreateAgent(
   });
 
   // Subscribe usage + tool tracking. Admins bypass but we still record spend.
-  attachUsageTracking(agent, key);
+  attachUsageTracking(agent, userSlug);
 
-  userAgents.set(key, { agent, lastUsed: Date.now() });
+  userAgents.set(cacheKey, { agent, lastUsed: Date.now() });
   return agent;
 }
 
-export function clearAgentContext(key: string): boolean {
-  return userAgents.delete(key);
+export function clearAgentContext(cacheKey: string): boolean {
+  return userAgents.delete(cacheKey);
 }
 
 /** Visible for diagnostics / tests. */

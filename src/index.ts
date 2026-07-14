@@ -43,9 +43,24 @@ export {
   DEFAULT_LINK_TOKEN_TTL_MS,
   MAX_LINK_TOKEN_TTL_MS,
   MIN_LINK_TOKEN_TTL_MS,
+  requireAuth,
+  requireAdmin,
+  targetSlug,
 } from './webapp/auth.js';
 export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/auth.js';
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
+export {
+  loadState,
+  stateExists,
+  listUserSlugs,
+  createInviteCode,
+  validateInviteCode,
+  markInviteUsed,
+  listInviteCodes,
+  createAdminOnboardCode,
+  revokeAdminOnboardCode,
+  listAdminOnboardCodes,
+} from './state/index.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
 export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';

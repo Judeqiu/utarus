@@ -300,4 +300,65 @@ router.get('/api/files/:name/view', requireAuth, (req: Request, res: Response) =
   }
 });
 
+/**
+ * Per-extension Content-Type map for the /raw endpoint.
+ * Unknown extensions correctly resolve to application/octet-stream — this is
+ * the canonical MIME type for arbitrary binary, not a fallback default.
+ */
+const RAW_CONTENT_TYPES: Record<string, string> = {
+  html: 'text/html; charset=utf-8',
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  csv: 'text/csv; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  txt: 'text/plain; charset=utf-8',
+  md: 'text/plain; charset=utf-8',
+  log: 'text/plain; charset=utf-8',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  m4v: 'video/mp4',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  m4a: 'audio/mp4',
+};
+
+/**
+ * GET /api/files/:name/raw?slug=<slug>
+ * Serve a raw file inline with the correct Content-Type per extension.
+ *
+ * Unlike /view (which hard-codes text/html for HTML reports), /raw sniffs the
+ * extension and serves the canonical MIME type so <img>, <video>, <audio>,
+ * and <embed> render correctly. Used by the WebUI asset renderer.
+ */
+router.get('/api/files/:name/raw', requireAuth, (req: Request, res: Response) => {
+  const user = (req as any).user as AuthUser;
+  try {
+    const slug = targetSlug(req, user);
+    const name = basename(req.params.name as string);
+    const filePath = join(driveDir(slug), name);
+
+    if (!existsSync(filePath)) {
+      res.status(404).json({ error: 'File not found' });
+      return;
+    }
+
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    const contentType = RAW_CONTENT_TYPES[ext] ?? 'application/octet-stream';
+    const content = readFileSync(filePath);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="${name}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(content);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 export default router;
