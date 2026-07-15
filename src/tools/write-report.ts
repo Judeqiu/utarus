@@ -1,18 +1,6 @@
 import { Type } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
-import { writeFileSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { config } from '../config.js';
-import { signedBinDriveViewUrl } from '../webapp/auth.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PROJECT_ROOT = resolve(__dirname, '../../');
-
-function isAbsolute(p: string): boolean {
-  return p.startsWith('/');
-}
+import { publishReportHtml, formatReportLinkMessage } from '../report/publish.js';
 
 const productSchema = Type.Object({
   rank: Type.Number(),
@@ -253,7 +241,7 @@ export function createWriteReportTool(): AgentTool<typeof paramsSchema, ReportDe
   return {
     name: 'write_report',
     label: 'Write Report',
-    description: `Generate an HTML intelligence dashboard and save it to the seller's BinDrive. DEFAULT BEHAVIOR: always include owner_slug, always save to BinDrive, always return a short-lived signed view URL (?t=) so the seller can open the report without logging in (≈1 hour). Never skip any of these.
+    description: `Generate an HTML intelligence dashboard and save it for the seller. DEFAULT BEHAVIOR: always include owner_slug, always dual-publish (public /reports/ permanent URL + BinDrive signed link), always paste the permanent URL in the reply. Never skip any of these.
 
 The report includes: key metrics cards, product ranking table, top merchants leaderboard, data sources, and recommendations. The HTML is a self-contained file (Tailwind CDN) that can be opened in any browser.`,
     parameters: paramsSchema,
@@ -287,39 +275,29 @@ The report includes: key metrics cards, product ranking table, top merchants lea
         if (!p.merchants?.length) return { content: [{ type: 'text', text: '❌ merchants array is required (at least 1 merchant)' }], details: { path: '', slug: '' } };
 
         const html = generateDashboardHtml(p);
-
-        const root = isAbsolute(config.dataRoot) ? config.dataRoot : resolve(PROJECT_ROOT, config.dataRoot);
-        const dir = resolve(root, 'drive', p.owner_slug);
-        mkdirSync(dir, { recursive: true });
-        const filePath = resolve(dir, `${p.slug}.html`);
-        writeFileSync(filePath, html, 'utf-8');
-
         const filename = `${p.slug}.html`;
-        let viewUrl: string;
-        let expiresInMs: number | undefined;
-        try {
-          const signed = signedBinDriveViewUrl(p.owner_slug, filename);
-          viewUrl = signed.url;
-          expiresInMs = signed.expiresInMs;
-        } catch (signErr) {
-          // Fail fast — unsigned links force a login and break chat UX.
-          throw new Error(
-            `Failed to mint signed BinDrive URL: ${signErr instanceof Error ? signErr.message : String(signErr)}`,
-          );
-        }
+        const published = publishReportHtml({
+          ownerSlug: p.owner_slug,
+          filename,
+          html,
+          displayName: p.title,
+        });
 
-        const ttlMin = expiresInMs ? Math.round(expiresInMs / 60000) : 60;
         return {
           content: [{
             type: 'text',
             text:
               `✅ Report saved to ${p.owner_slug}'s BinDrive: ${filename}\n` +
               `📊 ${p.products.length} products · ${p.merchants.length} merchants · ${p.metrics.length} metrics\n` +
-              `🌐 ${viewUrl}\n` +
-              `⏱ Opens without login for ~${ttlMin} minutes (short-lived link token).\n\n` +
-              `YOU MUST include the URL above verbatim in your reply to the user. Do not paraphrase or summarize it.`,
+              formatReportLinkMessage(published),
           }],
-          details: { path: filePath, slug: p.owner_slug, viewUrl, expiresInMs },
+          details: {
+            path: published.drivePath,
+            slug: p.owner_slug,
+            viewUrl: published.viewUrl,
+            publicUrl: published.publicUrl,
+            expiresInMs: published.expiresInMs,
+          },
         };
       } catch (e) {
         return { content: [{ type: 'text', text: `❌ ${e instanceof Error ? e.message : String(e)}` }], details: { path: '', slug: '' } };

@@ -2,14 +2,11 @@
  * Generic HTML report delivery for Utarus agents.
  *
  * Slack (and other chat UIs) must NOT rely on raw .html file attachments for
- * rendering — mobile clients show source. Persist to BinDrive and return a
- * signed /view URL (Content-Type: text/html).
+ * rendering — mobile clients show source. Persist via publishReportHtml
+ * (public /reports/ + signed BinDrive /view).
  */
 
-import { writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { resolveDataRoot } from '../config.js';
-import { signedBinDriveViewUrl } from '../webapp/auth.js';
+import { publishReportHtml } from './publish.js';
 import { markdownToHtml, wrapHtmlReport } from '../interfaces/slack/markdown-to-html.js';
 
 /** True when the user explicitly wants an HTML report / browser page. */
@@ -56,6 +53,8 @@ export interface PublishHtmlReportParams {
 export interface PublishHtmlReportResult {
   filename: string;
   absolutePath: string;
+  /** Permanent public URL — prefer this in chat replies. */
+  publicUrl: string;
   viewUrl: string;
   expiresAt: number;
   expiresInMs: number;
@@ -71,8 +70,8 @@ function safeFilenamePart(s: string): string {
 }
 
 /**
- * Write HTML to data/drive/<ownerSlug>/ and return a signed browser view URL.
- * Fails fast if UTARUS_REPORTS_URL is not configured (required for signed URLs).
+ * Write HTML via publishReportHtml (public /reports/ + signed BinDrive).
+ * Fails fast if UTARUS_REPORTS_URL is not configured.
  */
 export function publishHtmlReport(params: PublishHtmlReportParams): PublishHtmlReportResult {
   const ownerSlug = params.ownerSlug?.trim();
@@ -96,22 +95,20 @@ export function publishHtmlReport(params: PublishHtmlReportParams): PublishHtmlR
     params.filename?.replace(/[^a-zA-Z0-9._-]/g, '_') ||
     `${safeFilenamePart(agentName)}-${safeFilenamePart(params.title)}-${Date.now()}.html`;
 
-  const driveDir = join(resolveDataRoot(), 'drive', ownerSlug);
-  mkdirSync(driveDir, { recursive: true });
-  const absolutePath = join(driveDir, filename);
-  writeFileSync(absolutePath, fullHtml, 'utf-8');
-  const bytes = Buffer.byteLength(fullHtml, 'utf-8');
-
-  const signed = signedBinDriveViewUrl(ownerSlug, filename, {
+  const published = publishReportHtml({
+    ownerSlug,
+    filename,
+    html: fullHtml,
     displayName: ownerSlug,
   });
 
   return {
-    filename,
-    absolutePath,
-    viewUrl: signed.url,
-    expiresAt: signed.expiresAt,
-    expiresInMs: signed.expiresInMs,
-    bytes,
+    filename: published.filename,
+    absolutePath: published.drivePath,
+    publicUrl: published.publicUrl,
+    viewUrl: published.viewUrl,
+    expiresAt: published.expiresAt,
+    expiresInMs: published.expiresInMs,
+    bytes: published.bytes,
   };
 }

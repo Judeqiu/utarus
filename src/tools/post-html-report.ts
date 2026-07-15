@@ -7,6 +7,7 @@ import { Type } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { config } from '../config.js';
 import { publishHtmlReport } from '../report/html-delivery.js';
+import { formatReportLinkMessage } from '../report/publish.js';
 import { getRunContext } from '../interfaces/slack/run-context.js';
 
 function ok<T>(text: string, details: T): AgentToolResult<T> {
@@ -24,7 +25,7 @@ export function createPostHtmlReportTool(): AgentTool {
 
 Use when the user asks for an HTML report, HTML page, full written report as a file, or "post HTML". Pass markdown (default) or raw HTML. Saves to BinDrive under owner_slug and returns a /view URL that renders on mobile (do NOT rely on Slack file attachments for HTML).
 
-Always include the returned viewUrl verbatim in your reply so the user can open it.`,
+Always paste the permanent public URL (and optional signed private URL) verbatim so the user can open the report without login.`,
     parameters: Type.Object({
       owner_slug: Type.String({
         description: 'User slug for BinDrive folder (data/drive/<owner_slug>/). From get_user / session context.',
@@ -67,15 +68,11 @@ Always include the returned viewUrl verbatim in your reply so the user can open 
           agentName: config.agent.name ?? 'Agent',
         });
 
-        const ttlMin = Math.round(result.expiresInMs / 60000);
         return ok(
           [
             `HTML report published: ${result.filename}`,
             `Size: ${result.bytes} bytes`,
-            `View (opens in browser, renders on mobile): ${result.viewUrl}`,
-            `Link valid ~${ttlMin} minutes.`,
-            '',
-            'YOU MUST paste the View URL verbatim in your reply to the user.',
+            formatReportLinkMessage(result),
           ].join('\n'),
           result,
         );

@@ -116,6 +116,8 @@ export {
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
 export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';
+export { publishReportHtml, formatReportLinkMessage } from './report/publish.js';
+export type { PublishReportHtmlParams, PublishReportHtmlResult } from './report/publish.js';
 export { createPostHtmlReportTool } from './tools/post-html-report.js';
 
 // ── Standalone entry (running Utarus by itself) ────────────────────────
