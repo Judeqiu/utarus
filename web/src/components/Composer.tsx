@@ -42,21 +42,42 @@ export function Composer({
     el.style.height = Math.min(el.scrollHeight, 200) + 'px';
   }, [text]);
 
+  // Focus on mount, after send, and when a reply finishes.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      textareaRef.current?.focus();
+    }
+  }, [isStreaming]);
+
+  function focusInput() {
+    // After setState, focus on next frame so the element is still editable.
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }
+
   function submit() {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
     if (trimmed === '/clear') {
       onClear();
       setText('');
+      focusInput();
       return;
     }
     if (trimmed === '/help') {
       onHelp();
       setText('');
+      focusInput();
       return;
     }
     onSend(trimmed, { queue: false });
     setText('');
+    focusInput();
   }
 
   function handleSubmit(e: FormEvent) {
@@ -83,14 +104,17 @@ export function Composer({
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isStreaming}
+            // Stay focusable while streaming so caret does not leave after send.
             rows={1}
             placeholder={
               isStreaming
                 ? `${agentName} is replying…`
                 : `Message ${agentName}…`
             }
-            className="w-full resize-none rounded-2xl border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
+            className={
+              'w-full resize-none rounded-2xl border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ' +
+              (isStreaming ? 'bg-slate-50 text-slate-700' : '')
+            }
           />
         </div>
         {isStreaming ? (
