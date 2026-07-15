@@ -1,6 +1,12 @@
 // ── Public API (imported by domain agents like Binary) ──────────────────
 export { createFramework } from './framework.js';
-export type { Framework, FrameworkOptions } from './framework.js';
+export type {
+  Framework,
+  FrameworkOptions,
+  AgentChannelScope,
+  BuildWebAppOptions,
+  StartWebAppOptions,
+} from './framework.js';
 export type { DomainExtension, EnrichMessageContext, Skill, LoadedSkill } from './extension.js';
 export { config } from './config.js';
 export type { AppConfig } from './config.js';
@@ -31,7 +37,22 @@ export {
   markdownToTelegramHtml,
   splitTelegramHtml,
 } from './interfaces/telegram-format.js';
-export { startBinDrive, createBinDriveApp } from './webapp/server.js';
+export {
+  startBinDrive,
+  createBinDriveApp,
+  buildWebApp,
+  startWebApp,
+  resolveWebDistDir,
+} from './webapp/server.js';
+export type {
+  BinDriveOptions,
+  ExtraRouterMount,
+  BuildWebAppOptions as WebAppBuildOptions,
+  StartWebAppOptions as WebAppStartOptions,
+} from './webapp/server.js';
+export { createChatRouter } from './webapp/chat/router.js';
+export { adminRouter } from './webapp/chat/admin-router.js';
+export { onboardRedeemRouter } from './webapp/chat/onboard.js';
 export {
   createLinkToken,
   appendLinkToken,

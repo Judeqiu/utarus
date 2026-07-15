@@ -10,7 +10,8 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 
 ## What you get out of the box
 
-- **CLI + Telegram + Slack interfaces** that share a per-user agent pool (24h TTL eviction, 100-agent cap).
+- **CLI + Telegram + Slack + WebUI chat** interfaces that share a per-user agent pool (24h TTL eviction, 100-agent cap). WebUI is first-class GFM (tables, code, math via `$$…$$`) with SSE token streaming; currency `$` amounts are **not** treated as math.
+- **BinDrive** file portal + signed view URLs, shared with chat.
 - **Per-user YAML state** at `data/users/<slug>.yaml`. The state file is the source of truth.
 - **Instant invite onboarding** (`INV-XXXXXXXX`) — admins issue codes; recipients paste the code and get a profile immediately (channel display name, no name/email Q&A). See [docs/onboarding-integration.md](docs/onboarding-integration.md).
 - **Domain agent integration** — a `DomainExtension` contract for plugging in a vertical (portfolio analyst, CRM, sales coach, …). See [docs/integration-guide.md](docs/integration-guide.md) for the full data model, channel identity model, and a walkthrough using [Invage](https://github.com/Judeqiu/invage) as the sample agent.
@@ -77,8 +78,27 @@ The `.env` file is gitignored. **Never commit it.**
 ## Run
 
 ```bash
-npm run dev          # tsx watch — hot reload on save
+npm run dev          # tsx — CLI (+ bots if tokens set)
+npm run build        # tsc + WebUI SPA (web/dist)
 ```
+
+### WebUI chat (domain agents)
+
+Set `WEBAPP_PORT` and call from your agent process (chat needs the in-memory agent pool):
+
+```ts
+const framework = createFramework({ extension: myExtension });
+
+if (process.env.WEBAPP_PORT) {
+  framework.startWebApp({
+    port: parseInt(process.env.WEBAPP_PORT, 10),
+    // Optional domain-only routes (e.g. landing-page register):
+    // extraRouters: [{ path: '/api/onboard', router: myLandingRouter }],
+  });
+}
+```
+
+SPA lives in `utarus/web/` and is served from `web/dist`. Branding uses `UTARUS_AGENT_NAME`. Design notes: [docs/webui-chat-design.md](docs/webui-chat-design.md).
 
 On startup you'll see:
 

@@ -19,6 +19,13 @@ import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClea
 import { startTelegram } from './interfaces/telegram.js';
 import { startSlack } from './interfaces/slack/index.js';
 import { startCli } from './interfaces/cli.js';
+import {
+  buildWebApp as buildWebAppImpl,
+  startWebApp as startWebAppImpl,
+  type BuildWebAppOptions,
+  type StartWebAppOptions,
+} from './webapp/server.js';
+import type { Express } from 'express';
 import type { DomainExtension, Skill } from './extension.js';
 
 export interface FrameworkOptions {
@@ -54,7 +61,18 @@ export interface Framework {
   startSlack: () => Promise<void>;
   /** Boot the REPL CLI. */
   startCli: () => Promise<void>;
+  /**
+   * Boot the WebUI (chat SPA + BinDrive + admin REST) on WEBAPP_PORT / opts.port.
+   * Domain agents may pass extraRouters for vertical-specific HTTP (e.g. landing register).
+   */
+  startWebApp: (opts?: StartWebAppOptions) => Express;
+  /**
+   * Build the WebUI express app without listening (tests / custom host).
+   */
+  buildWebApp: (opts?: BuildWebAppOptions) => Express;
 }
+
+export type { BuildWebAppOptions, StartWebAppOptions };
 
 /**
  * Minimal handle passed to the interfaces. They only need the agent factory,
@@ -155,6 +173,12 @@ For key-value info:
 
 Always put a blank line between sections. Keep messages under 3000 chars.
 
+## Web channel formatting
+
+When the user message is prefixed with \`[Channel: web …]\`, you are speaking in the browser WebUI. Full GitHub-flavored markdown is welcome: tables, fenced code, headings, and standard markdown links/images for BinDrive asset URLs returned by your tools. Prefer readable structure over flat bullets.
+
+Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \`$…$\` math delimiters. Use \`$$…$$\` only for real equations.
+
 ## HTML reports (generic)
 
 When the user **explicitly asks for HTML**, an HTML report/page, or a full report as a file/link:
@@ -198,7 +222,7 @@ export function createFramework(opts: FrameworkOptions): Framework {
     return baseClearAgentContext(cacheKey);
   };
 
-  return {
+  const framework: Framework = {
     getOrCreateAgent,
     clearAgentContext,
     allSkills,
@@ -206,5 +230,8 @@ export function createFramework(opts: FrameworkOptions): Framework {
     startTelegram: () => startTelegram({ handle: { getOrCreateAgent, allSkills, extension } }),
     startSlack: () => startSlack({ handle: { getOrCreateAgent, allSkills, extension } }),
     startCli: () => startCli({ handle: { getOrCreateAgent, allSkills, extension } }),
+    startWebApp: (opts) => startWebAppImpl(framework, opts),
+    buildWebApp: (opts) => buildWebAppImpl(framework, opts),
   };
+  return framework;
 }
