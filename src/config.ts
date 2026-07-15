@@ -65,6 +65,8 @@ export const config = {
 export type AppConfig = typeof config;
 
 export function resolveDataRoot(): string {
+  // Re-read env so tests can set UTARUS_DATA_ROOT per suite without re-importing config.
+  const raw = process.env.UTARUS_DATA_ROOT ?? config.dataRoot;
   const PROJECT_ROOT = resolve(__dirname, '../');
-  return isAbsolute(config.dataRoot) ? config.dataRoot : resolve(PROJECT_ROOT, config.dataRoot);
+  return isAbsolute(raw) ? raw : resolve(PROJECT_ROOT, raw);
 }

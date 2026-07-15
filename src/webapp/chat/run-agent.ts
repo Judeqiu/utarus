@@ -24,6 +24,12 @@ interface RunAgentParams {
   userSlug: string;
   agent: WebAgent;
   message: string;
+  /** Called with final assistant text (or error) after the run finishes. */
+  onComplete?: (result: {
+    text: string;
+    stopReason: string;
+    error?: string;
+  }) => void;
 }
 
 interface ActiveTool {
@@ -37,13 +43,23 @@ interface ActiveTool {
  * terminal `error` event.
  */
 export async function runAgent(params: RunAgentParams): Promise<void> {
-  const { messageId, userSlug, agent, message } = params;
+  const { messageId, userSlug, agent, message, onComplete } = params;
   const startedAt = Date.now();
 
   let cumulative = '';
   let aborted = false;
   let lastStopReason: string | undefined;
   const activeTools = new Map<string, ActiveTool>();
+
+  function finish(result: { text: string; stopReason: string; error?: string }): void {
+    try {
+      onComplete?.(result);
+    } catch (e) {
+      console.error(
+        `[Agent/web] onComplete failed user=${userSlug}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
 
   const unsubscribe = agent.subscribe((event: any) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -129,6 +145,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[Agent/web] user=${userSlug} threw: ${msg}`);
+    finish({ text: cumulative, stopReason: 'error', error: msg });
     emit(messageId, {
       type: 'error',
       message: `Agent error: ${msg}`,
@@ -144,9 +161,11 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   }
 
   if (aborted) {
+    const msg = `Agent run timed out after ${Math.round(AGENT_RUN_TIMEOUT_MS / 1000)}s`;
+    finish({ text: cumulative, stopReason: 'aborted', error: msg });
     emit(messageId, {
       type: 'error',
-      message: `Agent run timed out after ${Math.round(AGENT_RUN_TIMEOUT_MS / 1000)}s`,
+      message: msg,
       phase: 'watchdog',
     });
     emit(messageId, { type: 'end' });
@@ -158,6 +177,11 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     console.error(
       `[Agent/web] user=${userSlug} errorMessage="${agent.state.errorMessage}" textLen=${cumulative.length}`,
     );
+    finish({
+      text: cumulative,
+      stopReason: 'error',
+      error: agent.state.errorMessage,
+    });
     emit(messageId, {
       type: 'error',
       message: `Agent error: ${agent.state.errorMessage}`,
@@ -168,11 +192,13 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     return;
   }
 
+  const stopReason = lastStopReason ?? 'stop';
+  finish({ text: cumulative, stopReason });
   const assets = extractAssets(cumulative || '', userSlug);
   emit(messageId, {
     type: 'done',
     text: cumulative,
-    stopReason: lastStopReason ?? 'stop',
+    stopReason,
     assets,
   });
   emit(messageId, { type: 'end' });

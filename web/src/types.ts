@@ -69,6 +69,33 @@ export interface AgentStatus {
   version: string;
   isStreaming: boolean;
   hasContext: boolean;
+  conversationId?: string | null;
+}
+
+/** Sidebar list item (server ConversationSummary). */
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  preview: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  slug: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    text: string;
+    created_at: string;
+    stopReason?: string;
+    error?: string;
+  }>;
 }
 
 export interface SessionUser {

@@ -1,18 +1,19 @@
 /**
- * WebUI chat router — mounted at /api/chat on the BinDrive express app.
+ * WebUI chat router — mounted at /api/chat.
  *
- * Routes (see docs/webui-chat-design.md §7):
- *   POST   /messages             → { kind: 'run'|'queued'|'reply', messageId? }
- *   GET    /stream/:messageId    ← SSE (ack, tool_start, tool_end, delta, heartbeat, done|error|cap, end)
- *   POST   /clear                → { ok: true }
- *   GET    /agent                → { slug, displayName, isStreaming, hasContext }
- *   POST   /abort                → { ok: true }   (aborts the user's active web run, if any)
+ * Conversations (Claude-style multi-chat, server-persisted):
+ *   GET    /conversations
+ *   POST   /conversations
+ *   GET    /conversations/:id
+ *   PATCH  /conversations/:id
+ *   DELETE /conversations/:id
  *
- * Auth: requireAuth on every route (cookie / Bearer / ?t=).
- *
- * The router is created via createChatRouter(framework) so it can resolve
- * agents per user. The stream registry is a module-level singleton shared
- * across the process.
+ * Messaging (requires conversationId):
+ *   POST   /messages             → { kind, messageId?, conversationId }
+ *   GET    /stream/:messageId
+ *   POST   /clear                body: { conversationId }
+ *   POST   /abort                body: { conversationId? }
+ *   GET    /agent                → status + version
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -35,24 +36,154 @@ import {
   replay,
 } from './stream-registry.js';
 import type { ChatEvent, RunState } from './types.js';
+import {
+  listConversations,
+  createConversation,
+  getConversation,
+  renameConversation,
+  deleteConversation,
+  appendMessage,
+  clearConversationMessages,
+} from './conversation-store.js';
+import { hydrateAgentFromStoredMessages } from './hydrate-agent.js';
 
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
   'For BinDrive assets, write standard markdown links/images using the URLs your tools returned.\n' +
   'Keep total length reasonable.]';
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface CreateChatRouterDeps {
   framework: Framework;
+}
+
+function requireSlug(user: AuthUser, res: Response): string | null {
+  if (!user.slug) {
+    res.status(400).json({ error: 'no_user_slug', message: 'No user slug for this session.' });
+    return null;
+  }
+  return user.slug;
+}
+
+function parseConversationId(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !UUID_RE.test(raw)) return null;
+  return raw;
 }
 
 export function createChatRouter(deps: CreateChatRouterDeps): Router {
   const router = Router();
   router.use(requireAuth);
 
+  // ── GET /conversations ──────────────────────────────────────────────
+  router.get('/conversations', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    try {
+      const conversations = listConversations(slug);
+      res.json({ conversations });
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // ── POST /conversations ─────────────────────────────────────────────
+  router.post('/conversations', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const title =
+      typeof req.body?.title === 'string' ? req.body.title.trim() : undefined;
+    try {
+      const conv = createConversation(slug, title ? { title } : undefined);
+      res.status(201).json(conv);
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // ── GET /conversations/:id ──────────────────────────────────────────
+  router.get('/conversations/:id', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const id = parseConversationId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'invalid_conversation_id' });
+      return;
+    }
+    try {
+      const conv = getConversation(slug, id);
+      // Ensure agent pool has hydrated context for this conversation.
+      const agent = deps.framework.getOrCreateAgent(
+        slug,
+        user.type === 'admin',
+        'web',
+        id,
+      );
+      if (!agent.state.messages?.length && conv.messages.length > 0) {
+        hydrateAgentFromStoredMessages(agent, conv.messages);
+      }
+      res.json(conv);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+    }
+  });
+
+  // ── PATCH /conversations/:id ────────────────────────────────────────
+  router.patch('/conversations/:id', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const id = parseConversationId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'invalid_conversation_id' });
+      return;
+    }
+    if (typeof req.body?.title !== 'string') {
+      res.status(400).json({ error: 'title required' });
+      return;
+    }
+    try {
+      const conv = renameConversation(slug, id, req.body.title);
+      res.json(conv);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+    }
+  });
+
+  // ── DELETE /conversations/:id ───────────────────────────────────────
+  router.delete('/conversations/:id', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const id = parseConversationId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'invalid_conversation_id' });
+      return;
+    }
+    try {
+      deleteConversation(slug, id);
+      deps.framework.clearAgentContext(slug, 'web', id);
+      res.json({ ok: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+    }
+  });
+
   // ── POST /messages ──────────────────────────────────────────────────
   router.post('/messages', async (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
-    const body = req.body as { text?: unknown; queue?: unknown };
+    const body = req.body as {
+      text?: unknown;
+      queue?: unknown;
+      conversationId?: unknown;
+    };
     if (typeof body.text !== 'string' || body.text.trim().length === 0) {
       res.status(400).json({ error: 'text required' });
       return;
@@ -61,7 +192,8 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const queueFlag = body.queue === true;
     const isAdmin = user.type === 'admin';
 
-    // Resolve linked user (web users always have a slug; admins may not).
+    let conversationId = parseConversationId(body.conversationId);
+
     let linkedUser = null;
     if (user.type === 'user' && user.slug) {
       try {
@@ -71,24 +203,21 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         return;
       }
     } else if (user.type === 'admin') {
-      // Admins may chat without a linked user file; the gate handles routing.
       try {
         if (user.slug && user.slug !== 'admin') {
           linkedUser = loadState(user.slug);
         }
       } catch {
-        // Admin without a state file is allowed — they get the unfiltered prompt path.
+        // Admin without state file is allowed.
       }
     }
 
-    // Framework access gate (handles stray INV-/ADM- codes; demo mode).
     let inbound;
     try {
       inbound = await resolveInboundMessage({
         text,
         linkedUser,
         isAdmin,
-        // Web has no chat-platform id; pass display name for any onboard path.
         channelDisplayName: user.displayName,
         enrichMessage: deps.framework.extension.enrichMessage,
       });
@@ -102,34 +231,88 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
-    // Cap check (admins bypass).
     const capMsg = checkLlmCap(user.slug || '', isAdmin);
     if (capMsg) {
       res.status(429).json({ error: 'cap_exceeded', message: capMsg });
       return;
     }
 
-    // Resolve the slug for the agent call. Web users always have one;
-    // admins may be chatting on behalf of a slug or in their own context.
     const effectiveSlug = linkedUser?.user.slug ?? user.slug;
     if (!effectiveSlug) {
-      res.status(400).json({ error: 'no_user_slug', message: 'No user slug resolved for this session.' });
+      res.status(400).json({
+        error: 'no_user_slug',
+        message: 'No user slug resolved for this session.',
+      });
       return;
     }
 
-    const agent = deps.framework.getOrCreateAgent(effectiveSlug, isAdmin, 'web');
+    // Create conversation on first message if client did not pass one.
+    try {
+      if (!conversationId) {
+        const conv = createConversation(effectiveSlug);
+        conversationId = conv.id;
+      } else {
+        // Verify ownership / existence
+        getConversation(effectiveSlug, conversationId);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+      return;
+    }
+
+    const agent = deps.framework.getOrCreateAgent(
+      effectiveSlug,
+      isAdmin,
+      'web',
+      conversationId,
+    );
+
+    // Hydrate agent from disk if this process just created the agent empty
+    // while the conversation already has history (e.g. after restart).
+    try {
+      const existing = getConversation(effectiveSlug, conversationId);
+      if (!agent.state.messages?.length && existing.messages.length > 0) {
+        hydrateAgentFromStoredMessages(agent, existing.messages);
+      }
+    } catch (e) {
+      res.status(500).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
+
+    // Persist user turn before running the agent.
+    const userMsgId = randomUUID();
+    try {
+      appendMessage(effectiveSlug, conversationId, {
+        id: userMsgId,
+        role: 'user',
+        text: inbound.text,
+      });
+    } catch (e) {
+      res.status(500).json({
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
 
     if (agent.state.isStreaming) {
       if (!queueFlag) {
-        res.status(409).json({ error: 'busy', message: 'Agent is still working on your last message.' });
+        res.status(409).json({
+          error: 'busy',
+          message: 'Agent is still working on your last message.',
+          conversationId,
+        });
         return;
       }
       agent.steer({ role: 'user', content: inbound.text, timestamp: Date.now() });
-      res.json({ kind: 'queued' });
+      res.json({ kind: 'queued', conversationId });
       return;
     }
 
     const messageId = randomUUID();
+    const assistantMsgId = randomUUID();
     const runState: RunState = {
       messageId,
       userSlug: effectiveSlug,
@@ -148,16 +331,52 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       agentName: config.agent.name ?? 'Agent',
     });
 
-    // Fire and forget; events land in the registry.
+    const convId = conversationId;
     const promptText = `${WEB_CHANNEL_HINT}\n\n${inbound.text}`;
-    runAgent({ messageId, userSlug: effectiveSlug, agent, message: promptText }).catch((e) => {
+    runAgent({
+      messageId,
+      userSlug: effectiveSlug,
+      agent,
+      message: promptText,
+      onComplete: (result) => {
+        try {
+          if (result.error && !result.text) {
+            appendMessage(effectiveSlug, convId, {
+              id: assistantMsgId,
+              role: 'assistant',
+              text: '',
+              error: result.error,
+              stopReason: result.stopReason,
+            });
+          } else {
+            appendMessage(effectiveSlug, convId, {
+              id: assistantMsgId,
+              role: 'assistant',
+              text: result.text,
+              error: result.error,
+              stopReason: result.stopReason,
+            });
+          }
+        } catch (e) {
+          console.error(
+            `[chat/persist] conversation=${convId} failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      },
+    }).catch((e) => {
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[chat/run] messageId=${messageId} threw post-respond: ${msg}`);
       emit(messageId, { type: 'error', message: `Agent error: ${msg}`, phase: 'during_run' });
       emit(messageId, { type: 'end' });
     });
 
-    res.json({ kind: 'run', messageId });
+    res.json({
+      kind: 'run',
+      messageId,
+      conversationId,
+      userMessageId: userMsgId,
+      assistantMessageId: assistantMsgId,
+    });
   });
 
   // ── GET /stream/:messageId ──────────────────────────────────────────
@@ -166,11 +385,17 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const messageId = req.params.messageId as string;
     const run = getRun(messageId);
     if (!run) {
-      res.status(404).json({ error: 'run_lost', message: 'This run is no longer in memory. Resend your message.' });
+      res.status(404).json({
+        error: 'run_lost',
+        message: 'This run is no longer in memory. Resend your message.',
+      });
       return;
     }
     if (run.userSlug !== user.slug && user.type !== 'admin') {
-      res.status(403).json({ error: 'forbidden', message: 'Stream does not belong to this session.' });
+      res.status(403).json({
+        error: 'forbidden',
+        message: 'Stream does not belong to this session.',
+      });
       return;
     }
 
@@ -178,10 +403,11 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
 
     const lastEventIdHeader = req.headers['last-event-id'];
     const lastEventId = lastEventIdHeader ? Number(lastEventIdHeader) : undefined;
-    const replayList = replay(messageId, Number.isFinite(lastEventId) ? lastEventId : undefined);
+    const replayList = replay(
+      messageId,
+      Number.isFinite(lastEventId) ? lastEventId : undefined,
+    );
 
-    // If we cannot satisfy a replay request, surface a 404 (kept simple — the
-    // registry's buffer is finite and old events may be gone).
     if (replayList === null) {
       sendSSEEvent(res, {
         type: 'error',
@@ -198,15 +424,12 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       sendSSEEvent(res, ev, counter++);
     }
 
-    // If the run already ended and we've replayed everything, close the stream.
     if (run.ended) {
       res.end();
       return;
     }
 
-    // Attach live subscriber. Forward events to the wire with monotonic ids.
-    const baseId = counter;
-    let liveId = baseId;
+    let liveId = counter;
     const subscriber = (event: ChatEvent) => {
       sendSSEEvent(res, event, liveId++);
       if (event.type === 'end') {
@@ -219,8 +442,10 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     };
     attachSubscriber(messageId, subscriber);
 
-    // Periodic SSE comment to keep the connection alive through proxies.
-    const keepalive = setInterval(() => sendSSEComment(res, `keepalive ${Date.now()}`), 15000);
+    const keepalive = setInterval(
+      () => sendSSEComment(res, `keepalive ${Date.now()}`),
+      15000,
+    );
 
     req.on('close', () => {
       clearInterval(keepalive);
@@ -229,14 +454,24 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
   });
 
   // ── POST /clear ─────────────────────────────────────────────────────
+  // Clears messages in a conversation (keeps the conversation id) and drops agent cache.
   router.post('/clear', (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
-    if (!user.slug) {
-      res.status(400).json({ error: 'no_user_slug', message: 'No user slug for this session.' });
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const conversationId = parseConversationId(req.body?.conversationId);
+    if (!conversationId) {
+      res.status(400).json({ error: 'conversationId required' });
       return;
     }
-    deps.framework.clearAgentContext(user.slug, 'web');
-    res.json({ ok: true });
+    try {
+      clearConversationMessages(slug, conversationId);
+      deps.framework.clearAgentContext(slug, 'web', conversationId);
+      res.json({ ok: true, conversationId });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
+    }
   });
 
   // ── GET /agent ──────────────────────────────────────────────────────
@@ -253,7 +488,13 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       });
       return;
     }
-    const agent = deps.framework.getOrCreateAgent(user.slug, user.type === 'admin', 'web');
+    const conversationId = parseConversationId(req.query.conversationId);
+    const agent = deps.framework.getOrCreateAgent(
+      user.slug,
+      user.type === 'admin',
+      'web',
+      conversationId ?? undefined,
+    );
     res.json({
       slug: user.slug,
       displayName: user.displayName,
@@ -261,19 +502,27 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       version: UTARUS_VERSION,
       isStreaming: !!agent.state.isStreaming,
       hasContext: !!agent.state.messages?.length,
+      conversationId: conversationId ?? null,
     });
   });
 
   // ── POST /abort ─────────────────────────────────────────────────────
   router.post('/abort', (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
-    if (!user.slug) {
-      res.status(400).json({ error: 'no_user_slug', message: 'No user slug for this session.' });
-      return;
-    }
-    const agent = deps.framework.getOrCreateAgent(user.slug, user.type === 'admin', 'web');
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    const conversationId = parseConversationId(req.body?.conversationId) ?? undefined;
+    const agent = deps.framework.getOrCreateAgent(
+      slug,
+      user.type === 'admin',
+      'web',
+      conversationId,
+    );
     if (!agent.state.isStreaming) {
-      res.status(409).json({ error: 'not_running', message: 'Agent is not currently running.' });
+      res.status(409).json({
+        error: 'not_running',
+        message: 'Agent is not currently running.',
+      });
       return;
     }
     agent.abort();
@@ -283,10 +532,6 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
   return router;
 }
 
-/**
- * Replicates interfaces/slack/app.ts checkLlmCap. Returns a user-facing
- * message if the user is over their LLM token cap; null otherwise.
- */
 function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {
   if (!userSlug) return null;
   try {
@@ -300,8 +545,9 @@ function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {
     }
     return null;
   } catch (e) {
-    // Usage tracking is metadata, not a security control. Log and allow.
-    console.warn(`[chat/cap] check failed for slug=${userSlug}: ${(e as Error).message}`);
+    console.warn(
+      `[chat/cap] check failed for slug=${userSlug}: ${(e as Error).message}`,
+    );
     return null;
   }
 }

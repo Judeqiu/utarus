@@ -11,6 +11,21 @@ export type { DomainExtension, EnrichMessageContext, Skill, LoadedSkill } from '
 export { config } from './config.js';
 export type { AppConfig } from './config.js';
 export { UTARUS_VERSION } from './version.js';
+export type {
+  Conversation,
+  ConversationSummary,
+  ConversationIndex,
+  StoredChatMessage,
+} from './webapp/chat/conversation-types.js';
+export {
+  listConversations,
+  createConversation,
+  getConversation,
+  renameConversation,
+  deleteConversation,
+  appendMessage,
+  clearConversationMessages,
+} from './webapp/chat/conversation-store.js';
 export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
 export { getCurrentChatId } from './interfaces/telegram.js';

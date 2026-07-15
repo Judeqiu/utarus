@@ -34,23 +34,46 @@ export interface FrameworkOptions {
 
 export type AgentChannelScope = 'web';
 
+/**
+ * Build the agent pool cache key.
+ * - Slack/Telegram/CLI: bare `userSlug` (shared conversation).
+ * - Web without conversation: `web:<userSlug>`.
+ * - Web with conversation: `web:<userSlug>:<conversationId>` (Claude-style multi-chat).
+ */
+export function agentCacheKey(
+  userSlug: string,
+  channelScope?: AgentChannelScope,
+  conversationId?: string,
+): string {
+  if (!channelScope) return userSlug;
+  if (conversationId) return `${channelScope}:${userSlug}:${conversationId}`;
+  return `${channelScope}:${userSlug}`;
+}
+
 export interface Framework {
   /**
    * Resolve or create the per-user agent (prompt already composed).
    *
-   * @param userSlug      the user's slug — used for tool resolution and usage caps.
-   * @param isAdmin       whether the user is an admin.
-   * @param channelScope  when set ('web'), the in-memory conversation is cached
-   *                      under `web:<userSlug>` so it is isolated from the
-   *                      shared `<userSlug>` conversation Slack/Telegram use.
-   *                      Undefined preserves existing shared-key behavior.
+   * @param userSlug        the user's slug — used for tool resolution and usage caps.
+   * @param isAdmin         whether the user is an admin.
+   * @param channelScope    when set ('web'), isolates from Slack/Telegram.
+   * @param conversationId  WebUI multi-chat: further isolates per conversation.
    */
-  getOrCreateAgent: (userSlug: string, isAdmin: boolean, channelScope?: AgentChannelScope) => Agent;
+  getOrCreateAgent: (
+    userSlug: string,
+    isAdmin: boolean,
+    channelScope?: AgentChannelScope,
+    conversationId?: string,
+  ) => Agent;
   /**
    * Drop the cached agent for a user (e.g. /clear).
-   * `channelScope` must match the value used at getOrCreateAgent time.
+   * Args must match the values used at getOrCreateAgent time.
    */
-  clearAgentContext: (userSlug: string, channelScope?: AgentChannelScope) => boolean;
+  clearAgentContext: (
+    userSlug: string,
+    channelScope?: AgentChannelScope,
+    conversationId?: string,
+  ) => boolean;
   /** The combined skill catalog (framework + domain skills). */
   readonly allSkills: Skill[];
   /** The registered domain extension (purpose, hooks, extra skills/tools). */
@@ -212,13 +235,26 @@ export function createFramework(opts: FrameworkOptions): Framework {
     return [...framework, ...domain];
   }
 
-  const getOrCreateAgent = (userSlug: string, isAdmin: boolean, channelScope?: AgentChannelScope) => {
-    const cacheKey = channelScope ? `${channelScope}:${userSlug}` : userSlug;
-    return baseGetOrCreateAgent(cacheKey, userSlug, isAdmin, { systemPrompt, tools: allTools, enforceCaps: !isAdmin });
+  const getOrCreateAgent = (
+    userSlug: string,
+    isAdmin: boolean,
+    channelScope?: AgentChannelScope,
+    conversationId?: string,
+  ) => {
+    const cacheKey = agentCacheKey(userSlug, channelScope, conversationId);
+    return baseGetOrCreateAgent(cacheKey, userSlug, isAdmin, {
+      systemPrompt,
+      tools: allTools,
+      enforceCaps: !isAdmin,
+    });
   };
 
-  const clearAgentContext = (userSlug: string, channelScope?: AgentChannelScope) => {
-    const cacheKey = channelScope ? `${channelScope}:${userSlug}` : userSlug;
+  const clearAgentContext = (
+    userSlug: string,
+    channelScope?: AgentChannelScope,
+    conversationId?: string,
+  ) => {
+    const cacheKey = agentCacheKey(userSlug, channelScope, conversationId);
     return baseClearAgentContext(cacheKey);
   };
 

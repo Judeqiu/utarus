@@ -215,12 +215,21 @@ export function ensureChannelUser(params: {
 
 **What this enables that wasn't possible before:** a person with no Telegram/Slack account can fully onboard through the web. They get the same agent, same portfolio tools, same BinDrive. Their `auth_token` works as their login forever; if they later install Slack, an admin can run a `/link` command (future work) to add their slack_user_id to the same YAML.
 
-### 4.5 What is *not* persisted
+### 4.5 Persisted conversations (shipped)
 
-The agent's conversation context lives in `pi-agent-core`'s in-memory `Agent` state. When the agent is evicted (24h TTL or `/clear`), the conversation is gone.
+WebUI multi-chat is server-persisted under `data/chats/<slug>/`:
 
-- **Phase 1:** no history persistence. Refreshing the page starts a fresh view of the live agent state; past turns are gone after `/clear` or eviction. Acceptable for a v1 because the agent already re-reads `data/users/<slug>.yaml` on every turn — domain state survives, only the chit-chat is lost.
-- **Phase 2:** append-only `data/chat_history/<slug>.jsonl` written by the chat router. Out of scope here.
+```
+data/chats/<slug>/
+  index.json                 # ConversationSummary[] (newest first)
+  <conversationId>.json      # full Conversation + messages[]
+```
+
+- Each conversation has its own agent cache key: `web:<slug>:<conversationId>`.
+- On refresh, the SPA reloads the list and the active conversation (remembered in `localStorage`).
+- `/clear` clears messages in the **current** conversation (keeps the list entry).
+- Delete removes the conversation file + index entry + agent cache.
+- Domain YAML (`data/users/<slug>.yaml`) is unchanged — only chat transcripts live under `chats/`.
 
 ## 5. Architecture
 

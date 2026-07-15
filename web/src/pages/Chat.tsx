@@ -1,12 +1,8 @@
 /**
- * Chat — the main chat page.
+ * Chat — main page with Claude-style conversation list + thread.
  *
- * Owns:
- *   - the message list (local React state, fresh per page load per Phase-1
- *     design §4.5)
- *   - the SSE subscription (subscribeStream from api.ts)
- *   - the send/abort/clear flow
- *   - a 1-second ticker to keep active tool-chip durations live
+ * Conversations are server-persisted (data/chats/<slug>/). Refresh reloads
+ * the list and the active conversation's messages.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -14,6 +10,10 @@ import {
   abortRun,
   changePassword,
   clearContext,
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversations,
   sendMessage,
   subscribeStream,
 } from '../api.js';
@@ -23,23 +23,51 @@ import type {
   AssetRef,
   ChatEvent,
   ChatMessage,
+  ConversationSummary,
   SessionUser,
   ToolChip,
 } from '../types.js';
 import { ThreadView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
+import { ConversationSidebar } from '../components/ConversationSidebar.js';
 import { KeyRound, LogOut, Settings, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
   session: SessionUser;
 }
 
+const ACTIVE_CONV_KEY = 'utarus_active_conversation';
+
 function newLocalId(): string {
   return crypto.randomUUID();
 }
 
+function storedMessagesToUi(
+  messages: Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    text: string;
+    stopReason?: string;
+    error?: string;
+  }>,
+): ChatMessage[] {
+  return messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    text: m.text,
+    stopReason: m.stopReason,
+    error: m.error,
+    pending: false,
+  }));
+}
+
 export function ChatPage({ session }: ChatPageProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(
+    () => localStorage.getItem(ACTIVE_CONV_KEY),
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [banner, setBanner] = useState<string | null>(null);
@@ -47,160 +75,194 @@ export function ChatPage({ session }: ChatPageProps) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [agentName, setAgentName] = useState('Agent');
   const [version, setVersion] = useState<string | null>(null);
+  const [bootLoading, setBootLoading] = useState(true);
   const currentRunController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | null>(null);
   const toolMap = useRef<Map<string, ToolChip>>(new Map());
+  const activeConvRef = useRef<string | null>(activeConversationId);
 
-  // 1-second ticker so active tool-chip durations tick.
+  useEffect(() => {
+    activeConvRef.current = activeConversationId;
+    if (activeConversationId) {
+      localStorage.setItem(ACTIVE_CONV_KEY, activeConversationId);
+    } else {
+      localStorage.removeItem(ACTIVE_CONV_KEY);
+    }
+  }, [activeConversationId]);
+
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
-  // On mount, fetch agent status — if a run is already live (page refresh
-  // mid-run), tell the user to refresh or wait.
+  const refreshList = useCallback(async () => {
+    const list = await listConversations();
+    setConversations(list);
+    return list;
+  }, []);
+
+  const loadConversation = useCallback(async (id: string) => {
+    const conv = await getConversation(id);
+    setActiveConversationId(conv.id);
+    setMessages(storedMessagesToUi(conv.messages));
+    toolMap.current.clear();
+  }, []);
+
+  // Boot: agent status + conversation list + restore active chat
   useEffect(() => {
     let cancelled = false;
-    fetchAgentStatus()
-      .then((status: AgentStatus) => {
+    (async () => {
+      try {
+        const status: AgentStatus = await fetchAgentStatus();
         if (cancelled) return;
         if (status.agentName) setAgentName(status.agentName);
         if (status.version) setVersion(status.version);
         if (status.isStreaming) {
           setBanner(
-            `An agent run is already in progress for "${status.displayName}". It started before this page loaded — its output won't appear here. Wait for it to finish, then resend.`,
+            `An agent run is already in progress. Wait for it to finish, then continue.`,
           );
         }
-      })
-      .catch((err: unknown) => {
+
+        const list = await listConversations();
         if (cancelled) return;
-        // 401 → parent will redirect to login. Other errors surface as banner.
+        setConversations(list);
+
+        const preferred = activeConversationId;
+        if (preferred && list.some((c) => c.id === preferred)) {
+          await loadConversation(preferred);
+        } else if (list.length > 0) {
+          await loadConversation(list[0].id);
+        } else {
+          setActiveConversationId(null);
+          setMessages([]);
+        }
+      } catch (err: unknown) {
+        if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.toLowerCase().includes('unauthorized')) {
-          setBanner(`Agent status check failed: ${msg}`);
+          setBanner(`Failed to load chats: ${msg}`);
         }
-      });
+      } finally {
+        if (!cancelled) setBootLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
   }, []);
 
-  const handleEvent = useCallback(
-    (assistantId: string, ev: ChatEvent) => {
-      switch (ev.type) {
-        case 'ack':
-          // The server confirmed the run started; nothing to mutate yet
-          // because the user-side optimistic message already has the
-          // messageId attached via the run outcome.
-          break;
-        case 'tool_start': {
-          const chip: ToolChip = {
-            toolCallId: ev.toolCallId,
-            name: ev.name,
-            startedAt: ev.startedAt,
-          };
-          toolMap.current.set(ev.toolCallId, chip);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, tools: uniqTools([...(m.tools ?? []), chip]) }
-                : m,
-            ),
-          );
-          break;
-        }
-        case 'tool_end': {
-          const prev = toolMap.current.get(ev.toolCallId);
-          if (!prev) break;
-          const updated: ToolChip = {
-            ...prev,
-            endedAt: true,
-            ok: ev.ok,
-            durationMs: ev.durationMs,
-          };
-          toolMap.current.set(ev.toolCallId, updated);
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    tools: (m.tools ?? []).map((t) =>
-                      t.toolCallId === ev.toolCallId ? updated : t,
-                    ),
-                  }
-                : m,
-            ),
-          );
-          break;
-        }
-        case 'delta': {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, text: ev.cumulative, pending: false }
-                : m,
-            ),
-          );
-          break;
-        }
-        case 'heartbeat':
-          // could surface elapsedMs; we tick the chip durations locally.
-          break;
-        case 'done': {
-          const assets: AssetRef[] = ev.assets;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    text: ev.text,
-                    assets,
-                    stopReason: ev.stopReason,
-                    pending: false,
-                  }
-                : m,
-            ),
-          );
-          finalize();
-          break;
-        }
-        case 'error': {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    error: `${ev.message} (phase: ${ev.phase})`,
-                    pending: false,
-                  }
-                : m,
-            ),
-          );
-          finalize();
-          break;
-        }
-        case 'cap': {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    error: `${ev.message} (used ${ev.current}/${ev.cap})`,
-                    pending: false,
-                  }
-                : m,
-            ),
-          );
-          finalize();
-          break;
-        }
-        case 'end':
-          finalize();
-          break;
+  const handleEvent = useCallback((assistantId: string, ev: ChatEvent) => {
+    switch (ev.type) {
+      case 'ack':
+        break;
+      case 'tool_start': {
+        const chip: ToolChip = {
+          toolCallId: ev.toolCallId,
+          name: ev.name,
+          startedAt: ev.startedAt,
+        };
+        toolMap.current.set(ev.toolCallId, chip);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, tools: uniqTools([...(m.tools ?? []), chip]) }
+              : m,
+          ),
+        );
+        break;
       }
-    },
-    [],
-  );
+      case 'tool_end': {
+        const prev = toolMap.current.get(ev.toolCallId);
+        if (!prev) break;
+        const updated: ToolChip = {
+          ...prev,
+          endedAt: true,
+          ok: ev.ok,
+          durationMs: ev.durationMs,
+        };
+        toolMap.current.set(ev.toolCallId, updated);
+        setMessages((prevMsgs) =>
+          prevMsgs.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  tools: (m.tools ?? []).map((t) =>
+                    t.toolCallId === ev.toolCallId ? updated : t,
+                  ),
+                }
+              : m,
+          ),
+        );
+        break;
+      }
+      case 'delta': {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, text: ev.cumulative, pending: false }
+              : m,
+          ),
+        );
+        break;
+      }
+      case 'heartbeat':
+        break;
+      case 'done': {
+        const assets: AssetRef[] = ev.assets;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  text: ev.text,
+                  assets,
+                  stopReason: ev.stopReason,
+                  pending: false,
+                }
+              : m,
+          ),
+        );
+        void refreshList();
+        finalize();
+        break;
+      }
+      case 'error': {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  error: `${ev.message} (phase: ${ev.phase})`,
+                  pending: false,
+                }
+              : m,
+          ),
+        );
+        void refreshList();
+        finalize();
+        break;
+      }
+      case 'cap': {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  error: `${ev.message} (used ${ev.current}/${ev.cap})`,
+                  pending: false,
+                }
+              : m,
+          ),
+        );
+        finalize();
+        break;
+      }
+      case 'end':
+        finalize();
+        break;
+    }
+  }, [refreshList]);
 
   function finalize() {
     setIsStreaming(false);
@@ -226,7 +288,10 @@ export function ChatPage({ session }: ChatPageProps) {
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
     try {
-      const outcome = await sendMessage(text, opts);
+      const outcome = await sendMessage(text, {
+        queue: opts.queue,
+        conversationId: activeConversationId ?? undefined,
+      });
       if (outcome.kind === 'reply') {
         setMessages((prev) =>
           prev.map((m) =>
@@ -238,30 +303,56 @@ export function ChatPage({ session }: ChatPageProps) {
         return;
       }
       if (outcome.kind === 'queued') {
+        if (outcome.conversationId) {
+          setActiveConversationId(outcome.conversationId);
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsg.id
-              ? { ...m, text: '_(queued — will be picked up after the current run)_', pending: false }
+              ? {
+                  ...m,
+                  text: '_(queued — will be picked up after the current run)_',
+                  pending: false,
+                }
               : m,
           ),
         );
+        void refreshList();
         return;
       }
       // kind === 'run'
+      if (outcome.conversationId) {
+        setActiveConversationId(outcome.conversationId);
+      }
+      if (outcome.userMessageId) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === userMsg.id ? { ...m, id: outcome.userMessageId! } : m,
+          ),
+        );
+      }
       const serverMessageId = outcome.messageId;
       activeMessageId.current = serverMessageId;
       setIsStreaming(true);
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantMsg.id ? { ...m, messageId: serverMessageId } : m,
+          m.id === assistantMsg.id
+            ? {
+                ...m,
+                id: outcome.assistantMessageId ?? m.id,
+                messageId: serverMessageId,
+              }
+            : m,
         ),
       );
+      void refreshList();
       const controller = subscribeStream(serverMessageId, undefined, {
-        onEvent: (ev) => handleEvent(assistantMsg.id, ev),
+        onEvent: (ev) =>
+          handleEvent(outcome.assistantMessageId ?? assistantMsg.id, ev),
         onError: (err) => {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantMsg.id
+              m.id === (outcome.assistantMessageId ?? assistantMsg.id)
                 ? { ...m, error: `Connection error: ${err.message}`, pending: false }
                 : m,
             ),
@@ -269,14 +360,14 @@ export function ChatPage({ session }: ChatPageProps) {
           finalize();
         },
         onClose: () => {
-          // Stream closed — if still streaming, surface a disconnection.
           if (activeMessageId.current === serverMessageId) {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantMsg.id && m.pending
+                m.id === (outcome.assistantMessageId ?? assistantMsg.id) && m.pending
                   ? {
                       ...m,
-                      error: 'Stream closed before completion. Your last message may have been interrupted — please resend.',
+                      error:
+                        'Stream closed before completion. Your last message may have been interrupted — please resend.',
                       pending: false,
                     }
                   : m,
@@ -302,7 +393,7 @@ export function ChatPage({ session }: ChatPageProps) {
 
   async function handleAbort() {
     try {
-      await abortRun();
+      await abortRun(activeConversationId ?? undefined);
     } catch (err: unknown) {
       setBanner(`Abort failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -310,13 +401,71 @@ export function ChatPage({ session }: ChatPageProps) {
   }
 
   async function handleClear() {
+    if (!activeConversationId) {
+      setMessages([]);
+      return;
+    }
     try {
-      await clearContext();
+      await clearContext(activeConversationId);
       setMessages([]);
       toolMap.current.clear();
+      void refreshList();
     } catch (err: unknown) {
       setBanner(`Clear failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  async function handleNewChat() {
+    if (isStreaming) return;
+    try {
+      const conv = await createConversation();
+      setActiveConversationId(conv.id);
+      setMessages([]);
+      toolMap.current.clear();
+      await refreshList();
+    } catch (err: unknown) {
+      setBanner(`New chat failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function handleSelectChat(id: string) {
+    if (isStreaming) {
+      setBanner('Wait for the current reply to finish before switching chats.');
+      return;
+    }
+    if (id === activeConversationId) return;
+    try {
+      await loadConversation(id);
+    } catch (err: unknown) {
+      setBanner(`Load chat failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  async function handleDeleteChat(id: string) {
+    if (isStreaming) return;
+    if (!window.confirm('Delete this chat permanently?')) return;
+    try {
+      await deleteConversation(id);
+      const list = await refreshList();
+      if (activeConversationId === id) {
+        if (list.length > 0) {
+          await loadConversation(list[0].id);
+        } else {
+          setActiveConversationId(null);
+          setMessages([]);
+        }
+      }
+    } catch (err: unknown) {
+      setBanner(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  if (bootLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
+        Loading chats…
+      </div>
+    );
   }
 
   return (
@@ -332,12 +481,7 @@ export function ChatPage({ session }: ChatPageProps) {
             </div>
             <div className="text-[11px] text-slate-500">
               slug: <code className="rounded bg-slate-100 px-1 py-0.5">{session.slug}</code>
-              {version && (
-                <>
-                  {' '}
-                  · v{version}
-                </>
-              )}
+              {version && <> · v{version}</>}
             </div>
           </div>
         </div>
@@ -391,21 +535,36 @@ export function ChatPage({ session }: ChatPageProps) {
         </div>
       )}
 
-      <ThreadView
-        messages={messages}
-        viewerSlug={session.slug}
-        now={now}
-        agentName={agentName}
-      />
+      <div className="flex min-h-0 flex-1">
+        <ConversationSidebar
+          conversations={conversations}
+          activeId={activeConversationId}
+          collapsed={sidebarCollapsed}
+          busy={isStreaming}
+          onSelect={(id) => void handleSelectChat(id)}
+          onNew={() => void handleNewChat()}
+          onDelete={(id) => void handleDeleteChat(id)}
+          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+        />
 
-      <Composer
-        isStreaming={isStreaming}
-        agentName={agentName}
-        onSend={handleSend}
-        onAbort={handleAbort}
-        onClear={handleClear}
-        onHelp={() => setShowHelp(true)}
-      />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ThreadView
+            messages={messages}
+            viewerSlug={session.slug}
+            now={now}
+            agentName={agentName}
+          />
+
+          <Composer
+            isStreaming={isStreaming}
+            agentName={agentName}
+            onSend={handleSend}
+            onAbort={handleAbort}
+            onClear={handleClear}
+            onHelp={() => setShowHelp(true)}
+          />
+        </div>
+      </div>
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 
@@ -439,14 +598,18 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         </div>
         <ul className="space-y-2 text-sm text-slate-700">
           <li>
-            <code className="rounded bg-slate-100 px-1 py-0.5">/clear</code> — reset the agent's
-            conversation context (your portfolio/playbook are not affected).
+            <strong>New</strong> — start a separate conversation (sidebar).
           </li>
           <li>
-            <code className="rounded bg-slate-100 px-1 py-0.5">/help</code> — show this message.
+            <code className="rounded bg-slate-100 px-1 py-0.5">/clear</code> — clear
+            messages in the current chat (keeps the chat in the list).
+          </li>
+          <li>
+            <code className="rounded bg-slate-100 px-1 py-0.5">/help</code> — show this
+            message.
           </li>
           <li className="text-xs text-slate-500">
-            Standard markdown is supported in replies: tables, code blocks, lists, images.
+            Chats are saved on the server. Refresh keeps history.
           </li>
         </ul>
       </div>

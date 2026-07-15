@@ -5,19 +5,39 @@
  * Spec: docs/webui-chat-design.md §6, §7.
  */
 
-import type { AssetRef, ChatEvent, InviteCode, AdminUserSummary } from './types.js';
+import type {
+  AssetRef,
+  ChatEvent,
+  InviteCode,
+  AdminUserSummary,
+  ConversationSummary,
+  ConversationDetail,
+} from './types.js';
 
 export type SendOutcome =
-  | { kind: 'run'; messageId: string }
-  | { kind: 'queued' }
+  | {
+      kind: 'run';
+      messageId: string;
+      conversationId: string;
+      userMessageId?: string;
+      assistantMessageId?: string;
+    }
+  | { kind: 'queued'; conversationId?: string }
   | { kind: 'reply'; text: string };
 
-export async function sendMessage(text: string, opts?: { queue?: boolean }): Promise<SendOutcome> {
+export async function sendMessage(
+  text: string,
+  opts?: { queue?: boolean; conversationId?: string },
+): Promise<SendOutcome> {
   const res = await fetch('/api/chat/messages', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, queue: opts?.queue === true }),
+    body: JSON.stringify({
+      text,
+      queue: opts?.queue === true,
+      conversationId: opts?.conversationId,
+    }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
@@ -26,23 +46,95 @@ export async function sendMessage(text: string, opts?: { queue?: boolean }): Pro
   return (await res.json()) as SendOutcome;
 }
 
-export async function clearContext(): Promise<void> {
+export async function clearContext(conversationId: string): Promise<void> {
   const res = await fetch('/api/chat/clear', {
     method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId }),
   });
   if (!res.ok) {
     throw new Error(`Clear failed: HTTP ${res.status}`);
   }
 }
 
-export async function abortRun(): Promise<void> {
+export async function abortRun(conversationId?: string): Promise<void> {
   const res = await fetch('/api/chat/abort', {
     method: 'POST',
     credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId }),
   });
   if (!res.ok && res.status !== 409) {
     throw new Error(`Abort failed: HTTP ${res.status}`);
+  }
+}
+
+// ── Conversations ────────────────────────────────────────────────────
+
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const res = await fetch('/api/chat/conversations', {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `HTTP ${res.status}`);
+  }
+  return (body.conversations ?? []) as ConversationSummary[];
+}
+
+export async function createConversation(title?: string): Promise<ConversationDetail> {
+  const res = await fetch('/api/chat/conversations', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(title ? { title } : {}),
+  });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `HTTP ${res.status}`);
+  }
+  return body as ConversationDetail;
+}
+
+export async function getConversation(id: string): Promise<ConversationDetail> {
+  const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `HTTP ${res.status}`);
+  }
+  return body as ConversationDetail;
+}
+
+export async function renameConversation(
+  id: string,
+  title: string,
+): Promise<ConversationDetail> {
+  const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) {
+    throw new Error(body.error || body.message || `HTTP ${res.status}`);
+  }
+  return body as ConversationDetail;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || body.message || `HTTP ${res.status}`);
   }
 }
 
