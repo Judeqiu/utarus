@@ -1,13 +1,11 @@
-# Prefer package.json "files" allowlist; this file exists so npm does NOT
-# fall back to .gitignore (which would drop web/dist and other built assets).
+# Present so npm does NOT fall back to .gitignore (which drops web/dist).
+# Inclusion is driven by package.json "files"; only list extra denials here.
 node_modules/
 web/node_modules/
-src/
+web/.vite/
 tests/
-docs/
 .env
 data/
 *.log
 .DS_Store
 *.tsbuildinfo
-web/.vite/
