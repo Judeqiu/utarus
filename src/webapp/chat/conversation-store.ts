@@ -166,7 +166,19 @@ function removeIndexEntry(slug: string, id: string): void {
 /** List conversations for a user (newest first). */
 export function listConversations(slug: string): ConversationSummary[] {
   ensureUserDir(slug);
-  return loadIndex(slug).conversations;
+  return loadIndex(slug).conversations.map((s) => {
+    if (!s.title.startsWith('[') && !s.preview.startsWith('[')) return s;
+    try {
+      const client = getConversationForClient(slug, s.id);
+      return {
+        ...s,
+        title: client.title,
+        preview: previewFromMessages(client.messages),
+      };
+    } catch {
+      return s;
+    }
+  });
 }
 
 /** Create an empty conversation. */
@@ -212,14 +224,17 @@ export function getConversation(slug: string, id: string): Conversation {
  */
 export function getConversationForClient(slug: string, id: string): Conversation {
   const c = getConversation(slug, id);
-  return {
-    ...c,
-    messages: c.messages.map((m) =>
-      m.role === 'user'
-        ? { ...m, text: stripAgentContextPrefix(m.text) }
-        : m,
-    ),
-  };
+  const messages = c.messages.map((m) =>
+    m.role === 'user'
+      ? { ...m, text: stripAgentContextPrefix(m.text) }
+      : m,
+  );
+  let title = c.title;
+  if (title.startsWith('[')) {
+    const firstUser = messages.find((m) => m.role === 'user');
+    if (firstUser?.text) title = titleFromText(firstUser.text);
+  }
+  return { ...c, title, messages };
 }
 
 /** Rename a conversation. */
