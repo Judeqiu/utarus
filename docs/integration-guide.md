@@ -593,11 +593,51 @@ export function buildInvageApp(framework) {
 }
 ```
 
-**Auth model:** sessions are cookie-based (`bindrive_session`), backed by an in-memory session map. Login is by `auth_token` (existing user) or invite redeem (new user). See `src/webapp/auth.ts`.
+**Auth model:** sessions are cookie-based (`bindrive_session`), backed by an in-memory session map. Three login surfaces share the same session store:
+
+1. **Username + password (default for new users).** `POST /api/onboard/login` accepts `{identifier, password}` where identifier is the user slug OR `profile.contact_email` (case-insensitive). Resolves via `authenticateUser` → bcrypt verify against `user.password_hash`. Returns `{type, slug, displayName}` and sets the session cookie.
+2. **Auth token (legacy / secondary).** Same endpoint accepts `{auth_token}` and resolves via `resolveByToken`. Still works for users who haven't been backfilled or who prefer token auth.
+3. **Invite redeem (new users).** `POST /api/onboard/redeem` accepts `{display_name, code}` and onboards via `redeemInviteInstantly`. The response now includes `preset_password` (plaintext, one-shot) — surface it on the redeem-confirmation screen so the user can write it down.
 
 The web channel uses **channel-scoped agent cache keys**: Slack/Telegram use `<slug>`, web uses `web:<slug>`. This means a user can have two parallel conversations (one on Slack, one in the browser) without them interfering.
 
 > **Note (2026-07-15):** the WebUI chat layer currently lives in each domain app (`invage/src/webapp/`). It's a candidate for upstreaming to `utarus/src/webui/` once a second domain app needs it. See `docs/architecture.md` in the invage repo for the upstream plan.
+
+---
+
+### 7.1 Authentication surfaces (reference)
+
+Utarus exports the password primitives so domain agents don't reimplement them.
+
+```ts
+import {
+  hashPassword,           // (plain: string) => Promise<string>   bcrypt cost 10
+  verifyPassword,         // (plain, hash) => Promise<boolean>
+  generateMemorablePassword,  // () => string   "river-stone-cloud" form
+  authenticateUser,       // (identifier, password) => Promise<AuthUser | null>
+} from 'utarus';
+```
+
+**`UserIdentity.password_hash?`** — optional bcrypt hash. A user without this field cannot authenticate via username+password (no fallback path — fail fast with 401). Populate via:
+
+- `ensureChannelUser({ ..., presetPassword? })` — at profile creation. When `presetPassword` is omitted, a memorable one is generated. The plaintext is returned in `InstantRedeemResult.presetPassword` (one-shot).
+- `scripts/backfill-passwords.mjs <data-root>` — one-shot CLI for existing users. Prints `<slug>\t<email>\t<preset>` to stdout; admin pipes to a file, distributes out-of-band, then shreds the file.
+- A domain `POST /api/profile/password` endpoint (auth-gated) for users to set their own. Pattern: `state.user.password_hash = await hashPassword(newPassword); saveState(state)`.
+
+**Dual login endpoint contract** (recommended for domain agents):
+
+```
+POST /api/onboard/login
+Body (either):
+  { auth_token: string }                // legacy token path
+  { identifier: string, password: string }  // username (slug OR email) + password
+Response:
+  { type: 'user' | 'admin', slug, displayName }   + Set-Cookie: bindrive_session
+```
+
+Dispatch: if `auth_token` present → `resolveByToken`. Else if both `identifier` and `password` → `authenticateUser`. Else 400 with a clear "either X or Y required" message. Never fall through from one method to the other.
+
+**Never expose `password_hash` over the wire.** Any `GET /users/:slug` endpoint (e.g. for an admin console) must strip both `auth_token` AND `password_hash` before serializing — they're secrets, not data.
 
 ---
 

@@ -20,6 +20,10 @@ export interface UserIdentity {
   slack_user_ids?: string[];
   /** Auth token for any external portal/API the user needs to reach. */
   auth_token?: string;
+  /** bcrypt hash of the user's web-login password (cost 10). Optional —
+   *  legacy users backfilled via scripts/backfill-passwords.mjs. A user
+   *  without this field cannot authenticate via username+password. */
+  password_hash?: string;
 }
 
 /**

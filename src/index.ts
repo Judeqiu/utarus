@@ -40,6 +40,7 @@ export {
   publicBinDriveOrigin,
   createSession,
   resolveByToken,
+  authenticateUser,
   DEFAULT_LINK_TOKEN_TTL_MS,
   MAX_LINK_TOKEN_TTL_MS,
   MIN_LINK_TOKEN_TTL_MS,
@@ -47,6 +48,11 @@ export {
   requireAdmin,
   targetSlug,
 } from './webapp/auth.js';
+export {
+  hashPassword,
+  verifyPassword,
+  generateMemorablePassword,
+} from './auth/password.js';
 export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/auth.js';
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
 export {

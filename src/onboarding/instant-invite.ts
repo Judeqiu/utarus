@@ -17,6 +17,7 @@ import {
   resolveUserByTelegramUser,
   type UserState,
 } from '../state/index.js';
+import { hashPassword, generateMemorablePassword } from '../auth/password.js';
 
 export interface InstantRedeemParams {
   code: string;
@@ -32,6 +33,14 @@ export interface InstantRedeemResult {
   displayName: string;
   authToken: string;
   state: UserState;
+  /**
+   * Plaintext preset password — populated ONLY when a new profile was created
+   * this call (and therefore a new password was generated). Empty string when
+   * the call returned an existing profile (slack/telegram early-return paths).
+   * Callers that surface the password to the user (web redeem flow) MUST treat
+   * this as one-shot: it is never recoverable from the stored hash.
+   */
+  presetPassword: string;
 }
 
 function slugBaseFromDisplayName(displayName: string, channelHint: string): string {
@@ -76,7 +85,7 @@ export type EnsureChannelUserSource = 'invite' | 'demo';
  *
  * Same profile shape as invite redeem — used by invite + demo mode + web.
  */
-export function ensureChannelUser(params: {
+export async function ensureChannelUser(params: {
   displayName: string;
   slackUserId?: string;
   telegramUserId?: number;
@@ -91,7 +100,13 @@ export function ensureChannelUser(params: {
    * should pass it through here.
    */
   contactEmail?: string;
-}): InstantRedeemResult {
+  /**
+   * Optional plaintext preset password. When omitted, a memorable one is
+   * generated. The hash is stored on user.password_hash; the plaintext is
+   * returned in the result so the caller can surface it to the user once.
+   */
+  presetPassword?: string;
+}): Promise<InstantRedeemResult> {
   const hasChannelId = !!params.slackUserId || params.telegramUserId != null;
   if (!hasChannelId && !params.web) {
     throw new Error('ensureChannelUser requires slackUserId, telegramUserId, or web: true');
@@ -111,6 +126,7 @@ export function ensureChannelUser(params: {
         displayName: existing.profile.display_name,
         authToken: token,
         state: existing,
+        presetPassword: '',
       };
     }
   }
@@ -124,6 +140,7 @@ export function ensureChannelUser(params: {
         displayName: existing.profile.display_name,
         authToken: token,
         state: existing,
+        presetPassword: '',
       };
     }
   }
@@ -150,6 +167,14 @@ export function ensureChannelUser(params: {
   if (params.slackUserId) {
     state.user.slack_user_ids = [params.slackUserId];
   }
+
+  // Generate (or accept) a preset password and store the hash. The plaintext
+  // is returned so callers (web redeem) can show it once. bcrypt hash is async.
+  const plainPassword = params.presetPassword && params.presetPassword.length >= 6
+    ? params.presetPassword
+    : generateMemorablePassword();
+  state.user.password_hash = await hashPassword(plainPassword);
+
   state.log.push({
     ts: new Date().toISOString().slice(0, 10),
     action: params.source === 'demo' ? 'demo_auto_created' : 'invite_redeemed',
@@ -167,17 +192,17 @@ export function ensureChannelUser(params: {
     throw new Error(`User "${slug}" created without auth_token`);
   }
 
-  return { slug, displayName, authToken, state };
+  return { slug, displayName, authToken, state, presetPassword: plainPassword };
 }
 
 /**
  * Create the user profile and mark the invite used. Fail fast on any error.
  */
-export function redeemInviteInstantly(params: InstantRedeemParams): InstantRedeemResult {
+export async function redeemInviteInstantly(params: InstantRedeemParams): Promise<InstantRedeemResult> {
   const code = params.code.trim().toUpperCase();
   validateInviteCode(code);
 
-  const result = ensureChannelUser({
+  const result = await ensureChannelUser({
     displayName: params.displayName,
     slackUserId: params.slackUserId,
     telegramUserId: params.telegramUserId,

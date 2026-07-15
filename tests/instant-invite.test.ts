@@ -38,18 +38,21 @@ describe('framework instant invite (all agents)', () => {
     rmSync(dataRoot, { recursive: true, force: true });
   });
 
-  it('redeems invite with display name and marks used', () => {
-    const result = redeemInviteInstantly({
+  it('redeems invite with display name and marks used', async () => {
+    const result = await redeemInviteInstantly({
       code: 'INV-91B6F805',
       displayName: 'CY',
       slackUserId: 'U_CY',
     });
     expect(result.slug).toBe('cy');
     expect(result.displayName).toBe('CY');
+    expect(typeof result.presetPassword).toBe('string');
+    expect(result.presetPassword.length).toBeGreaterThan(0);
 
     const user = resolveUserBySlackUser('U_CY');
     expect(user?.profile.display_name).toBe('CY');
     expect(user?.user.slack_user_ids).toContain('U_CY');
+    expect(user?.user.password_hash).toBeTruthy();
 
     expect(() => validateInviteCode('INV-91B6F805')).toThrow(/already been used/i);
 

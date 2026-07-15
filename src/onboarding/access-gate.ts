@@ -137,7 +137,7 @@ export async function resolveInboundMessage(params: {
       const code = inviteMatch[1].toUpperCase();
       try {
         const displayName = await resolveDisplayName(params);
-        const redeemed = redeemInviteInstantly({
+        const redeemed = await redeemInviteInstantly({
           code,
           displayName,
           slackUserId: params.slackUserId,
@@ -161,7 +161,7 @@ export async function resolveInboundMessage(params: {
     } else if (isDemoModeEnabled()) {
       try {
         const displayName = await resolveDisplayName(params);
-        const created = ensureChannelUser({
+        const created = await ensureChannelUser({
           displayName,
           slackUserId: params.slackUserId,
           telegramUserId: params.telegramUserId,

@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, join } from 'path';
 import { config, resolveDataRoot } from '../config.js';
 import { listUserSlugs, loadState, type UserState } from '../state/index.js';
+import { verifyPassword } from '../auth/password.js';
 import type { Request, Response, NextFunction } from 'express';
 
 export interface AuthUser {
@@ -413,6 +414,54 @@ export function authenticateAdmin(username: string, password: string): AuthUser 
   const expected = config.webapp.adminCredentials[username];
   if (expected !== undefined && password === expected) {
     return { type: 'admin', slug: 'admin', displayName: username };
+  }
+  return null;
+}
+
+/**
+ * Authenticate a domain user by username + password.
+ *
+ * `identifier` may be EITHER the user slug OR the profile contact_email.
+ * Comparison is case-insensitive. The password is verified against
+ * `user.password_hash` using bcrypt (cost 10).
+ *
+ * Returns null when:
+ *   - the identifier is empty
+ *   - no user matches the identifier
+ *   - the matched user has no password_hash (legacy / not yet backfilled)
+ *   - bcrypt compare fails
+ *
+ * Per project rules: no fallback path. A user without password_hash cannot
+ * authenticate this way — they must use auth_token until backfilled.
+ */
+export async function authenticateUser(
+  identifier: string,
+  password: string,
+): Promise<AuthUser | null> {
+  const id = identifier.trim().toLowerCase();
+  if (!id) return null;
+
+  for (const slug of listUserSlugs()) {
+    let state: UserState;
+    try {
+      state = loadState(slug);
+    } catch {
+      continue; // skip broken state files
+    }
+    const matchesSlug = state.user.slug.toLowerCase() === id;
+    const matchesEmail = (state.profile.contact_email ?? '').toLowerCase() === id;
+    if (!matchesSlug && !matchesEmail) continue;
+
+    if (!state.user.password_hash) return null; // legacy user — cannot authenticate this way
+
+    const ok = await verifyPassword(password, state.user.password_hash);
+    if (!ok) return null; // identifier matched, password wrong
+    return {
+      type: 'user',
+      slug: state.user.slug,
+      displayName: state.profile.display_name,
+      userId: state.user.id,
+    };
   }
   return null;
 }
