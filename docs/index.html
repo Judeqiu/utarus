@@ -212,7 +212,7 @@
 
 <div class="hero">
   <h1>Utarus</h1>
-  <p class="tagline">A small TypeScript framework for building LLM agents that have per-user state, admin-controlled onboarding, and tool-enforced rules.</p>
+  <p class="tagline">A small TypeScript framework for building LLM agents that have per-user state, admin-controlled onboarding, WebUI multi-chat, and tool-enforced rules.</p>
   <p class="meta">
     <span class="badge green">TypeScript</span>
     <span class="badge purple">pi-agent-core</span>
@@ -230,6 +230,7 @@
     <li><a href="#tools">Tools</a></li>
     <li><a href="#skills">Skills</a></li>
     <li><a href="#extensions">Extending</a></li>
+    <li><a href="#docs">Domain agent docs</a></li>
     <li><a href="#ops">Operations</a></li>
     <li><a href="#dependencies">Dependencies</a></li>
   </ul>
@@ -271,7 +272,7 @@
   </div>
 
   <div class="callout">
-    <strong>What it isn't:</strong> a vector store, a RAG framework, a multi-agent orchestrator, a chat UI, or a LangChain competitor. It's a small skeleton for stateful, tool-using agents with onboarding. If you need more, you add it — the framework doesn't ship it.
+    <strong>What it isn't:</strong> a vector store, a RAG framework, a multi-agent orchestrator, or a LangChain competitor. It <em>does</em> ship a first-class WebUI multi-chat + BinDrive. It's a small skeleton for stateful, tool-using agents with onboarding and browser access.
   </div>
 </section>
 
@@ -560,6 +561,38 @@ export function createPhaseTools(): AgentTool[] {
 
   <h3>Recipe 4: Database instead of YAML</h3>
   <p>Replace <code>src/state/state-file.ts</code> with a SQL/DocDB-backed implementation. The interface is the contract: <code>loadState</code>, <code>saveState</code>, <code>listUserSlugs</code>, <code>stateExists</code>, <code>blankState</code>, plus the invite/admin functions. Keep the same signatures and the rest of the framework doesn't notice.</p>
+</section>
+
+<section id="docs">
+  <h2>Domain agent documentation</h2>
+  <p>If you are building a vertical on Utarus (like Invage / Binary / Marie), use these guides — not ad-hoc copies of chat code in your domain repo.</p>
+  <table>
+    <thead><tr><th>Doc</th><th>When to read it</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><a href="webui-integration.md"><code>webui-integration.md</code></a></td>
+        <td><strong>Browser chat.</strong> Boot <code>startWebApp</code>, env, conversation files, API, enrich rules, smoke checklist.</td>
+      </tr>
+      <tr>
+        <td><a href="integration-guide.md"><code>integration-guide.md</code></a></td>
+        <td><strong>DomainExtension</strong> contract, state model, channel identity, tools/skills, Invage walkthrough.</td>
+      </tr>
+      <tr>
+        <td><a href="onboarding-integration.md"><code>onboarding-integration.md</code></a></td>
+        <td>INV- / ADM- codes, demo mode, access gate.</td>
+      </tr>
+      <tr>
+        <td><a href="webui-chat-design.md"><code>webui-chat-design.md</code></a></td>
+        <td>WebUI architecture reference (shipped design).</td>
+      </tr>
+    </tbody>
+  </table>
+  <pre><code>// Domain agent — minimal WebUI boot
+const framework = createFramework({ extension: myExtension });
+if (process.env.WEBAPP_PORT) {
+  framework.startWebApp({ port: parseInt(process.env.WEBAPP_PORT, 10) });
+}</code></pre>
+  <p>Pin a Utarus commit that includes <code>web/dist</code>. Do not reimplement the SPA or chat routers in the domain package.</p>
 </section>
 
 <section id="ops">

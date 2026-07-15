@@ -10,11 +10,11 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 
 ## What you get out of the box
 
-- **CLI + Telegram + Slack + WebUI chat** interfaces that share a per-user agent pool (24h TTL eviction, 100-agent cap). WebUI is first-class GFM (tables, code, math via `$$…$$`) with SSE token streaming; currency `$` amounts are **not** treated as math.
+- **CLI + Telegram + Slack + WebUI chat** interfaces that share a per-user agent pool (24h TTL eviction, 100-agent cap). WebUI: Claude-style multi-chat (server-persisted), SSE streaming, GFM, AI chat titles; currency `$` is not KaTeX.
 - **BinDrive** file portal + signed view URLs, shared with chat.
-- **Per-user YAML state** at `data/users/<slug>.yaml`. The state file is the source of truth.
-- **Instant invite onboarding** (`INV-XXXXXXXX`) — admins issue codes; recipients paste the code and get a profile immediately (channel display name, no name/email Q&A). See [docs/onboarding-integration.md](docs/onboarding-integration.md).
-- **Domain agent integration** — a `DomainExtension` contract for plugging in a vertical (portfolio analyst, CRM, sales coach, …). See [docs/integration-guide.md](docs/integration-guide.md) for the full data model, channel identity model, and a walkthrough using [Invage](https://github.com/Judeqiu/invage) as the sample agent.
+- **Per-user YAML state** at `data/users/<slug>.yaml`. Chat history at `data/chats/<slug>/`.
+- **Instant invite onboarding** (`INV-XXXXXXXX`) — admins issue codes; recipients paste the code and get a profile immediately. See [docs/onboarding-integration.md](docs/onboarding-integration.md).
+- **Domain agent integration** — `DomainExtension` + `framework.startWebApp()`. Start with [docs/webui-integration.md](docs/webui-integration.md) and [docs/integration-guide.md](docs/integration-guide.md). Sample domain: [Invage](https://github.com/Judeqiu/invage).
 - **Demo mode** (`/demomode on|off`) — admin-only open access; auto-create profiles for anyone who chats. Same doc as above.
 - **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram/Slack users at runtime.
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
@@ -84,7 +84,9 @@ npm run build        # tsc + WebUI SPA (web/dist)
 
 ### WebUI chat (domain agents)
 
-Set `WEBAPP_PORT` and call from your agent process (chat needs the in-memory agent pool):
+**Full guide:** [docs/webui-integration.md](docs/webui-integration.md).
+
+Set `WEBAPP_PORT` and call from the **same process as the agent pool**:
 
 ```ts
 const framework = createFramework({ extension: myExtension });
@@ -98,7 +100,7 @@ if (process.env.WEBAPP_PORT) {
 }
 ```
 
-SPA lives in `utarus/web/` and is served from `web/dist`. Branding uses `UTARUS_AGENT_NAME`. Design notes: [docs/webui-chat-design.md](docs/webui-chat-design.md).
+SPA is shipped in the package (`web/dist`). Branding = `UTARUS_AGENT_NAME`. Conversations persist under `data/chats/<slug>/`. Domain `enrichMessage` must handle `userSlug` for web (do not store enrich text as the user message).
 
 On startup you'll see:
 

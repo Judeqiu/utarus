@@ -4,9 +4,11 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 
 **Audience:** engineers building a new agent on top of Utarus (Binary, Marie, Invage, or a new vertical).  
 **Companion docs:**
-- [`onboarding-integration.md`](onboarding-integration.md) — deep dive on access gate, invite codes, demo mode
+- [`webui-integration.md`](webui-integration.md) — **start here for browser chat** (SPA, conversations, env, enrich rules)
+- [`onboarding-integration.md`](onboarding-integration.md) — access gate, invite codes, demo mode
+- [`webui-chat-design.md`](webui-chat-design.md) — deeper WebUI architecture / history
 - [README](../README.md) — install + first-run
-- `src/extension.ts` — the TypeScript source of truth for the contract
+- `src/extension.ts` — TypeScript source of truth for `DomainExtension`
 
 ---
 
@@ -46,10 +48,11 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 | User identity | `UserIdentity` (`id`, `slug`, `created_at`, channel ids, `auth_token`) | Nothing — never invent user fields |
 | User profile | `display_name`, `contact_email` (required by coherence check) | Extra `profile.*` fields via index signature |
 | Top-level state keys | `user`, `profile`, `log` | New top-level keys (e.g. `portfolio`, `playbook`) |
-| Onboarding | INV- instant redeem, ADM- admin codes, demo mode | Optional custom flow that runs as a slash command (e.g. invage `/bind BIND-…`) |
-| Tools | `use_skill`, `get_user`/`update_profile`, invite/admin tools, firecrawl, `post_html_report`, BinDrive | Domain tools (e.g. `get_portfolio`, `add_holding`) |
-| Channels | Telegram, Slack, CLI, Web (BinDrive + chat) | — |
-| Slash commands | `/demomode`, `/invitecode`, `/invite`, `/admincode` | Domain commands via `DomainExtension.{telegram,slack}Commands` |
+| Onboarding | INV- instant redeem, ADM- admin codes, demo mode, web login/redeem | Optional custom flow as slash command (e.g. invage `/bind BIND-…`) or landing `POST /api/onboard/register` |
+| Tools | `use_skill`, user/invite tools, firecrawl, `post_html_report`, BinDrive | Domain tools (e.g. `get_portfolio`, `add_holding`) |
+| Channels | Telegram, Slack, CLI, **WebUI chat** (SPA + SSE + multi-chat) | — |
+| Chat history | `data/chats/<slug>/…` conversations, AI titles | Never store `enrichMessage` text as the user bubble |
+| Slash commands | `/demomode`, invite/admin commands | Domain commands via `DomainExtension.{telegram,slack}Commands` |
 
 ---
 
@@ -575,35 +578,44 @@ For investor-styled reports, invage wraps this with a `save_report` tool that ru
 
 ## 7. WebUI integration
 
-Utarus ships a BinDrive web app (`createBinDriveApp`) that serves files + an admin console. Domain agents mount it on an Express app alongside their own routes.
+> **Full guide:** [`webui-integration.md`](webui-integration.md). This section is the short form for domain agents.
+
+### 7.0 What shipped in the framework
+
+WebUI is **not** a domain concern. The package includes:
+
+- React SPA (`utarus/web/`, served from `web/dist`)
+- Chat + multi-conversation APIs (`/api/chat/*`)
+- Web login / redeem / demo (`/api/onboard/*`)
+- Admin REST (`/api/admin/*`)
+- BinDrive (`/api/files/*`)
+
+**Domain boot (preferred):**
 
 ```ts
-// invage: src/webapp/server.ts (excerpt)
-import { createBinDriveApp, createSession } from 'utarus';
+const framework = createFramework({ extension: myExtension });
 
-export function buildInvageApp(framework) {
-  const app = express();
-  app.use(express.static(WEB_DIST_DIR));     // SPA static assets
-  app.use(createBinDriveApp());              // BinDrive + admin (framework)
-  app.use('/api/onboard', onboardRouter);    // landing-page API (domain)
-  app.use('/api/onboard', onboardRedeemRouter);  // /login, /demo, /redeem (domain)
-  app.use('/api/chat', createChatRouter({ framework }));  // chat SSE (domain)
-  app.use('/api/admin', adminRouter);        // admin REST (domain)
-  return app;
+if (process.env.WEBAPP_PORT) {
+  framework.startWebApp({
+    port: parseInt(process.env.WEBAPP_PORT, 10),
+    // Optional domain-only routes (e.g. landing QR register):
+    extraRouters: [{ path: '/api/onboard', router: landingRegisterRouter }],
+  });
 }
 ```
 
-**Auth model:** sessions are cookie-based (`bindrive_session`), backed by an in-memory session map. Three login surfaces share the same session store:
+Do **not** reimplement the SPA or chat routers in the domain repo.
 
-1. **Username + password (default for new users).** `POST /api/onboard/login` accepts `{identifier, password}` where identifier is the user slug OR `profile.contact_email` (case-insensitive). Resolves via `authenticateUser` → bcrypt verify against `user.password_hash`. Returns `{type, slug, displayName}` and sets the session cookie.
-2. **Auth token (legacy / secondary).** Same endpoint accepts `{auth_token}` and resolves via `resolveByToken`. Still works for users who haven't been backfilled or who prefer token auth.
-3. **Invite redeem (new users).** `POST /api/onboard/redeem` accepts `{display_name, code}` and onboards via `redeemInviteInstantly`. The response now includes `preset_password` (plaintext, one-shot) — surface it on the redeem-confirmation screen so the user can write it down.
+### 7.0.1 Conversations (multi-chat)
 
-The web channel uses **channel-scoped agent cache keys**: Slack/Telegram use `<slug>`, web uses `web:<slug>`. This means a user can have two parallel conversations (one on Slack, one in the browser) without them interfering.
+| Path on disk | Purpose |
+|---|---|
+| `data/chats/<slug>/index.json` | Sidebar list |
+| `data/chats/<slug>/<uuid>.json` | Messages for one chat |
 
-> **Note (2026-07-15):** the WebUI chat layer currently lives in each domain app (`invage/src/webapp/`). It's a candidate for upstreaming to `utarus/src/webui/` once a second domain app needs it. See `docs/architecture.md` in the invage repo for the upstream plan.
+Agent cache key: `web:<slug>:<conversationId>`. Refresh restores history. First reply gets an **AI title** for the sidebar and browser tab.
 
----
+**Display vs agent prompt:** store and show only the human-typed string. Domain `enrichMessage` output is prepended for the model only (see [webui-integration.md §4–5](webui-integration.md)).
 
 ### 7.1 Authentication surfaces (reference)
 
@@ -648,17 +660,29 @@ This is the minimal sequence from "blank repo" to "running agent".
 ### 8.1 The entry point
 
 ```ts
-// invage: src/index.ts
-import 'dotenv/config';
+// invage: src/index.ts (pattern)
+import { config as dotenvConfig } from 'dotenv';
+dotenvConfig();
+process.env.UTARUS_LOADED_BY_HOST = '1';
+
 import { createFramework } from 'utarus';
 import { invageExtension } from './extension.js';
 
 const framework = createFramework({ extension: invageExtension });
 
-// Boot whatever channels are configured (env-driven).
-framework.startSlack().catch(console.error);
-framework.startTelegram().catch(console.error);
-// framework.startCli();  // uncomment for local REPL
+// WebUI (same process as agent pool) — see docs/webui-integration.md
+if (process.env.WEBAPP_PORT) {
+  const { onboardRouter } = await import('./onboard/api.js'); // domain landing only
+  framework.startWebApp({
+    port: parseInt(process.env.WEBAPP_PORT, 10),
+    extraRouters: [{ path: '/api/onboard', router: onboardRouter }],
+  });
+}
+
+// Boot chat channels as configured (env-driven).
+if (process.env.SLACK_BOT_TOKEN) void framework.startSlack();
+if (process.env.TELEGRAM_BOT_TOKEN) void framework.startTelegram();
+// framework.startCli();  // local REPL when not BOT_ONLY
 ```
 
 ### 8.2 The extension
@@ -692,10 +716,10 @@ export const invageExtension: DomainExtension = {
 ### 8.5 Boot sequence
 
 1. `createFramework({ extension })` composes the system prompt, merges skill catalogs, prepares the tool factory.
-2. `framework.startSlack()` connects via Socket Mode, registers framework + domain slash commands.
-3. First inbound message → `resolveInboundMessage` (framework gate) → `enrichMessage` (domain) → `getOrCreateAgent(slug)` → agent turn.
-4. Domain tools called by the agent resolve the user via `channelIdParams`, mutate state via `saveState`, return text.
-5. Agent reply flows back through the channel interface (Markdown → Telegram HTML, or to the web SSE stream).
+2. `framework.startWebApp()` serves SPA + chat + BinDrive; `startSlack` / `startTelegram` as configured.
+3. **Slack/Telegram:** inbound → `resolveInboundMessage` → `enrichMessage` → `getOrCreateAgent(slug)` → reply.
+4. **Web:** browser login → `POST /api/chat/messages` → gate + enrich → `getOrCreateAgent(slug, isAdmin, 'web', conversationId)` → SSE stream; messages persist under `data/chats/<slug>/`.
+5. Domain tools resolve the user via channel ids **or** slug, mutate state via `saveState`, return text.
 
 ---
 
@@ -706,6 +730,8 @@ export const invageExtension: DomainExtension = {
 | **No fallback for code/logic errors.** Surface raw errors; fail fast. | Per project policy. Silent fallbacks mask bugs and corrupt state. |
 | **Never duplicate framework exports.** If `loadState` exists in utarus, do not write `loadInvestorState`. | Duplication drifts. The framework I/O is the source of truth. |
 | **Always handle all three channels** in `enrichMessage` and in any domain resolver. | Missing the web branch causes the re-onboarding trap (§3.2). |
+| **Store only user-visible text** in chat history; enrich is for the model. | Polluted blue bubbles when switching chats ([webui-integration.md](webui-integration.md)). |
+| **Run WebUI in the agent process** (`WEBAPP_PORT` on the same unit as the pool). | Chat SSE has no agent if drive-only. |
 | **`auth_token` is a password.** Never log it; never return it from a `GET`. | Treat like a credential. |
 | **Never edit a reserved framework field** (`user.id`, `user.slug`, `user.created_at`, channel-id arrays) from domain code. | The framework owns identity. Use the framework tools (`link_telegram`, etc.). |
 | **Don't add caching for state I/O.** | Premature optimization. The framework is synchronous on purpose. |
@@ -782,14 +808,29 @@ signedBinDriveViewUrl(ownerSlug, filename, opts?): { url, expiresAt, expiresInMs
 publicBinDriveOrigin(): string
 createSession(user): string  // returns session token for cookie
 resolveByToken(token): AuthUser | null
+authenticateUser(identifier, password): Promise<AuthUser | null>
+hashPassword / verifyPassword / generateMemorablePassword
 requireAuth, requireAdmin, targetSlug  // Express middlewares
 type AuthUser, CreateLinkTokenParams, LinkTokenResult
 ```
 
-**Web server:**
+**Web server + WebUI:**
 ```ts
-startBinDrive(): void  // standalone BinDrive entrypoint
-createBinDriveApp(): Express  // sub-app to mount in a larger domain app
+// Preferred: full SPA + chat + BinDrive + admin (needs Framework)
+framework.startWebApp({ port?, extraRouters?, webDistDir? }): Express
+framework.buildWebApp({ extraRouters?, webDistDir? }): Express
+
+// Standalone BinDrive only (no chat agent pool)
+startBinDrive(opts?): Express
+createBinDriveApp(): Express
+resolveWebDistDir(): string
+UTARUS_VERSION: string
+
+// Conversation store (usually used via /api/chat; exported for tests/tools)
+listConversations(slug)
+createConversation(slug, opts?)
+getConversation(slug, id)
+// …
 ```
 
 **Telegram formatting:**
