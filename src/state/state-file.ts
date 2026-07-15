@@ -166,6 +166,21 @@ export function resolveUserBySlackUser(slackUserId: string): UserState | null {
   return null;
 }
 
+/**
+ * Find a user by slug. Returns null if no state file exists for this slug
+ * or the file fails the coherence check. Used by channels that authenticate
+ * by something other than a chat-platform id (e.g. web sessions, where the
+ * gate resolves the slug from an auth_token and passes it through).
+ */
+export function resolveUserBySlug(slug: string): UserState | null {
+  if (!slug) return null;
+  try {
+    return loadState(slug);
+  } catch {
+    return null;
+  }
+}
+
 // ── Invite codes ──────────────────────────────────────────────────────
 
 const INVITES_FILE = join(DATA_ROOT, 'invites.yaml');

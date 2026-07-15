@@ -84,6 +84,13 @@ export function ensureChannelUser(params: {
   web?: boolean;
   source: EnsureChannelUserSource;
   inviteCode?: string;
+  /**
+   * Optional real contact email. When omitted, a placeholder
+   * `<slug>@<source>.local` is used (the schema requires a non-empty value).
+   * Domain channels that collect a real email (e.g. investor web form)
+   * should pass it through here.
+   */
+  contactEmail?: string;
 }): InstantRedeemResult {
   const hasChannelId = !!params.slackUserId || params.telegramUserId != null;
   if (!hasChannelId && !params.web) {
@@ -127,12 +134,14 @@ export function ensureChannelUser(params: {
     ?? (params.telegramUserId != null ? String(params.telegramUserId) : 'web');
   const slug = uniqueSlug(slugBaseFromDisplayName(displayName, channelHint), channelHint);
   const emailDomain = params.source === 'demo' ? 'demo.local' : 'invite.local';
+  const contactEmail = params.contactEmail && params.contactEmail.trim()
+    ? params.contactEmail.trim()
+    : `${slug}@${emailDomain}`;
 
   const state = blankState({
     slug,
     displayName,
-    // Email is not collected; placeholder satisfies schema.
-    contactEmail: `${slug}@${emailDomain}`,
+    contactEmail,
   });
 
   if (params.telegramUserId != null) {

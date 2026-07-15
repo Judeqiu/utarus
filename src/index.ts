@@ -51,8 +51,15 @@ export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/
 export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
 export {
   loadState,
+  saveState,
+  blankState,
   stateExists,
+  stateFilePath,
+  assertValidSlug,
   listUserSlugs,
+  resolveUserBySlug,
+  resolveUserBySlackUser,
+  resolveUserByTelegramUser,
   createInviteCode,
   validateInviteCode,
   markInviteUsed,
@@ -60,6 +67,8 @@ export {
   createAdminOnboardCode,
   revokeAdminOnboardCode,
   listAdminOnboardCodes,
+  loadDynamicAdminIds,
+  addDynamicAdminId,
 } from './state/index.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
