@@ -27,28 +27,112 @@ export interface AuthUser {
   userId?: string;
 }
 
-// In-memory sessions (browser cookie-based flow)
-const sessions = new Map<string, { user: AuthUser; expiresAt: number }>();
-const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Browser session cookies (bindrive_session). File-backed under dataRoot so
+ * process restarts (deploy / systemd restart) do not force re-login (401).
+ * Mirrors link-token disk store so multi-process (agent + web) can share.
+ */
+interface SessionRecord {
+  user: AuthUser;
+  expiresAt: number;
+}
+
+const sessions = new Map<string, SessionRecord>();
+export const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+let sessionStorePathOverride: string | null = null;
+
+function sessionStorePath(): string {
+  if (sessionStorePathOverride) return sessionStorePathOverride;
+  return join(resolveDataRoot(), '.sessions.json');
+}
+
+/** Test helper — redirect session store path and clear in-memory cache. */
+export function setSessionStorePathForTests(path: string | null): void {
+  sessionStorePathOverride = path;
+  sessions.clear();
+}
+
+function loadSessionsFromDisk(): void {
+  const path = sessionStorePath();
+  sessions.clear();
+  if (!existsSync(path)) return;
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (e) {
+    throw new Error(
+      `Failed to read session store ${path}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  if (!raw.trim()) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`session store is corrupt JSON: ${path}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`session store is not an object: ${path}`);
+  }
+  const now = Date.now();
+  for (const [token, rec] of Object.entries(parsed as Record<string, SessionRecord>)) {
+    if (!rec?.user?.slug || typeof rec.expiresAt !== 'number') continue;
+    if (rec.expiresAt <= now) continue;
+    if (rec.user.type !== 'admin' && rec.user.type !== 'user') continue;
+    if (typeof rec.user.displayName !== 'string') continue;
+    sessions.set(token, rec);
+  }
+}
+
+function persistSessionsToDisk(): void {
+  const path = sessionStorePath();
+  mkdirSync(dirname(path), { recursive: true });
+  const now = Date.now();
+  const out: Record<string, SessionRecord> = {};
+  for (const [token, rec] of sessions.entries()) {
+    if (rec.expiresAt <= now) {
+      sessions.delete(token);
+      continue;
+    }
+    out[token] = rec;
+  }
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify(out), 'utf-8');
+  renameSync(tmp, path);
+}
 
 export function createSession(user: AuthUser): string {
+  if (!user?.slug || (user.type !== 'admin' && user.type !== 'user')) {
+    throw new Error('createSession requires AuthUser with type and slug');
+  }
+  // Merge with on-disk sessions so concurrent processes do not clobber each other.
+  loadSessionsFromDisk();
   const token = randomUUID();
   sessions.set(token, { user, expiresAt: Date.now() + SESSION_TTL_MS });
+  persistSessionsToDisk();
   return token;
 }
 
 export function getSession(token: string): AuthUser | null {
+  if (!token?.trim()) return null;
+  // Always refresh from disk so restarts and multi-process mints are visible.
+  loadSessionsFromDisk();
   const entry = sessions.get(token);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
     sessions.delete(token);
+    persistSessionsToDisk();
     return null;
   }
   return entry.user;
 }
 
 export function destroySession(token: string): void {
+  if (!token?.trim()) return;
+  loadSessionsFromDisk();
+  if (!sessions.has(token)) return;
   sessions.delete(token);
+  persistSessionsToDisk();
 }
 
 // ── Short-lived link tokens ─────────────────────────────────────────

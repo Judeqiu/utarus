@@ -404,6 +404,8 @@ export function ChatPage({ session }: ChatPageProps) {
       currentRunController.current = controller;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      const sessionLost =
+        /session expired|unauthorized|log in again|401/i.test(msg);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsg.id
@@ -411,6 +413,9 @@ export function ChatPage({ session }: ChatPageProps) {
             : m,
         ),
       );
+      if (sessionLost) {
+        setBanner(`${msg} Refresh the page or log in again.`);
+      }
       finalize();
     }
   }
