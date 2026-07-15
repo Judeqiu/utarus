@@ -11,12 +11,27 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist", "src", "web/dist", "README.md"],
+  "files": [
+    "dist",
+    "src",
+    "web/dist",
+    "web/package.json",
+    "web/package-lock.json",
+    "web/index.html",
+    "web/vite.config.ts",
+    "web/tsconfig.json",
+    "web/tsconfig.node.json",
+    "web/tailwind.config.js",
+    "web/postcss.config.js",
+    "web/src",
+    "README.md"
+  ],
   "scripts": {
     "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
     "build": "tsc && npm run build:web",
     "build:web": "npm --prefix web install --include=dev && npm --prefix web run build",
     "prepare": "npm run build",
+    "prepack": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest"
