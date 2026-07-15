@@ -58,6 +58,8 @@ export type ChatEvent =
       phase: 'pre_run' | 'during_run' | 'watchdog' | 'disconnected';
     }
   | { type: 'cap'; message: string; current: number; cap: number }
+  /** AI-generated conversation title (sidebar + browser tab). */
+  | { type: 'title'; conversationId: string; title: string }
   | { type: 'end' };
 
 /**

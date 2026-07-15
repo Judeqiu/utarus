@@ -34,6 +34,7 @@ export type ChatEvent =
       phase: 'pre_run' | 'during_run' | 'watchdog' | 'disconnected';
     }
   | { type: 'cap'; message: string; current: number; cap: number }
+  | { type: 'title'; conversationId: string; title: string }
   | { type: 'end' };
 
 export interface ToolChip {

@@ -237,11 +237,12 @@ export function getConversationForClient(slug: string, id: string): Conversation
   return { ...c, title, messages };
 }
 
-/** Rename a conversation. */
+/** Rename a conversation (user or AI). */
 export function renameConversation(
   slug: string,
   id: string,
   title: string,
+  source: 'user' | 'ai' | 'auto' = 'user',
 ): Conversation {
   const trimmed = title.trim();
   if (!trimmed) {
@@ -252,10 +253,20 @@ export function renameConversation(
   }
   const c = getConversation(slug, id);
   c.title = truncate(trimmed, TITLE_MAX * 2);
+  c.title_source = source;
   c.updated_at = new Date().toISOString();
   writeJsonAtomic(convPath(slug, id), c);
   upsertIndexEntry(slug, toSummary(c));
   return c;
+}
+
+/** True when this conversation still needs an AI-generated title. */
+export function needsAiTitle(slug: string, id: string): boolean {
+  const c = getConversation(slug, id);
+  if (c.title_source === 'ai' || c.title_source === 'user') return false;
+  const users = c.messages.filter((m) => m.role === 'user');
+  const assistants = c.messages.filter((m) => m.role === 'assistant' && m.text.trim());
+  return users.length >= 1 && assistants.length >= 1;
 }
 
 /** Delete conversation file + index entry. */
@@ -297,13 +308,16 @@ export function appendMessage(
     throw new Error('message.text must be a string');
   }
 
-  // Auto-title from first user message when still default
+  // Temporary title from first user message (AI summary replaces it after first reply)
   if (
     msg.role === 'user' &&
     c.messages.filter((m) => m.role === 'user').length === 0 &&
-    (c.title === 'New chat' || !c.title)
+    (c.title === 'New chat' || !c.title) &&
+    c.title_source !== 'ai' &&
+    c.title_source !== 'user'
   ) {
     c.title = titleFromText(msg.text);
+    c.title_source = 'auto';
   }
 
   c.messages.push(msg);

@@ -45,8 +45,11 @@ import {
   deleteConversation,
   appendMessage,
   clearConversationMessages,
+  needsAiTitle,
+  renameConversation as setConversationTitle,
 } from './conversation-store.js';
 import { hydrateAgentFromStoredMessages } from './hydrate-agent.js';
+import { summarizeChatTitle } from './title-chat.js';
 
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
@@ -344,7 +347,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       userSlug: effectiveSlug,
       agent,
       message: promptText,
-      onComplete: (result) => {
+      onComplete: async (result) => {
         try {
           if (result.error && !result.text) {
             appendMessage(effectiveSlug, convId, {
@@ -366,6 +369,17 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         } catch (e) {
           console.error(
             `[chat/persist] conversation=${convId} failed: ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+
+        // After first successful reply, AI-summarize sidebar + browser tab title.
+        if (result.text && !result.error) {
+          await maybeEmitAiTitle(
+            messageId,
+            effectiveSlug,
+            convId,
+            userVisibleText,
+            result.text,
           );
         }
       },
@@ -536,6 +550,26 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
   });
 
   return router;
+}
+
+async function maybeEmitAiTitle(
+  messageId: string,
+  slug: string,
+  conversationId: string,
+  userText: string,
+  assistantText: string,
+): Promise<void> {
+  try {
+    if (!needsAiTitle(slug, conversationId)) return;
+    const title = await summarizeChatTitle(userText, assistantText);
+    setConversationTitle(slug, conversationId, title, 'ai');
+    emit(messageId, { type: 'title', conversationId, title });
+  } catch (e) {
+    // Title is best-effort for UX; do not fail the chat turn.
+    console.warn(
+      `[chat/title] conversation=${conversationId}: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {

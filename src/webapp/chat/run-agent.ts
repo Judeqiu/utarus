@@ -24,12 +24,15 @@ interface RunAgentParams {
   userSlug: string;
   agent: WebAgent;
   message: string;
-  /** Called with final assistant text (or error) after the run finishes. */
+  /**
+   * Called after the agent finishes and before the terminal SSE `end` event.
+   * May be async (e.g. AI title generation) — awaited so late events still ship.
+   */
   onComplete?: (result: {
     text: string;
     stopReason: string;
     error?: string;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 interface ActiveTool {
@@ -51,9 +54,13 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   let lastStopReason: string | undefined;
   const activeTools = new Map<string, ActiveTool>();
 
-  function finish(result: { text: string; stopReason: string; error?: string }): void {
+  async function finish(result: {
+    text: string;
+    stopReason: string;
+    error?: string;
+  }): Promise<void> {
     try {
-      onComplete?.(result);
+      await onComplete?.(result);
     } catch (e) {
       console.error(
         `[Agent/web] onComplete failed user=${userSlug}: ${e instanceof Error ? e.message : String(e)}`,
@@ -145,7 +152,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error(`[Agent/web] user=${userSlug} threw: ${msg}`);
-    finish({ text: cumulative, stopReason: 'error', error: msg });
+    await finish({ text: cumulative, stopReason: 'error', error: msg });
     emit(messageId, {
       type: 'error',
       message: `Agent error: ${msg}`,
@@ -162,7 +169,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
 
   if (aborted) {
     const msg = `Agent run timed out after ${Math.round(AGENT_RUN_TIMEOUT_MS / 1000)}s`;
-    finish({ text: cumulative, stopReason: 'aborted', error: msg });
+    await finish({ text: cumulative, stopReason: 'aborted', error: msg });
     emit(messageId, {
       type: 'error',
       message: msg,
@@ -177,7 +184,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     console.error(
       `[Agent/web] user=${userSlug} errorMessage="${agent.state.errorMessage}" textLen=${cumulative.length}`,
     );
-    finish({
+    await finish({
       text: cumulative,
       stopReason: 'error',
       error: agent.state.errorMessage,
@@ -193,7 +200,8 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   }
 
   const stopReason = lastStopReason ?? 'stop';
-  finish({ text: cumulative, stopReason });
+  // Emit done first so the client renders the reply; then persist + AI title
+  // (title event) before end so the SSE stream still carries the new title.
   const assets = extractAssets(cumulative || '', userSlug);
   emit(messageId, {
     type: 'done',
@@ -201,6 +209,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     stopReason,
     assets,
   });
+  await finish({ text: cumulative, stopReason });
   emit(messageId, { type: 'end' });
   markEnded(messageId);
 }

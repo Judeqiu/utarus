@@ -219,6 +219,19 @@ export function ChatPage({ session }: ChatPageProps) {
       }
       case 'heartbeat':
         break;
+      case 'title': {
+        setConversations((prev) => {
+          const next = prev.map((c) =>
+            c.id === ev.conversationId ? { ...c, title: ev.title } : c,
+          );
+          // Keep active chat at top after AI rename
+          return [...next].sort((a, b) =>
+            a.updated_at < b.updated_at ? 1 : -1,
+          );
+        });
+        void refreshList();
+        break;
+      }
       case 'done': {
         const assets: AssetRef[] = ev.assets;
         setMessages((prev) =>

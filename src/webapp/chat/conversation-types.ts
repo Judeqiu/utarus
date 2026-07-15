@@ -40,6 +40,13 @@ export interface Conversation {
   /** Owner slug — must match directory name. */
   slug: string;
   title: string;
+  /**
+   * How the title was set:
+   * - undefined / 'auto' — first-user-message heuristic
+   * - 'ai' — LLM summary (do not overwrite unless user renames)
+   * - 'user' — explicit rename via PATCH
+   */
+  title_source?: 'auto' | 'ai' | 'user';
   created_at: string;
   updated_at: string;
   messages: StoredChatMessage[];
