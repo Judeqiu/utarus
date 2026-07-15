@@ -18,6 +18,7 @@
 import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'crypto';
 import { config } from '../../config.js';
+import { UTARUS_VERSION } from '../../version.js';
 import { requireAuth, type AuthUser } from '../auth.js';
 import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
@@ -242,7 +243,14 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
   router.get('/agent', (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
     if (!user.slug) {
-      res.json({ slug: '', displayName: user.displayName, isStreaming: false, hasContext: false });
+      res.json({
+        slug: '',
+        displayName: user.displayName,
+        agentName: config.agent.name ?? 'Agent',
+        version: UTARUS_VERSION,
+        isStreaming: false,
+        hasContext: false,
+      });
       return;
     }
     const agent = deps.framework.getOrCreateAgent(user.slug, user.type === 'admin', 'web');
@@ -250,6 +258,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       slug: user.slug,
       displayName: user.displayName,
       agentName: config.agent.name ?? 'Agent',
+      version: UTARUS_VERSION,
       isStreaming: !!agent.state.isStreaming,
       hasContext: !!agent.state.messages?.length,
     });

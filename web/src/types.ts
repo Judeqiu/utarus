@@ -65,6 +65,8 @@ export interface AgentStatus {
   displayName: string;
   /** Framework agent display name (UTARUS_AGENT_NAME). */
   agentName: string;
+  /** Utarus framework package version (e.g. 0.2.0). */
+  version: string;
   isStreaming: boolean;
   hasContext: boolean;
 }

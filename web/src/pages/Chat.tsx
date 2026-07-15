@@ -46,6 +46,7 @@ export function ChatPage({ session }: ChatPageProps) {
   const [showHelp, setShowHelp] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [agentName, setAgentName] = useState('Agent');
+  const [version, setVersion] = useState<string | null>(null);
   const currentRunController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | null>(null);
   const toolMap = useRef<Map<string, ToolChip>>(new Map());
@@ -64,6 +65,7 @@ export function ChatPage({ session }: ChatPageProps) {
       .then((status: AgentStatus) => {
         if (cancelled) return;
         if (status.agentName) setAgentName(status.agentName);
+        if (status.version) setVersion(status.version);
         if (status.isStreaming) {
           setBanner(
             `An agent run is already in progress for "${status.displayName}". It started before this page loaded — its output won't appear here. Wait for it to finish, then resend.`,
@@ -330,10 +332,24 @@ export function ChatPage({ session }: ChatPageProps) {
             </div>
             <div className="text-[11px] text-slate-500">
               slug: <code className="rounded bg-slate-100 px-1 py-0.5">{session.slug}</code>
+              {version && (
+                <>
+                  {' '}
+                  · v{version}
+                </>
+              )}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {version && (
+            <span
+              className="hidden sm:inline rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
+              title="Utarus framework version"
+            >
+              v{version}
+            </span>
+          )}
           {session.type === 'admin' && (
             <a
               href="/admin"

@@ -30,6 +30,7 @@ interface LoginProps {
 interface DemoState {
   enabled: boolean;
   agentName: string;
+  version?: string;
 }
 
 type Tab = 'password' | 'token' | 'invite';
@@ -45,6 +46,7 @@ export function Login({ onSuccess }: LoginProps) {
   const [tab, setTab] = useState<Tab>('password');
   const [demo, setDemo] = useState<DemoState | null>(null);
   const [agentName, setAgentName] = useState('Agent');
+  const [version, setVersion] = useState<string | null>(null);
   const [demoError, setDemoError] = useState<string | null>(null);
   // When the InviteForm surfaces credentials, we render the credentials panel
   // in place of the tab content until the user clicks "Continue".
@@ -58,8 +60,13 @@ export function Login({ onSuccess }: LoginProps) {
       .then((r) => r.json())
       .then((b: DemoState & { error?: string }) => {
         if (b?.agentName) setAgentName(b.agentName);
+        if (typeof b?.version === 'string' && b.version) setVersion(b.version);
         if (b && typeof b.enabled === 'boolean') {
-          setDemo({ enabled: b.enabled, agentName: b.agentName ?? 'Agent' });
+          setDemo({
+            enabled: b.enabled,
+            agentName: b.agentName ?? 'Agent',
+            version: b.version,
+          });
         } else if (b?.error) {
           setDemoError(b.error);
         }
@@ -83,6 +90,7 @@ export function Login({ onSuccess }: LoginProps) {
     return (
       <DemoLogin
         agentName={agentName}
+        version={version}
         onRedeemed={(creds) => setCredentials(creds)}
         credentials={credentials}
         onContinue={continueToSignIn}
@@ -98,6 +106,11 @@ export function Login({ onSuccess }: LoginProps) {
           <p className="mt-1 text-sm text-slate-500">
             Sign in to chat with your agent.
           </p>
+          {version && (
+            <p className="mt-1 font-mono text-[11px] text-slate-400" title="Utarus framework version">
+              v{version}
+            </p>
+          )}
         </header>
 
         {credentials ? (
@@ -482,11 +495,13 @@ function CredentialsPanel({
 
 function DemoLogin({
   agentName,
+  version,
   onRedeemed,
   credentials,
   onContinue,
 }: {
   agentName: string;
+  version: string | null;
   onRedeemed: (creds: RedeemedCredentials) => void;
   credentials: RedeemedCredentials | null;
   onContinue: (creds: RedeemedCredentials) => void;
@@ -538,6 +553,11 @@ function DemoLogin({
           <p className="mt-1 text-sm text-slate-500">
             Enter your name to try the agent.
           </p>
+          {version && (
+            <p className="mt-1 font-mono text-[11px] text-slate-400" title="Utarus framework version">
+              v{version}
+            </p>
+          )}
         </header>
         <input
           type="text"

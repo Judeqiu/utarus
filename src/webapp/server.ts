@@ -23,6 +23,7 @@ import { existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config.js';
+import { UTARUS_VERSION } from '../version.js';
 import type { Framework } from '../framework.js';
 import bindriveRouter from './routes.js';
 import { createChatRouter } from './chat/router.js';
@@ -80,6 +81,7 @@ export function createBinDriveApp(): Express {
     res.json({
       status: 'ok',
       service: 'bindrive',
+      version: UTARUS_VERSION,
       timestamp: new Date().toISOString(),
     });
   });

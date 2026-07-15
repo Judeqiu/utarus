@@ -29,6 +29,7 @@ import { isDemoModeEnabled } from '../../onboarding/demo-mode.js';
 import { resolveUserBySlug, loadState, saveState } from '../../state/index.js';
 import { hashPassword } from '../../auth/password.js';
 import { config } from '../../config.js';
+import { UTARUS_VERSION } from '../../version.js';
 
 export const onboardRedeemRouter = Router();
 
@@ -62,6 +63,7 @@ onboardRedeemRouter.get('/demo', (_req, res) => {
   res.json({
     enabled: isDemoModeEnabled(),
     agentName: config.agent.name ?? 'Agent',
+    version: UTARUS_VERSION,
   });
 });
 
