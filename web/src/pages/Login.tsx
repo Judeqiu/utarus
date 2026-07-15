@@ -70,9 +70,12 @@ export function Login({ onSuccess }: LoginProps) {
         } else if (b?.error) {
           setDemoError(b.error);
         }
+        const name = b?.agentName || 'Agent';
+        document.title = `${name} · Sign in`;
       })
       .catch((err: unknown) => {
         setDemoError(err instanceof Error ? err.message : String(err));
+        document.title = 'Sign in';
       });
   }, []);
 

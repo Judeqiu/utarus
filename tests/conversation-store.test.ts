@@ -6,10 +6,12 @@ import {
   listConversations,
   createConversation,
   getConversation,
+  getConversationForClient,
   appendMessage,
   renameConversation,
   deleteConversation,
   clearConversationMessages,
+  stripAgentContextPrefix,
 } from '../src/webapp/chat/conversation-store.js';
 
 describe('conversation-store', () => {
@@ -86,5 +88,27 @@ describe('conversation-store', () => {
 
   it('fails fast on invalid slug', () => {
     expect(() => createConversation('../evil')).toThrow(/Invalid chat slug/);
+  });
+
+  it('strips enrichMessage prefix for client display', () => {
+    const raw =
+      '[Investor context: You are working with user "marina".]\n' +
+      '[Investment Playbook — hard guidance.]\n\n' +
+      'Study undervalued high tech companies';
+    expect(stripAgentContextPrefix(raw)).toBe(
+      'Study undervalued high tech companies',
+    );
+    expect(stripAgentContextPrefix('just a normal message')).toBe(
+      'just a normal message',
+    );
+
+    const c = createConversation('frank');
+    appendMessage('frank', c.id, { role: 'user', text: raw });
+    const client = getConversationForClient('frank', c.id);
+    expect(client.messages[0].text).toBe('Study undervalued high tech companies');
+    // Raw on-disk still has full text for agent hydrate
+    expect(getConversation('frank', c.id).messages[0].text).toContain(
+      'Investor context',
+    );
   });
 });

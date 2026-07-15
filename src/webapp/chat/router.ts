@@ -40,6 +40,7 @@ import {
   listConversations,
   createConversation,
   getConversation,
+  getConversationForClient,
   renameConversation,
   deleteConversation,
   appendMessage,
@@ -115,18 +116,19 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
     try {
-      const conv = getConversation(slug, id);
-      // Ensure agent pool has hydrated context for this conversation.
+      // Hydrate agent from raw stored turns (may include legacy enrich prefixes).
+      const raw = getConversation(slug, id);
       const agent = deps.framework.getOrCreateAgent(
         slug,
         user.type === 'admin',
         'web',
         id,
       );
-      if (!agent.state.messages?.length && conv.messages.length > 0) {
-        hydrateAgentFromStoredMessages(agent, conv.messages);
+      if (!agent.state.messages?.length && raw.messages.length > 0) {
+        hydrateAgentFromStoredMessages(agent, raw.messages);
       }
-      res.json(conv);
+      // Client gets cleaned user-visible text only.
+      res.json(getConversationForClient(slug, id));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
@@ -282,13 +284,16 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
-    // Persist user turn before running the agent.
+    // Persist the *user-visible* text only. inbound.text may include
+    // domain enrichMessage context (playbook, portfolio) for the agent —
+    // that must never appear in the chat bubble on reload.
+    const userVisibleText = text.trim();
     const userMsgId = randomUUID();
     try {
       appendMessage(effectiveSlug, conversationId, {
         id: userMsgId,
         role: 'user',
-        text: inbound.text,
+        text: userVisibleText,
       });
     } catch (e) {
       res.status(500).json({
@@ -306,6 +311,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         });
         return;
       }
+      // Agent still receives the enriched prompt text.
       agent.steer({ role: 'user', content: inbound.text, timestamp: Date.now() });
       res.json({ kind: 'queued', conversationId });
       return;

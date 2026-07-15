@@ -90,6 +90,17 @@ export function ChatPage({ session }: ChatPageProps) {
     }
   }, [activeConversationId]);
 
+  // Browser tab: "Chat title · Agent" (or just agent when no chat)
+  useEffect(() => {
+    const active = conversations.find((c) => c.id === activeConversationId);
+    const chatTitle = active?.title?.trim();
+    if (chatTitle && chatTitle !== 'New chat') {
+      document.title = `${chatTitle} · ${agentName}`;
+    } else {
+      document.title = `${agentName} · Chat`;
+    }
+  }, [agentName, activeConversationId, conversations]);
+
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);

@@ -102,15 +102,35 @@ function truncate(s: string, max: number): string {
   return t.slice(0, max - 1) + '…';
 }
 
+/**
+ * Strip domain enrichMessage / channel-hint prefixes that were historically
+ * stored on user turns. Display and titles must show only what the human typed.
+ * Pattern: one or more leading `[...]` blocks, then a blank line, then the user text.
+ */
+export function stripAgentContextPrefix(text: string): string {
+  if (!text) return text;
+  // Fast path: pure user text
+  if (!text.startsWith('[')) return text;
+  // Prefer last blank-line-separated segment when the first is a bracketed block
+  const parts = text.split(/\n\n+/);
+  if (parts.length >= 2 && parts[0].trimStart().startsWith('[')) {
+    const last = parts[parts.length - 1].trim();
+    if (last && !last.startsWith('[')) return last;
+  }
+  return text;
+}
+
 function titleFromText(text: string): string {
-  const line = text.split('\n').find((l) => l.trim()) ?? text;
+  const clean = stripAgentContextPrefix(text);
+  const line = clean.split('\n').find((l) => l.trim()) ?? clean;
   return truncate(line, TITLE_MAX) || 'New chat';
 }
 
 function previewFromMessages(messages: StoredChatMessage[]): string {
   if (messages.length === 0) return '';
   const last = messages[messages.length - 1];
-  return truncate(last.text, PREVIEW_MAX);
+  const body = last.role === 'user' ? stripAgentContextPrefix(last.text) : last.text;
+  return truncate(body, PREVIEW_MAX);
 }
 
 function toSummary(c: Conversation): ConversationSummary {
@@ -183,6 +203,23 @@ export function getConversation(slug: string, id: string): Conversation {
     throw new Error(`Conversation ${id} has invalid messages array`);
   }
   return c;
+}
+
+/**
+ * Conversation for the WebUI: user bubbles show only human-typed text
+ * (legacy rows that stored enrichMessage context are cleaned for display).
+ * Agent hydration should use getConversation (raw) so history stays complete.
+ */
+export function getConversationForClient(slug: string, id: string): Conversation {
+  const c = getConversation(slug, id);
+  return {
+    ...c,
+    messages: c.messages.map((m) =>
+      m.role === 'user'
+        ? { ...m, text: stripAgentContextPrefix(m.text) }
+        : m,
+    ),
+  };
 }
 
 /** Rename a conversation. */
