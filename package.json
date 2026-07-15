@@ -14,16 +14,7 @@
   "files": [
     "dist",
     "src",
-    "web/dist",
-    "web/package.json",
-    "web/package-lock.json",
-    "web/index.html",
-    "web/vite.config.ts",
-    "web/tsconfig.json",
-    "web/tsconfig.node.json",
-    "web/tailwind.config.js",
-    "web/postcss.config.js",
-    "web/src",
+    "web",
     "README.md"
   ],
   "scripts": {

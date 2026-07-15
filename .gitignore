@@ -1,6 +1,6 @@
 node_modules/
 web/node_modules/
-dist/
+/dist/
 .env
 data/
 *.log

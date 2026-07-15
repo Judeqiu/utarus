@@ -1,4 +1,4 @@
 node_modules/
-dist/
 *.tsbuildinfo
 .vite/
+# dist/ is intentionally tracked so npm install of utarus ships the SPA

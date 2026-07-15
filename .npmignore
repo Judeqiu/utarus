@@ -1,6 +1,7 @@
-# Present so npm does NOT fall back to .gitignore (which drops web/dist).
-# Inclusion is driven by package.json "files"; only list extra denials here.
+# Explicit denylist (having this file prevents npm falling back to .gitignore,
+# which would exclude web/dist because root .gitignore has a bare "dist/" rule).
 node_modules/
+**/node_modules/
 web/node_modules/
 web/.vite/
 tests/
@@ -9,3 +10,4 @@ data/
 *.log
 .DS_Store
 *.tsbuildinfo
+web/src/**/*.tsbuildinfo
