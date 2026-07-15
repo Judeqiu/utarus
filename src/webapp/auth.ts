@@ -548,25 +548,41 @@ function redirectStrippingToken(req: Request, res: Response): boolean {
 }
 
 /**
+ * Full path for middleware mounted under a prefix.
+ * Express sets `req.path` relative to the router mount (e.g. `/agent` when
+ * mounted at `/api/chat`), so API detection must use baseUrl + path or originalUrl.
+ */
+function requestPath(req: Request): string {
+  const base = req.baseUrl || '';
+  const path = req.path || '';
+  if (base || path) return `${base}${path}` || '/';
+  // Fallback: strip query from originalUrl
+  const raw = req.originalUrl || '/';
+  const q = raw.indexOf('?');
+  return q === -1 ? raw : raw.slice(0, q);
+}
+
+/**
  * Middleware — require any valid auth (user token, link token, or admin session).
  * Browser requests with `?t=` get a session cookie and a clean redirect first.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  const fullPath = requestPath(req);
   // Prefer exchanging link tokens on browser navigations so the rest of the
   // request pipeline sees a normal session cookie.
   const acceptsHtml = (req.headers.accept || '').includes('text/html');
-  if (acceptsHtml || req.path === '/' || !req.path.startsWith('/api/')) {
+  if (acceptsHtml || fullPath === '/' || !fullPath.startsWith('/api/')) {
     if (tryExchangeLinkToken(req, res)) return;
   }
 
   const { user } = extractAuth(req);
   if (!user) {
-    if (req.path.endsWith('/view') || req.path.startsWith('/dl')) {
+    if (fullPath.endsWith('/view') || fullPath.startsWith('/dl') || fullPath.includes('/dl/')) {
       const returnUrl = encodeURIComponent(req.originalUrl);
       res.redirect(`/login?return=${returnUrl}`);
       return;
     }
-    if (req.path.startsWith('/api/')) {
+    if (fullPath.startsWith('/api/')) {
       res.status(401).json({
         error: 'Unauthorized. Provide auth_token via Authorization: Bearer <token>, or a short-lived link token via ?t=',
       });
