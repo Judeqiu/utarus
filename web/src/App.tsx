@@ -1,21 +1,15 @@
 /**
  * App — top-level router.
  *
- * Routing is path-based with a tiny client-side switch:
  *   /login           → <Login>
- *   /admin           → <Admin>      (admin sessions only)
- *   /                → <Chat>       (default; requires session)
- *
- * On mount, the App validates the session by hitting GET /api/chat/agent.
- * If 401 → Login. If ok → render the right page from window.location.pathname.
+ *   authenticated    → <Shell> (nav + Chat / domain pages / Admin)
  */
 
 import { useEffect, useState } from 'react';
 import { fetchAgentStatus, getStoredSession, setStoredSession, clearStoredSession } from './auth.js';
 import type { SessionUser } from './types.js';
 import { Login } from './pages/Login.js';
-import { ChatPage } from './pages/Chat.js';
-import { AdminPage } from './pages/Admin.js';
+import { Shell } from './pages/Shell.js';
 import { Loader2 } from 'lucide-react';
 
 type AppState =
@@ -36,6 +30,7 @@ function navigate(path: string) {
 
 export function App() {
   const [state, setState] = useState<AppState>({ kind: 'boot' });
+  const [path, setPath] = useState(currentPath);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,17 +38,10 @@ export function App() {
     fetchAgentStatus(abort.signal)
       .then(() => {
         if (cancelled) return;
-        // Session cookie is valid. Prefer the stored session for displayName
-        // (the /agent endpoint doesn't return it in Phase 1 — only slug + isStreaming).
         const stored = getStoredSession();
-        const path = currentPath();
-        const slugFromPath = path.startsWith('/admin') ? null : null;
         if (stored) {
           setState({ kind: 'auth', session: stored });
         } else {
-          // Cookie is valid but we have no localStorage. Reconstruct a
-          // minimal user session from /agent status. The slug is the only
-          // field strictly required; displayName is best-effort.
           fetchAgentStatus()
             .then((status) => {
               if (cancelled) return;
@@ -69,7 +57,6 @@ export function App() {
               if (cancelled) return;
               setState({ kind: 'unauth' });
             });
-          void slugFromPath;
         }
       })
       .catch((err: unknown) => {
@@ -79,7 +66,6 @@ export function App() {
           clearStoredSession();
           setState({ kind: 'unauth' });
         } else {
-          // Treat unexpected errors as unauth — server is unreachable or broken.
           setState({ kind: 'unauth' });
         }
       });
@@ -89,12 +75,16 @@ export function App() {
     };
   }, []);
 
-  // Listen for popstate so back/forward works.
   useEffect(() => {
-    const onPop = () => setState((s) => (s.kind === 'auth' ? { ...s } : s));
+    const onPop = () => setPath(currentPath());
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
+
+  const go = (p: string) => {
+    navigate(p);
+    setPath(p);
+  };
 
   if (state.kind === 'boot') {
     return (
@@ -107,11 +97,11 @@ export function App() {
     return (
       <Login
         onSuccess={() => {
-          // Re-validate after login; the cookie is now set.
           const stored = getStoredSession();
           if (stored) {
             setState({ kind: 'auth', session: stored });
-            navigate('/');
+            // Prefer domain default via shell after first manifest load; start at /
+            go('/');
           } else {
             setState({ kind: 'boot' });
           }
@@ -120,17 +110,5 @@ export function App() {
     );
   }
 
-  const path = currentPath();
-  if (path.startsWith('/admin')) {
-    if (state.session.type !== 'admin') {
-      return (
-        <div className="flex min-h-dvh items-center justify-center bg-slate-50 text-sm text-slate-600">
-          Admins only. <button onClick={() => navigate('/')} className="ml-2 text-blue-600 hover:underline">Back to chat</button>
-        </div>
-      );
-    }
-    return <AdminPage session={state.session} onBack={() => navigate('/')} />;
-  }
-
-  return <ChatPage session={state.session} />;
+  return <Shell session={state.session} path={path} navigate={go} />;
 }

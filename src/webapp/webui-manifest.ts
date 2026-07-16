@@ -1,0 +1,55 @@
+/**
+ * Build WebUI manifest for the SPA shell from DomainExtension.webUi.
+ */
+
+import type { DomainExtension, DomainWebNavItem, DomainWebRoute } from '../extension.js';
+import { config } from '../config.js';
+
+export interface WebUiManifest {
+  agentKey: string | null;
+  productName: string;
+  defaultPath: string;
+  nav: Array<DomainWebNavItem & { framework?: boolean }>;
+  routes: DomainWebRoute[];
+}
+
+export function buildWebUiManifest(ext: DomainExtension): WebUiManifest {
+  const webUi = ext.webUi;
+  const productName = webUi?.productName?.trim() || config.agent.name || 'Agent';
+
+  const frameworkNav: Array<DomainWebNavItem & { framework?: boolean }> = [
+    {
+      id: 'chat',
+      label: 'Chat',
+      path: '/',
+      icon: 'message-square',
+      order: 0,
+      framework: true,
+    },
+  ];
+
+  const domainNav = (webUi?.nav ?? []).map((n) => ({ ...n, framework: false as const }));
+  const adminNav: Array<DomainWebNavItem & { framework?: boolean }> = [
+    {
+      id: 'admin',
+      label: 'Admin',
+      path: '/admin',
+      icon: 'shield',
+      order: 1000,
+      adminOnly: true,
+      framework: true,
+    },
+  ];
+
+  const nav = [...frameworkNav, ...domainNav, ...adminNav].sort(
+    (a, b) => (a.order ?? 50) - (b.order ?? 50),
+  );
+
+  return {
+    agentKey: webUi?.agentKey ?? null,
+    productName,
+    defaultPath: webUi?.defaultPath?.trim() || '/',
+    nav,
+    routes: webUi?.routes ?? [],
+  };
+}

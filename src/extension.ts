@@ -40,6 +40,62 @@ export interface EnrichMessageContext {
   channelDisplayName?: string;
 }
 
+/**
+ * Domain WebUI customization — nav items, client routes, and session APIs.
+ * Generic shell stays in Utarus; agent-specific pages use pageKind + domain APIs.
+ */
+export type DomainWebPageKind = 'notifications' | 'tasks' | 'iframe';
+
+export interface DomainWebNavItem {
+  id: string;
+  label: string;
+  /** Client path e.g. /notifications */
+  path: string;
+  /** Optional lucide-style icon key: bell | layout-dashboard | list | message-square */
+  icon?: string;
+  order?: number;
+  adminOnly?: boolean;
+  /** GET path returning { count: number } for nav badge */
+  badgePath?: string;
+}
+
+export interface DomainWebRoute {
+  path: string;
+  /**
+   * Built-in shell page kinds (generic UI + domain API contract).
+   * - notifications: inbox list + mark read
+   * - tasks: generic task/job list for the signed-in user
+   * - iframe: embed iframeSrc
+   */
+  pageKind: DomainWebPageKind;
+  /**
+   * API base path under /api/domain/<agentKey>/… or absolute /api/…
+   * notifications: list GET base, POST base/:id/read, GET base/unread-count
+   * tasks: GET base → { items: TaskItem[] }
+   */
+  apiBase?: string;
+  /** For pageKind iframe */
+  iframeSrc?: string;
+  title?: string;
+}
+
+export interface DomainWebUiExtension {
+  /** URL namespace, e.g. "binary" → /api/domain/binary */
+  agentKey: string;
+  productName?: string;
+  /** Default path after login (e.g. /notifications). Default "/" (chat). */
+  defaultPath?: string;
+  nav?: DomainWebNavItem[];
+  routes?: DomainWebRoute[];
+  apiRouters?: Array<{
+    mountPath?: string;
+    router: import('express').Router;
+    auth?: 'user' | 'admin' | 'public';
+  }>;
+  /** Static files at /domain-assets/<agentKey>/ */
+  staticDir?: string;
+}
+
 export interface DomainExtension {
   /**
    * Paragraph(s) appended to the framework system prompt. This is where the
@@ -135,4 +191,10 @@ export interface DomainExtension {
    * Returns null when the user has no linked entity (admin mode).
    */
   resolveEntitySlug?: (userSlug: string) => Promise<string | null>;
+
+  /**
+   * Optional: WebUI customization (nav, routes, domain APIs).
+   * When omitted, SPA stays Chat + Admin only (backward compatible).
+   */
+  webUi?: DomainWebUiExtension;
 }

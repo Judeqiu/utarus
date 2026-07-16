@@ -29,6 +29,8 @@ import bindriveRouter from './routes.js';
 import { createChatRouter } from './chat/router.js';
 import { adminRouter } from './chat/admin-router.js';
 import { onboardRedeemRouter } from './chat/onboard.js';
+import { createWebUiRouter } from './webui-router.js';
+import { requireAuth, requireAdmin } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -147,6 +149,27 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   app.use('/api/onboard', onboardRedeemRouter);
   app.use('/api/chat', createChatRouter({ framework }));
   app.use('/api/admin', adminRouter);
+  app.use('/api/webui', createWebUiRouter(framework));
+
+  // Domain WebUI APIs + static assets (DomainExtension.webUi)
+  const webUi = framework.extension.webUi;
+  if (webUi?.agentKey?.trim()) {
+    const key = webUi.agentKey.trim();
+    for (const mount of webUi.apiRouters ?? []) {
+      const base = `/api/domain/${key}${mount.mountPath ?? ''}`;
+      const auth = mount.auth ?? 'user';
+      if (auth === 'public') {
+        app.use(base, mount.router);
+      } else if (auth === 'admin') {
+        app.use(base, requireAuth, requireAdmin, mount.router);
+      } else {
+        app.use(base, requireAuth, mount.router);
+      }
+    }
+    if (webUi.staticDir?.trim() && existsSync(webUi.staticDir)) {
+      app.use(`/domain-assets/${key}`, express.static(webUi.staticDir));
+    }
+  }
 
   for (const mount of opts.extraRouters ?? []) {
     app.use(mount.path, mount.router);
@@ -155,7 +178,7 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   if (existsSync(webDistDir)) {
     const indexHtml = join(webDistDir, 'index.html');
     app.get(
-      /^\/(?!api\/|logout|health).*$/,
+      /^\/(?!api\/|logout|health|domain-assets\/).*$/,
       (req: Request, res: Response, next: NextFunction) => {
         const last = req.path.split('/').pop() ?? '';
         if (last.includes('.')) {
