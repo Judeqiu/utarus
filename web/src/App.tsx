@@ -100,7 +100,7 @@ export function App() {
           const stored = getStoredSession();
           if (stored) {
             setState({ kind: 'auth', session: stored });
-            // Prefer domain default via shell after first manifest load; start at /
+            // Start at chat; domain may advertise defaultPath in manifest for later use
             go('/');
           } else {
             setState({ kind: 'boot' });

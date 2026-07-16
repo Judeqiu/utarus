@@ -138,18 +138,21 @@ export function Shell({ session, path, navigate }: ShellProps) {
     };
   }, [manifest]);
 
-  // Redirect to defaultPath once when landing on /
+  // After login (session flag), land on domain defaultPath once if configured.
   useEffect(() => {
-    if (!manifest) return;
-    if (path === '/' && manifest.defaultPath && manifest.defaultPath !== '/') {
-      // Only auto-redirect if default is registered
-      const ok = manifest.nav.some((n) => n.path === manifest.defaultPath);
-      if (ok) {
-        // Don't force every visit — only first paint after login is handled by Login navigate.
-        // Keep chat at / always available.
-      }
+    if (!manifest?.defaultPath || manifest.defaultPath === '/') return;
+    const ok = manifest.nav.some((n) => n.path === manifest.defaultPath);
+    if (!ok) return;
+    try {
+      if (sessionStorage.getItem('utarus_default_landed') === '1') return;
+      // Only auto-land if we are on chat home
+      if (path !== '/' && path !== '') return;
+      sessionStorage.setItem('utarus_default_landed', '1');
+      navigate(manifest.defaultPath);
+    } catch {
+      /* private mode */
     }
-  }, [manifest, path]);
+  }, [manifest, path, navigate]);
 
   if (!manifest) {
     return (

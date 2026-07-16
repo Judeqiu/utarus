@@ -77,7 +77,7 @@ export function TasksPage({ apiBase, title, navigate }: TasksPageProps) {
       </div>
 
       <p className="mb-4 text-sm text-slate-600">
-        Tasks you defined for your account. Each user has their own list.
+        Your scheduled account-manager work. Each user has their own list.
       </p>
 
       {loading && (
@@ -94,8 +94,9 @@ export function TasksPage({ apiBase, title, navigate }: TasksPageProps) {
 
       {!loading && !error && items.length === 0 && (
         <div className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-12 text-center text-sm text-slate-500">
-          No tasks yet. In Telegram, try <code className="rounded bg-slate-100 px-1">/daily on</code>{' '}
-          to create your personal daily check-in.
+          Nothing scheduled yet. In Telegram, try{' '}
+          <code className="rounded bg-slate-100 px-1">/daily on</code> to create your personal daily
+          check-in.
         </div>
       )}
 
