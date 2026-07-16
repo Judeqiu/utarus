@@ -68,6 +68,7 @@ See [webui-integration.md §3](webui-integration.md).
 ```
 Browser Composer
     │  text (user-visible)
+    │  type `/` → slash menu (GET /api/chat/commands)
     │  client intercept: /clear, /help
     ▼
 POST /api/chat/messages  { text, conversationId? }

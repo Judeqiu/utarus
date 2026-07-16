@@ -411,10 +411,10 @@ webCommands: [
 ```
 
 **WebUI notes:**
+- Type **`/`** in the composer to open a Slack-style command menu (catalog from `GET /api/chat/commands`). Pick a command, add args if needed, send.
 - When the user sends `/name args…`, the server matches `DomainExtension.webCommands` and returns `{ kind: 'reply', text }` — the agent is **not** called.
 - `adminOnly` is enforced on the server.
 - Reserved names (do not register): `clear`, `help` (SPA client handles them).
-- Catalog for `/help`: `GET /api/chat/commands`.
 - Handler context: `{ args, userSlug, isAdmin, conversationId? }`.
 
 **Slack notes:** Command names must not collide with framework-owned names (`invite`, `demomode`, `admincode`). Register the command in the Slack app manifest as well.

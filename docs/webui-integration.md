@@ -216,7 +216,8 @@ webCommands: [
 
 | Piece | Behavior |
 |---|---|
-| Match | Message must be `/name` or `/name args` only (whole message) |
+| Trigger | Type **`/`** in the composer — Slack-style menu lists framework + domain commands; filter as you type; ↑/↓ + Enter or click to pick |
+| Match | Sent message must be `/name` or `/name args` only (whole message) |
 | Reply | `POST /messages` → `{ kind: 'reply', text }` (SPA shows it as an assistant bubble) |
 | Admin | `adminOnly: true` → non-admins get `⛔ Admin only.` |
 | Reserved | `clear`, `help` — SPA-owned; do not register |
