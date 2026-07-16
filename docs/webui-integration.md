@@ -20,6 +20,8 @@ How a **domain agent** enables the Utarus browser chat (Claude-style multi-chat,
 | Agent pool + cache keys | **Utarus** | `web:<slug>:<conversationId>` |
 | Conversation files | **Utarus** | `data/chats/<slug>/…` |
 | `enrichMessage` content | **Domain** | Prepended for the *agent only* — never shown in the user bubble |
+| Slash commands (`/clear`, `/help`) | **Utarus SPA** | Client-side |
+| Domain `webCommands` (`/name …`) | **Domain** | Server intercept on `POST /messages`; no LLM |
 | Landing `POST /api/onboard/register` (QR → BIND) | **Domain (optional)** | Mount via `extraRouters` |
 | Domain tools / skills / purpose | **Domain** | Unchanged by WebUI |
 
@@ -188,8 +190,39 @@ All routes except login/redeem/demo require `bindrive_session` (or Bearer auth).
 | `POST` | `/api/chat/clear` | `{ conversationId }` clear messages in one chat |
 | `POST` | `/api/chat/abort` | `{ conversationId? }` |
 | `GET` | `/api/chat/agent` | Status + `version` |
+| `GET` | `/api/chat/commands` | Framework + domain slash-command catalog for `/help` |
 
 If `conversationId` is omitted on the first message, the server creates a conversation.
+
+### Domain slash commands (`webCommands`)
+
+Same idea as Telegram/Slack domain commands: register on the extension, users type `/name args` in the composer, the framework replies without the LLM.
+
+```ts
+// domain extension
+webCommands: [
+  {
+    name: 'status',
+    description: 'Show domain status for this user',
+    adminOnly: false,
+    handler: async ({ userSlug }) => {
+      const state = resolveUserBySlug(userSlug);
+      if (!state) return 'No profile linked.';
+      return `Slug: ${state.user.slug}`;
+    },
+  },
+],
+```
+
+| Piece | Behavior |
+|---|---|
+| Match | Message must be `/name` or `/name args` only (whole message) |
+| Reply | `POST /messages` → `{ kind: 'reply', text }` (SPA shows it as an assistant bubble) |
+| Admin | `adminOnly: true` → non-admins get `⛔ Admin only.` |
+| Reserved | `clear`, `help` — SPA-owned; do not register |
+| Help UI | `/help` loads `GET /api/chat/commands` (hides admin-only entries for non-admins) |
+
+See [integration-guide.md §5.4](integration-guide.md).
 
 ### Critical: display text vs agent prompt
 

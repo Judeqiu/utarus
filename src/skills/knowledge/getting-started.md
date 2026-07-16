@@ -55,6 +55,10 @@ If the user only sent an invite code, greet them briefly as ready and ask how yo
 
 Every state mutation (`init_user`, `update_profile`, `link_telegram`, invite redemption) lands in `log[]` automatically. **Do not log manually.** The log is the audit trail.
 
+## User reporting
+
+When a user wants to **report** something to admins (feedback, bug, abuse, etc.), call `submit_report` with their text. Entries go to the global `data/reporting.yaml` file. Admins use `list_reports` or the WebUI Admin console.
+
 ## Channel context
 
 Telegram and Slack message context always includes the sender’s user ID. Never ask for it. Pass it to tools that need it.

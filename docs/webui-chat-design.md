@@ -68,8 +68,12 @@ See [webui-integration.md §3](webui-integration.md).
 ```
 Browser Composer
     │  text (user-visible)
+    │  client intercept: /clear, /help
     ▼
 POST /api/chat/messages  { text, conversationId? }
+    │
+    ├─ Domain webCommands match (/name args)?
+    │     yes → { kind: 'reply', text }  (no LLM)
     │
     ├─ resolveInboundMessage + domain enrichMessage  → agentPrompt
     ├─ appendMessage(…, text)                        → disk (clean)
@@ -82,6 +86,8 @@ POST /api/chat/messages  { text, conversationId? }
            └─ appendMessage(assistant)
            └─ maybe AI title (title_source=ai)
 ```
+
+Domain agents register extra commands via `DomainExtension.webCommands`. Catalog: `GET /api/chat/commands` (see [webui-integration.md](webui-integration.md), [integration-guide.md §5.4](integration-guide.md)).
 
 **Invariant:** user bubbles and `StoredChatMessage` for role `user` never contain enrichMessage dumps. Legacy rows are stripped in `getConversationForClient`.
 

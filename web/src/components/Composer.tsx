@@ -8,6 +8,8 @@
  * Slash commands handled client-side:
  *  - /clear → clears agent context (and local state)
  *  - /help  → opens help modal (parent handles via callback)
+ * Domain slash commands (DomainExtension.webCommands) are sent to the server
+ * and handled without the LLM — same pattern as Telegram/Slack.
  *
  * Spec: docs/webui-chat-design.md §7.5, §9.
  */

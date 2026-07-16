@@ -14,8 +14,10 @@ import {
   deleteConversation,
   getConversation,
   listConversations,
+  listChatCommands,
   sendMessage,
   subscribeStream,
+  type WebCommandInfo,
 } from '../api.js';
 import { fetchAgentStatus, logout } from '../auth.js';
 import type {
@@ -639,6 +641,29 @@ function uniqTools(chips: ToolChip[]): ToolChip[] {
 }
 
 function HelpModal({ onClose }: { onClose: () => void }) {
+  const [commands, setCommands] = useState<WebCommandInfo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listChatCommands()
+      .then((list) => {
+        if (!cancelled) setCommands(list);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+          setCommands([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const framework = (commands ?? []).filter((c) => c.source === 'framework');
+  const domain = (commands ?? []).filter((c) => c.source === 'domain');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
@@ -657,16 +682,43 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           <li>
             <strong>New</strong> — start a separate conversation (sidebar).
           </li>
-          <li>
-            <code className="rounded bg-slate-100 px-1 py-0.5">/clear</code> — clear
-            messages in the current chat (keeps the chat in the list).
-          </li>
-          <li>
-            <code className="rounded bg-slate-100 px-1 py-0.5">/help</code> — show this
-            message.
-          </li>
+          {commands === null && !error && (
+            <li className="text-xs text-slate-400">Loading commands…</li>
+          )}
+          {error && (
+            <li className="text-xs text-rose-600">{error}</li>
+          )}
+          {framework.map((c) => (
+            <li key={`fw-${c.name}`}>
+              <code className="rounded bg-slate-100 px-1 py-0.5">/{c.name}</code>
+              {c.usageHint ? (
+                <span className="text-slate-500"> {c.usageHint}</span>
+              ) : null}
+              {' — '}
+              {c.description}
+            </li>
+          ))}
+          {domain.length > 0 && (
+            <li className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Domain
+            </li>
+          )}
+          {domain.map((c) => (
+            <li key={`dom-${c.name}`}>
+              <code className="rounded bg-slate-100 px-1 py-0.5">/{c.name}</code>
+              {c.usageHint ? (
+                <span className="text-slate-500"> {c.usageHint}</span>
+              ) : null}
+              {c.adminOnly ? (
+                <span className="ml-1 text-xs text-amber-700">(admin)</span>
+              ) : null}
+              {' — '}
+              {c.description}
+            </li>
+          ))}
           <li className="text-xs text-slate-500">
-            Chats are saved on the server. Refresh keeps history.
+            Chats are saved on the server. Refresh keeps history. Domain agents
+            register extra commands via <code className="rounded bg-slate-100 px-1">webCommands</code>.
           </li>
         </ul>
       </div>

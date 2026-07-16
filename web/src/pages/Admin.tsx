@@ -1,5 +1,5 @@
 /**
- * Admin — invites / users management.
+ * Admin — invites / users / reports management.
  *
  * Spec: docs/webui-chat-design.md §7.6 (admin REST).
  *
@@ -12,6 +12,7 @@
  *   POST   /api/admin/admincodes/revoke
  *   POST   /api/admin/demomode  { enabled }
  *   GET    /api/admin/demomode
+ *   GET    /api/admin/reports
  */
 
 import { useEffect, useState } from 'react';
@@ -35,10 +36,19 @@ interface DemoState {
   updatedAt?: string;
 }
 
+interface UserReportRow {
+  id: string;
+  created_at: string;
+  reporter_slug: string;
+  text: string;
+  category?: string;
+}
+
 export function AdminPage({ session, onBack }: AdminPageProps) {
   const [invites, setInvites] = useState<InviteCode[]>([]);
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [adminCodes, setAdminCodes] = useState<AdminCode[]>([]);
+  const [reports, setReports] = useState<UserReportRow[]>([]);
   const [demo, setDemo] = useState<DemoState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,17 +59,19 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
       setLoading(true);
       setError(null);
       try {
-        const [iv, us, ac, dm] = await Promise.all([
+        const [iv, us, ac, dm, rp] = await Promise.all([
           listInvites('all'),
           listUsers(),
           listAdminCodes(),
           getDemoState(),
+          listUserReports(),
         ]);
         if (cancelled) return;
         setInvites(iv);
         setUsers(us);
         setAdminCodes(ac);
         setDemo(dm);
+        setReports(rp);
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -245,6 +257,38 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
               </table>
             </div>
           </section>
+
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-slate-900">
+              User reports ({reports.length})
+            </h2>
+            {reports.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">
+                No reports yet. Users can say &quot;report …&quot; in chat.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {reports.map((r) => (
+                  <article
+                    key={r.id}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2.5"
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span className="font-mono text-slate-700">{r.reporter_slug}</span>
+                      {r.category && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                          {r.category}
+                        </span>
+                      )}
+                      <span>{new Date(r.created_at).toLocaleString()}</span>
+                      <span className="font-mono text-[10px] text-slate-400">{r.id}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-slate-800">{r.text}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
         </main>
       )}
     </div>
@@ -361,4 +405,11 @@ async function setDemoMode(enabled: boolean): Promise<DemoState> {
   const body = await res.json().catch(() => ({ error: res.statusText }));
   if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
   return body as DemoState;
+}
+
+async function listUserReports(): Promise<UserReportRow[]> {
+  const res = await fetch('/api/admin/reports', { credentials: 'include' });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  return (body.reports ?? []) as UserReportRow[];
 }

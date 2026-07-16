@@ -5,3 +5,4 @@ export { createPostHtmlReportTool } from './post-html-report.js';
 export { createFirecrawlTool } from './firecrawl.js';
 export { createWriteReportTool } from './write-report.js';
 export { createBinDriveTools } from './bindrive.js';
+export { createReportingTools } from './reporting.js';

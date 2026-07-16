@@ -123,6 +123,24 @@ export type SendOutcome =
   | { kind: 'queued'; conversationId?: string }
   | { kind: 'reply'; text: string };
 
+export interface WebCommandInfo {
+  name: string;
+  description: string;
+  adminOnly: boolean;
+  usageHint?: string;
+  source: 'framework' | 'domain';
+}
+
+/** List slash commands available in WebUI (framework + domain webCommands). */
+export async function listChatCommands(): Promise<WebCommandInfo[]> {
+  const res = await fetchWithRetry('/api/chat/commands', { method: 'GET' });
+  const body = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) {
+    throw friendlyHttpError(res.status, body);
+  }
+  return (body.commands ?? []) as WebCommandInfo[];
+}
+
 export async function sendMessage(
   text: string,
   opts?: { queue?: boolean; conversationId?: string },

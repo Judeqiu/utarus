@@ -1,7 +1,7 @@
 /**
  * Utarus framework entry — composes a DomainExtension with the shared
  * infrastructure (user state, onboarding, interfaces, skill-tool, firecrawl,
- * bindrive, write-report, usage tracking) and returns a Framework handle the
+ * bindrive, write-report, user reporting, usage tracking) and returns a Framework handle the
  * domain agent uses to boot interfaces and obtain agents per user slug.
  */
 
@@ -15,6 +15,7 @@ import { createFirecrawlTool } from './tools/firecrawl.js';
 import { createWriteReportTool } from './tools/write-report.js';
 import { createPostHtmlReportTool } from './tools/post-html-report.js';
 import { createBinDriveTools } from './tools/bindrive.js';
+import { createReportingTools } from './tools/reporting.js';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
 import { startTelegram } from './interfaces/telegram.js';
 import { startSlack } from './interfaces/slack/index.js';
@@ -202,6 +203,19 @@ When the user message is prefixed with \`[Channel: web …]\`, you are speaking 
 
 Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \`$…$\` math delimiters. Use \`$$…$$\` only for real equations.
 
+## User reporting (framework-owned)
+
+Users can file reports for admin review (bugs, abuse, product feedback, anything they want operators to see).
+
+When the user says **report**, wants to **file a report**, or clearly wants feedback escalated to admins:
+1. Call \`submit_report\` with their report text (verbatim or lightly cleaned). Optionally set \`category\` (\`feedback\` | \`bug\` | \`abuse\` | \`other\`).
+2. Confirm it was saved. Do not invent response SLAs.
+3. If their message is only "report" with no substance, ask once what they want admins to know — then call \`submit_report\`.
+
+Admins list reports with \`list_reports\` (or WebUI Admin → Reports / \`data/reporting.yaml\`).
+
+This is **not** the same as HTML intelligence dashboards (\`write_report\` / \`post_html_report\`).
+
 ## HTML reports (generic)
 
 When the user **explicitly asks for HTML**, an HTML report/page, or a full report as a file/link:
@@ -228,6 +242,7 @@ export function createFramework(opts: FrameworkOptions): Framework {
       ...createUserStateTools(),
       ...createInviteTools(),
       ...createBinDriveTools(),
+      ...createReportingTools(userSlug, isAdmin),
     ];
     const domain = typeof extension.tools === 'function'
       ? extension.tools(userSlug, isAdmin)

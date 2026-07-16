@@ -1,6 +1,6 @@
 /**
- * Admin REST endpoints — POST / GET for invite codes, admin codes, demo mode,
- * and user listing. All routes require admin session.
+ * Admin REST endpoints — invite codes, admin codes, demo mode, user listing,
+ * and user reports. All routes require admin session.
  *
  * Spec: docs/webui-chat-design.md §7.6
  */
@@ -15,6 +15,7 @@ import {
   listAdminOnboardCodes,
   listUserSlugs,
   loadState,
+  listReports,
 } from '../../state/index.js';
 import { getDemoModeState, setDemoMode } from '../../onboarding/demo-mode.js';
 
@@ -128,5 +129,23 @@ adminRouter.get('/users/:slug', (req: Request, res: Response) => {
     res.json(safe);
   } catch (e) {
     res.status(404).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ── User reports (global reporting.yaml) ────────────────────────────────
+
+adminRouter.get('/reports', (req: Request, res: Response) => {
+  try {
+    const reporterSlug =
+      typeof req.query.reporter_slug === 'string' ? req.query.reporter_slug.trim() : undefined;
+    const limitRaw = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : undefined;
+    const limit = limitRaw != null && Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const reports = listReports({
+      reporterSlug: reporterSlug || undefined,
+      limit,
+    });
+    res.json({ reports });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });

@@ -142,7 +142,7 @@ Slug: kebab-case from display name; if non-Latin-only, `user-<channel-id>`; coll
    ```
 
 3. Use channel ids from message context on tools (`slack_user_id` / `telegram_user_id`)—never ask the user.
-4. Document admin commands in your app’s Slack manifest (`/demomode`, `/invitecode`, …) and any domain slash commands.
+4. Document admin commands in your app’s Slack manifest (`/demomode`, `/invitecode`, …) and any domain slash commands (`telegramCommands` / `slackCommands` / `webCommands`).
 5. Prefer framework voice: friendly, professional; no profile interviews; at most one query clarification.
 
 ### Do not

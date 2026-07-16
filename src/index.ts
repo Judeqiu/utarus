@@ -91,7 +91,7 @@ export {
   generateMemorablePassword,
 } from './auth/password.js';
 export type { AuthUser, CreateLinkTokenParams, LinkTokenResult } from './webapp/auth.js';
-export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode } from './state/index.js';
+export type { UserIdentity, UserProfile, UserState, LogEntry, InviteCode, AdminOnboardCode, UserReport } from './state/index.js';
 export {
   loadState,
   saveState,
@@ -112,7 +112,11 @@ export {
   listAdminOnboardCodes,
   loadDynamicAdminIds,
   addDynamicAdminId,
+  appendReport,
+  listReports,
+  reportingPath,
 } from './state/index.js';
+export { createReportingTools } from './tools/reporting.js';
 export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
 export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';

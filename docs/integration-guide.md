@@ -52,7 +52,7 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 | Tools | `use_skill`, user/invite tools, firecrawl, `post_html_report`, BinDrive | Domain tools (e.g. `get_portfolio`, `add_holding`) |
 | Channels | Telegram, Slack, CLI, **WebUI chat** (SPA + SSE + multi-chat) | — |
 | Chat history | `data/chats/<slug>/…` conversations, AI titles | Never store `enrichMessage` text as the user bubble |
-| Slash commands | `/demomode`, invite/admin commands | Domain commands via `DomainExtension.{telegram,slack}Commands` |
+| Slash commands | `/demomode`, invite/admin commands; WebUI `/clear` `/help` | Domain commands via `DomainExtension.{telegram,slack,web}Commands` |
 
 ---
 
@@ -372,9 +372,9 @@ export const invageExtension: DomainExtension = {
 
 See `src/skills/` for the framework's own skill files.
 
-### 5.4 `telegramCommands` / `slackCommands` *(optional)*
+### 5.4 `telegramCommands` / `slackCommands` / `webCommands` *(optional)*
 
-Domain-specific slash commands. Framework owns `/invite`, `/demomode`, `/admincode`; domains add their own.
+Domain-specific slash commands. Framework owns channel admin commands (`/invite`, `/demomode`, `/admincode` on Telegram/Slack; `/clear` and `/help` on WebUI). Domains add their own on each channel they care about.
 
 ```ts
 // invage: src/extension.ts
@@ -394,9 +394,30 @@ slackCommands: [
     handler: (ctx) => handleOnboardCommand(ctx),
   },
 ],
+
+// Same idea for the browser chat — user types `/bind BIND-…` in the composer
+webCommands: [
+  {
+    name: 'bind',
+    description: 'Finish registration with a BIND- code',
+    adminOnly: false,
+    usageHint: 'BIND-XXXXXXXX',
+    handler: async ({ args, userSlug, isAdmin }) => {
+      // return reply text (markdown ok); no LLM run
+      return handleBindForWeb({ args, userSlug, isAdmin });
+    },
+  },
+],
 ```
 
-**Note:** Slack command names must not collide with framework-owned names (`invite`, `demomode`, `admincode`). Register the command in the Slack app manifest as well.
+**WebUI notes:**
+- When the user sends `/name args…`, the server matches `DomainExtension.webCommands` and returns `{ kind: 'reply', text }` — the agent is **not** called.
+- `adminOnly` is enforced on the server.
+- Reserved names (do not register): `clear`, `help` (SPA client handles them).
+- Catalog for `/help`: `GET /api/chat/commands`.
+- Handler context: `{ args, userSlug, isAdmin, conversationId? }`.
+
+**Slack notes:** Command names must not collide with framework-owned names (`invite`, `demomode`, `admincode`). Register the command in the Slack app manifest as well.
 
 ### 5.5 `enrichMessage` *(optional but recommended)*
 

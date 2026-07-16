@@ -74,3 +74,16 @@ export interface AdminOnboardCode {
   revoked?: boolean;
   revoked_at?: string;
 }
+
+/**
+ * User-submitted report / feedback entry.
+ * Stored in the global append-only file data/reporting.yaml.
+ * Admins read via list_reports tool or WebUI Admin → Reports.
+ */
+export interface UserReport {
+  id: string;                      // UUID
+  created_at: string;              // ISO-8601 timestamp
+  reporter_slug: string;           // user slug who filed the report
+  text: string;                    // report body
+  category?: string;               // e.g. feedback | bug | abuse | other
+}

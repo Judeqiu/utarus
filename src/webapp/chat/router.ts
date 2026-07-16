@@ -14,6 +14,7 @@
  *   POST   /clear                body: { conversationId }
  *   POST   /abort                body: { conversationId? }
  *   GET    /agent                → status + version
+ *   GET    /commands             → framework + domain slash commands for /help
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -50,6 +51,10 @@ import {
 } from './conversation-store.js';
 import { hydrateAgentFromStoredMessages } from './hydrate-agent.js';
 import { summarizeChatTitle } from './title-chat.js';
+import {
+  dispatchWebCommand,
+  listWebCommandCatalog,
+} from './web-commands.js';
 
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
@@ -181,6 +186,16 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     }
   });
 
+  // ── GET /commands ───────────────────────────────────────────────────
+  // Catalog for WebUI /help — framework + domain webCommands.
+  router.get('/commands', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const isAdmin = user.type === 'admin';
+    res.json({
+      commands: listWebCommandCatalog(deps.framework.extension, { isAdmin }),
+    });
+  });
+
   // ── POST /messages ──────────────────────────────────────────────────
   router.post('/messages', async (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
@@ -198,6 +213,28 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const isAdmin = user.type === 'admin';
 
     let conversationId = parseConversationId(body.conversationId);
+
+    // Domain webCommands — same idea as Telegram/Slack slash commands:
+    // `/name args` is handled without the LLM.
+    try {
+      const cmdResult = await dispatchWebCommand({
+        text,
+        extension: deps.framework.extension,
+        userSlug: user.slug ?? '',
+        isAdmin,
+        conversationId,
+      });
+      if (cmdResult.kind === 'forbidden' || cmdResult.kind === 'handled') {
+        res.json({ kind: 'reply', text: cmdResult.text });
+        return;
+      }
+    } catch (e) {
+      res.status(500).json({
+        error: 'command_failed',
+        message: e instanceof Error ? e.message : String(e),
+      });
+      return;
+    }
 
     let linkedUser = null;
     if (user.type === 'user' && user.slug) {

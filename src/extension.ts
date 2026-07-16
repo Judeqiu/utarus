@@ -89,6 +89,29 @@ export interface DomainExtension {
   }>;
 
   /**
+   * Optional: domain-specific slash commands for the WebUI chat composer.
+   * When the user sends `/name args…` as a message, the framework matches
+   * `name` (case-insensitive, no leading slash), runs `handler`, and returns
+   * the reply text without calling the LLM — same pattern as Telegram/Slack.
+   *
+   * Framework-reserved names (handled client-side): `clear`, `help`.
+   * Do not reuse those names. `adminOnly` is enforced on the server.
+   */
+  webCommands?: Array<{
+    name: string;
+    description: string;
+    adminOnly: boolean;
+    /** Shown in WebUI /help as usage hint (optional). */
+    usageHint?: string;
+    handler: (ctx: {
+      args: string;
+      userSlug: string;
+      isAdmin: boolean;
+      conversationId?: string | null;
+    }) => Promise<string> | string;
+  }>;
+
+  /**
    * Optional: enrich the inbound message with domain context before it is
    * handed to the agent. Use this to prepend seller/campaign state, inject a
    * linked entity slug, or short-circuit fully (return empty string to skip

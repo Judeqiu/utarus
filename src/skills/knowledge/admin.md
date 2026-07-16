@@ -1,6 +1,17 @@
 # Admin
 
-Admin operations on the Utarus framework: invite codes, admin onboard codes, and revocation.
+Admin operations on the Utarus framework: invite codes, admin onboard codes, user reports, and revocation.
+
+## User reports
+
+Any user can file a report via chat ("report …") — the agent calls `submit_report`, which appends to the global file `data/reporting.yaml`.
+
+**Admins review reports with:**
+- Tool: `list_reports` (optional `reporter_slug`, `limit`) — newest first
+- WebUI: Admin → Reports
+- File: `data/reporting.yaml`
+
+Each entry has `id`, `created_at`, `reporter_slug`, `text`, and optional `category`.
 
 ## Two code types
 

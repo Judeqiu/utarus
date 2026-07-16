@@ -25,9 +25,9 @@ export const SKILLS: readonly Skill[] = [
   {
     id: 'admin',
     name: 'Admin',
-    description: 'Load when the user asks about admin operations: issuing invite codes, issuing admin onboard codes, listing codes, revoking codes, or escalating privileges. Defines the code patterns (INV-XXXXXXXX for invites, ADM-XXXXXXXX for admin onboard) and the failure modes for each.',
+    description: 'Load when the user asks about admin operations: issuing invite codes, issuing admin onboard codes, listing codes, revoking codes, escalating privileges, or reviewing user reports / feedback in the reporting log. Defines the code patterns (INV-XXXXXXXX for invites, ADM-XXXXXXXX for admin onboard) and list_reports / data/reporting.yaml.',
     kind: 'knowledge',
-    keywords: ['admin', 'invite', 'onboard', 'code', 'revoke', 'privilege', 'telegram'],
+    keywords: ['admin', 'invite', 'onboard', 'code', 'revoke', 'privilege', 'telegram', 'report', 'reporting', 'feedback'],
   },
 ];
 
