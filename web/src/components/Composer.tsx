@@ -53,6 +53,21 @@ export function Composer({
     }
   }, [isStreaming]);
 
+  // iOS Safari: when the soft keyboard opens it shrinks visualViewport but
+  // keeps layout viewport unchanged, so the textarea can be hidden behind
+  // the keyboard. Scroll it into view on resize.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+
   function focusInput() {
     // After setState, focus on next frame so the element is still editable.
     requestAnimationFrame(() => {
@@ -95,7 +110,7 @@ export function Composer({
   return (
     <form
       onSubmit={handleSubmit}
-      className="border-t border-slate-200 bg-white px-4 py-3"
+      className="pb-safe border-t border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-3"
     >
       <div className="flex items-end gap-2">
         <div className="flex-1">
@@ -121,21 +136,25 @@ export function Composer({
           <button
             type="button"
             onClick={onAbort}
+            title="Stop"
+            aria-label="Stop"
             className="inline-flex items-center gap-1 rounded-2xl bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
           >
-            <Square className="h-4 w-4" /> Stop
+            <Square className="h-4 w-4" /> <span className="hidden sm:inline">Stop</span>
           </button>
         ) : (
           <button
             type="submit"
             disabled={!text.trim()}
+            title="Send"
+            aria-label="Send"
             className="inline-flex items-center gap-1 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"
           >
-            <CornerDownLeft className="h-4 w-4" /> Send
+            <CornerDownLeft className="h-4 w-4" /> <span className="hidden sm:inline">Send</span>
           </button>
         )}
       </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+      <div className="mt-1 hidden items-center justify-between text-[11px] text-slate-400 sm:flex">
         <span>
           <code className="rounded bg-slate-100 px-1 py-0.5">/help</code> for commands ·{' '}
           <code className="rounded bg-slate-100 px-1 py-0.5">shift+enter</code> for newline

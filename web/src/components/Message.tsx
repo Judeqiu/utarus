@@ -25,7 +25,7 @@ export function MessageView({ message, viewerSlug, now, agentName }: MessageView
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] whitespace-pre-wrap rounded-2xl bg-blue-600 px-3 py-2 text-sm text-white">
+        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-blue-600 px-3 py-2 text-sm text-white sm:max-w-[80%]">
           {message.text}
         </div>
       </div>
@@ -35,7 +35,7 @@ export function MessageView({ message, viewerSlug, now, agentName }: MessageView
   return (
     <div className="flex flex-col items-start">
       <div className="mb-1 text-xs font-medium text-slate-500">{agentName}</div>
-      <div className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-4 sm:py-3">
         {message.tools && message.tools.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {message.tools.map((t) => (

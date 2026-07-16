@@ -115,7 +115,7 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-dvh bg-slate-50">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
         <div className="flex items-center gap-2">
           <button

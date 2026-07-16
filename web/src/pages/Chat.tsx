@@ -30,7 +30,7 @@ import type {
 import { ThreadView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
 import { ConversationSidebar } from '../components/ConversationSidebar.js';
-import { KeyRound, LogOut, Settings, Sparkles, X } from 'lucide-react';
+import { KeyRound, LogOut, Menu, Settings, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
   session: SessionUser;
@@ -68,6 +68,7 @@ export function ChatPage({ session }: ChatPageProps) {
     () => localStorage.getItem(ACTIVE_CONV_KEY),
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [banner, setBanner] = useState<string | null>(null);
@@ -452,6 +453,7 @@ export function ChatPage({ session }: ChatPageProps) {
       setMessages([]);
       toolMap.current.clear();
       await refreshList();
+      setSidebarMobileOpen(false);
     } catch (err: unknown) {
       setBanner(`New chat failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -462,9 +464,13 @@ export function ChatPage({ session }: ChatPageProps) {
       setBanner('Wait for the current reply to finish before switching chats.');
       return;
     }
-    if (id === activeConversationId) return;
+    if (id === activeConversationId) {
+      setSidebarMobileOpen(false);
+      return;
+    }
     try {
       await loadConversation(id);
+      setSidebarMobileOpen(false);
     } catch (err: unknown) {
       setBanner(`Load chat failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -491,30 +497,38 @@ export function ChatPage({ session }: ChatPageProps) {
 
   if (bootLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
+      <div className="flex h-dvh items-center justify-center bg-slate-50 text-sm text-slate-500">
         Loading chats…
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
-      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white">
+    <div className="flex h-dvh flex-col bg-slate-50">
+      <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSidebarMobileOpen(true)}
+            className="-ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-100 sm:hidden"
+            aria-label="Open chats"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
             <Sparkles className="h-4 w-4" />
           </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold text-slate-900">
+          <div className="min-w-0 leading-tight">
+            <div className="truncate text-sm font-semibold text-slate-900">
               {agentName} · {session.displayName}
             </div>
-            <div className="text-[11px] text-slate-500">
+            <div className="hidden text-[11px] text-slate-500 sm:block">
               slug: <code className="rounded bg-slate-100 px-1 py-0.5">{session.slug}</code>
               {version && <> · v{version}</>}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {version && (
             <span
               className="hidden sm:inline rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
@@ -526,55 +540,69 @@ export function ChatPage({ session }: ChatPageProps) {
           {session.type === 'admin' && (
             <a
               href="/admin"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+              title="Admin"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
             >
-              <Settings className="h-3 w-3" /> Admin
+              <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Admin</span>
             </a>
           )}
           {session.type === 'user' && (
             <button
               type="button"
               onClick={() => setShowChangePassword(true)}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+              title="Change password"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
             >
-              <KeyRound className="h-3 w-3" /> Password
+              <KeyRound className="h-4 w-4" /> <span className="hidden sm:inline">Password</span>
             </button>
           )}
           <button
             type="button"
             onClick={() => void logout()}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+            title="Logout"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
           >
-            <LogOut className="h-3 w-3" /> Logout
+            <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </header>
 
       {banner && (
-        <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
-          <span>{banner}</span>
+        <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:px-4">
+          <span className="min-w-0 truncate">{banner}</span>
           <button
             type="button"
             onClick={() => setBanner(null)}
-            className="text-amber-700 hover:text-amber-900"
+            className="shrink-0 rounded p-1 text-amber-700 hover:text-amber-900"
             aria-label="Dismiss"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <ConversationSidebar
           conversations={conversations}
           activeId={activeConversationId}
           collapsed={sidebarCollapsed}
           busy={isStreaming}
+          mobileOpen={sidebarMobileOpen}
           onSelect={(id) => void handleSelectChat(id)}
           onNew={() => void handleNewChat()}
           onDelete={(id) => void handleDeleteChat(id)}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+          onCloseMobile={() => setSidebarMobileOpen(false)}
         />
+
+        {sidebarMobileOpen && (
+          <button
+            type="button"
+            onClick={() => setSidebarMobileOpen(false)}
+            className="fixed inset-0 z-30 bg-black/40 sm:hidden"
+            aria-label="Close chats"
+          />
+        )}
 
         <div className="flex min-w-0 flex-1 flex-col">
           <ThreadView

@@ -98,7 +98,7 @@ export function App() {
 
   if (state.kind === 'boot') {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-50">
         <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
       </div>
     );
@@ -124,7 +124,7 @@ export function App() {
   if (path.startsWith('/admin')) {
     if (state.session.type !== 'admin') {
       return (
-        <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600">
+        <div className="flex min-h-dvh items-center justify-center bg-slate-50 text-sm text-slate-600">
           Admins only. <button onClick={() => navigate('/')} className="ml-2 text-blue-600 hover:underline">Back to chat</button>
         </div>
       );

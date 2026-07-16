@@ -102,7 +102,7 @@ export function Login({ onSuccess }: LoginProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <header className="mb-5 text-center">
           <h1 className="text-xl font-semibold text-slate-900">{agentName} · Web</h1>
@@ -537,7 +537,7 @@ function DemoLogin({
 
   if (credentials) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
         <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <CredentialsPanel creds={credentials} onContinue={() => onContinue(credentials)} />
         </div>
@@ -546,7 +546,7 @@ function DemoLogin({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-dvh items-center justify-center bg-slate-50 px-4">
       <form
         onSubmit={submit}
         className="w-full max-w-md space-y-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"

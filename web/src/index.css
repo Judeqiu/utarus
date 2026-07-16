@@ -8,6 +8,30 @@
   #root {
     height: 100%;
   }
+  /* Dynamic viewport height on mobile — URL-bar show/hide no longer janks
+     the layout. Legacy height:100% above is the fallback. */
+  @supports (height: 100dvh) {
+    html,
+    body,
+    #root {
+      height: 100dvh;
+    }
+  }
+  body {
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left);
+  }
 }
 
 /* GitHub-friendly markdown styling (used inside .prose-chat). */

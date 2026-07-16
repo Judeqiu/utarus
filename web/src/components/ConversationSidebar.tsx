@@ -1,8 +1,8 @@
 /**
- * Claude-style conversation list (left rail).
+ * Claude-style conversation list (left rail on desktop, drawer on mobile).
  */
 
-import { MessageSquarePlus, Trash2, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { MessageSquarePlus, Trash2, PanelLeftClose, PanelLeft, X } from 'lucide-react';
 import type { ConversationSummary } from '../types.js';
 
 interface ConversationSidebarProps {
@@ -10,10 +10,12 @@ interface ConversationSidebarProps {
   activeId: string | null;
   collapsed: boolean;
   busy: boolean;
+  mobileOpen: boolean;
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
   onToggleCollapse: () => void;
+  onCloseMobile: () => void;
 }
 
 function formatWhen(iso: string): string {
@@ -36,14 +38,45 @@ export function ConversationSidebar({
   activeId,
   collapsed,
   busy,
+  mobileOpen,
   onSelect,
   onNew,
   onDelete,
   onToggleCollapse,
+  onCloseMobile,
 }: ConversationSidebarProps) {
+  // Mobile drawer takes priority over the desktop collapsed rail.
+  if (mobileOpen) {
+    return (
+      <aside className="fixed inset-y-0 left-0 z-40 flex w-[85vw] max-w-xs flex-col bg-slate-100 pl-safe pt-safe shadow-xl sm:hidden">
+        <SidebarBody
+          conversations={conversations}
+          activeId={activeId}
+          busy={busy}
+          onSelect={onSelect}
+          onNew={onNew}
+          onDelete={onDelete}
+          headerAction={
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200"
+              title="Close"
+              aria-label="Close chats"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          }
+          forceDeleteVisible
+        />
+      </aside>
+    );
+  }
+
+  // Desktop collapsed rail — hidden on mobile (drawer used instead).
   if (collapsed) {
     return (
-      <aside className="flex w-12 flex-col items-center border-r border-slate-200 bg-slate-100 py-3 gap-2">
+      <aside className="hidden w-12 flex-col items-center gap-2 border-r border-slate-200 bg-slate-100 py-3 sm:flex">
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -67,8 +100,55 @@ export function ConversationSidebar({
     );
   }
 
+  // Desktop expanded rail — hidden on mobile.
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-100">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-100 sm:flex">
+      <SidebarBody
+        conversations={conversations}
+        activeId={activeId}
+        busy={busy}
+        onSelect={onSelect}
+        onNew={onNew}
+        onDelete={onDelete}
+        headerAction={
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200"
+            title="Hide sidebar"
+            aria-label="Hide sidebar"
+          >
+            <PanelLeftClose className="h-4 w-4" />
+          </button>
+        }
+      />
+    </aside>
+  );
+}
+
+interface SidebarBodyProps {
+  conversations: ConversationSummary[];
+  activeId: string | null;
+  busy: boolean;
+  onSelect: (id: string) => void;
+  onNew: () => void;
+  onDelete: (id: string) => void;
+  headerAction: React.ReactNode;
+  forceDeleteVisible?: boolean;
+}
+
+function SidebarBody({
+  conversations,
+  activeId,
+  busy,
+  onSelect,
+  onNew,
+  onDelete,
+  headerAction,
+  forceDeleteVisible,
+}: SidebarBodyProps) {
+  return (
+    <>
       <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2.5">
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Chats
@@ -84,15 +164,7 @@ export function ConversationSidebar({
             <MessageSquarePlus className="h-3.5 w-3.5" />
             New
           </button>
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200"
-            title="Hide sidebar"
-            aria-label="Hide sidebar"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
+          {headerAction}
         </div>
       </div>
 
@@ -140,7 +212,10 @@ export function ConversationSidebar({
                         onDelete(c.id);
                       }}
                       disabled={busy}
-                      className="mt-0.5 shrink-0 rounded p-1 text-slate-400 opacity-0 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100 disabled:opacity-30"
+                      className={
+                        'mt-0.5 shrink-0 rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 ' +
+                        (forceDeleteVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')
+                      }
                       title="Delete chat"
                       aria-label="Delete chat"
                     >
@@ -153,6 +228,6 @@ export function ConversationSidebar({
           </ul>
         )}
       </div>
-    </aside>
+    </>
   );
 }
