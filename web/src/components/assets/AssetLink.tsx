@@ -5,8 +5,7 @@
  * Spec: docs/webui-chat-design.md §8.5 (component responsibilities).
  *
  * Kinds:
- *   html → <SandboxedIframe> with a header strip (Open / Download buttons).
- *   pdf  → <SandboxedIframe> (browser-native PDF viewer).
+ *   html/pdf → file card that opens the report in the side panel
  *   image → fall through to <a> (the markdown <img> renderer handles inline).
  *   csv  → <CsvTable> (fetch + parse).
  *   json → <AssetJson> (table if array-of-objects, else code block).
@@ -14,18 +13,20 @@
  *   no data-asset-kind → external link, target=_blank rel=noopener.
  */
 
-import type { ComponentPropsWithoutRef } from 'react';
-import { SandboxedIframe } from './SandboxedIframe.js';
+import { useContext, type ComponentPropsWithoutRef } from 'react';
 import { CsvTable } from './CsvTable.js';
 import { AssetJson } from './AssetJson.js';
 import { AssetFileCard } from './AssetFileCard.js';
-import { ExternalLink } from 'lucide-react';
+import { downloadUrl } from './SandboxedIframe.js';
+import { AssetPanelContext } from '../../panel.js';
+import { Download, ExternalLink, FileCode, FileText } from 'lucide-react';
 
 interface AssetLinkProps extends ComponentPropsWithoutRef<'a'> {
   viewerSlug: string;
 }
 
 export function AssetLink({ viewerSlug, ...props }: AssetLinkProps) {
+  const openPanel = useContext(AssetPanelContext);
   const kind = getDataAttr(props, 'data-asset-kind');
   const url = getDataAttr(props, 'data-asset-url') ?? props.href ?? '';
   const filename = getDataAttr(props, 'data-asset-filename') ?? '';
@@ -47,7 +48,43 @@ export function AssetLink({ viewerSlug, ...props }: AssetLinkProps) {
   }
 
   if (kind === 'html' || kind === 'pdf') {
-    return <SandboxedIframe src={url} filename={filename} kind={kind} viewerSlug={viewerSlug} />;
+    // File card → open in the side panel (StoreClaw-style) instead of an
+    // inline iframe embed, so long threads stay compact.
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => openPanel({ url, filename, kind })}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openPanel({ url, filename, kind });
+          }
+        }}
+        className="my-3 flex max-w-md cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 transition hover:border-stone-300 hover:bg-stone-50"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0eeea] text-stone-700">
+          {kind === 'html' ? <FileCode className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-stone-900">
+            {filename || props.children}
+          </span>
+          <span className="block text-[11px] uppercase tracking-wide text-stone-400">
+            {kind === 'pdf' ? 'PDF' : 'HTML report'} — click to view
+          </span>
+        </span>
+        <a
+          href={downloadUrl(url)}
+          onClick={(e) => e.stopPropagation()}
+          className="rounded-lg p-1.5 text-stone-400 hover:bg-stone-200 hover:text-stone-700"
+          title="Download"
+          aria-label={`Download ${filename}`}
+        >
+          <Download className="h-4 w-4" />
+        </a>
+      </div>
+    );
   }
   if (kind === 'csv') {
     return <CsvTable url={url} filename={filename} />;

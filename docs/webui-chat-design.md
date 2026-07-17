@@ -108,6 +108,8 @@ SSE event types: `ack`, `tool_start`, `tool_end`, `delta`, `heartbeat`, `done`, 
 - Active conversation id in `localStorage` (`utarus_active_conversation`).
 - Tab title: `{chatTitle} · {agentName}` after AI title; else `{agentName} · Chat`.
 - Composer stays focused after send (not `disabled` during stream).
+- While a run streams, a status row pinned to the bottom of the assistant message shows `Thinking…`/`Working…` + elapsed seconds (from `heartbeat.elapsedMs`) + running tool names.
+- BinDrive html/pdf links and attachment cards open the file in a right-hand side panel (sandboxed iframe) instead of an inline embed or new tab; csv/json keep their inline viewers.
 - Login: password, auth token, invite redeem; demo mode optional.
 
 ---

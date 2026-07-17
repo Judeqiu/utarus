@@ -59,6 +59,12 @@ export interface ChatMessage {
   error?: string;
   pending?: boolean;
   streamedAt?: number;
+  /** True while the assistant run is in flight (until done/error/cap). */
+  streaming?: boolean;
+  /** Client timestamp when the run started (drives the elapsed timer). */
+  startedAt?: number;
+  /** Server-reported elapsed time from heartbeat events (reconnect-safe). */
+  workElapsedMs?: number;
 }
 
 export interface AgentStatus {

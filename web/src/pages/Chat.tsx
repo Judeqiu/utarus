@@ -33,6 +33,8 @@ import type {
 import { ThreadView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
 import { ConversationSidebar } from '../components/ConversationSidebar.js';
+import { AssetPanel } from '../components/AssetPanel.js';
+import { AssetPanelContext, type PanelAsset } from '../panel.js';
 import { Menu, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
@@ -80,6 +82,7 @@ export function ChatPage({ session }: ChatPageProps) {
   const [agentName, setAgentName] = useState('Agent');
   const [version, setVersion] = useState<string | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
+  const [panelAsset, setPanelAsset] = useState<PanelAsset | null>(null);
   const currentRunController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | null>(null);
   const toolMap = useRef<Map<string, ToolChip>>(new Map());
@@ -222,6 +225,11 @@ export function ChatPage({ session }: ChatPageProps) {
         break;
       }
       case 'heartbeat':
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, workElapsedMs: ev.elapsedMs } : m,
+          ),
+        );
         break;
       case 'title': {
         setConversations((prev) => {
@@ -247,6 +255,7 @@ export function ChatPage({ session }: ChatPageProps) {
                   assets,
                   stopReason: ev.stopReason,
                   pending: false,
+                  streaming: false,
                 }
               : m,
           ),
@@ -263,6 +272,7 @@ export function ChatPage({ session }: ChatPageProps) {
                   ...m,
                   error: `${ev.message} (phase: ${ev.phase})`,
                   pending: false,
+                  streaming: false,
                 }
               : m,
           ),
@@ -279,6 +289,7 @@ export function ChatPage({ session }: ChatPageProps) {
                   ...m,
                   error: `${ev.message} (used ${ev.current}/${ev.cap})`,
                   pending: false,
+                  streaming: false,
                 }
               : m,
           ),
@@ -311,6 +322,8 @@ export function ChatPage({ session }: ChatPageProps) {
       role: 'assistant',
       text: '',
       pending: true,
+      streaming: true,
+      startedAt: Date.now(),
       tools: [],
     };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
@@ -324,7 +337,7 @@ export function ChatPage({ session }: ChatPageProps) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsg.id
-              ? { ...m, text: outcome.text, pending: false }
+              ? { ...m, text: outcome.text, pending: false, streaming: false }
               : m,
           ),
         );
@@ -341,6 +354,7 @@ export function ChatPage({ session }: ChatPageProps) {
                   ...m,
                   text: '_(queued — will be picked up after the current run)_',
                   pending: false,
+                  streaming: false,
                 }
               : m,
           ),
@@ -381,7 +395,7 @@ export function ChatPage({ session }: ChatPageProps) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === (outcome.assistantMessageId ?? assistantMsg.id)
-                ? { ...m, error: `Connection error: ${err.message}`, pending: false }
+                ? { ...m, error: `Connection error: ${err.message}`, pending: false, streaming: false }
                 : m,
             ),
           );
@@ -397,6 +411,7 @@ export function ChatPage({ session }: ChatPageProps) {
                       error:
                         'Stream closed before completion. Your last message may have been interrupted — please resend.',
                       pending: false,
+                      streaming: false,
                     }
                   : m,
               ),
@@ -413,7 +428,7 @@ export function ChatPage({ session }: ChatPageProps) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsg.id
-            ? { ...m, error: `Send failed: ${msg}`, pending: false }
+            ? { ...m, error: `Send failed: ${msg}`, pending: false, streaming: false }
             : m,
         ),
       );
@@ -549,52 +564,62 @@ export function ChatPage({ session }: ChatPageProps) {
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1">
-        <ConversationSidebar
-          conversations={conversations}
-          activeId={activeConversationId}
-          collapsed={sidebarCollapsed}
-          busy={isStreaming}
-          mobileOpen={sidebarMobileOpen}
-          session={session}
-          agentName={agentName}
-          onSelect={(id) => void handleSelectChat(id)}
-          onNew={() => void handleNewChat()}
-          onDelete={(id) => void handleDeleteChat(id)}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-          onCloseMobile={() => setSidebarMobileOpen(false)}
-          onLogout={() => void logout()}
-          onChangePassword={() => setShowChangePassword(true)}
-          onHelp={() => setShowHelp(true)}
-        />
-
-        {sidebarMobileOpen && (
-          <button
-            type="button"
-            onClick={() => setSidebarMobileOpen(false)}
-            className="fixed inset-0 z-30 bg-black/40 sm:hidden"
-            aria-label="Close chats"
-          />
-        )}
-
-        <div className="flex min-w-0 flex-1 flex-col">
-          <ThreadView
-            messages={messages}
-            viewerSlug={session.slug}
-            now={now}
+      <AssetPanelContext.Provider value={setPanelAsset}>
+        <div className="relative flex min-h-0 flex-1">
+          <ConversationSidebar
+            conversations={conversations}
+            activeId={activeConversationId}
+            collapsed={sidebarCollapsed}
+            busy={isStreaming}
+            mobileOpen={sidebarMobileOpen}
+            session={session}
             agentName={agentName}
-          />
-
-          <Composer
-            isStreaming={isStreaming}
-            agentName={agentName}
-            onSend={handleSend}
-            onAbort={handleAbort}
-            onClear={handleClear}
+            onSelect={(id) => void handleSelectChat(id)}
+            onNew={() => void handleNewChat()}
+            onDelete={(id) => void handleDeleteChat(id)}
+            onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+            onCloseMobile={() => setSidebarMobileOpen(false)}
+            onLogout={() => void logout()}
+            onChangePassword={() => setShowChangePassword(true)}
             onHelp={() => setShowHelp(true)}
           />
+
+          {sidebarMobileOpen && (
+            <button
+              type="button"
+              onClick={() => setSidebarMobileOpen(false)}
+              className="fixed inset-0 z-30 bg-black/40 sm:hidden"
+              aria-label="Close chats"
+            />
+          )}
+
+          <div className="flex min-w-0 flex-1 flex-col">
+            <ThreadView
+              messages={messages}
+              viewerSlug={session.slug}
+              now={now}
+              agentName={agentName}
+            />
+
+            <Composer
+              isStreaming={isStreaming}
+              agentName={agentName}
+              onSend={handleSend}
+              onAbort={handleAbort}
+              onClear={handleClear}
+              onHelp={() => setShowHelp(true)}
+            />
+          </div>
+
+          {panelAsset && (
+            <AssetPanel
+              asset={panelAsset}
+              viewerSlug={session.slug}
+              onClose={() => setPanelAsset(null)}
+            />
+          )}
         </div>
-      </div>
+      </AssetPanelContext.Provider>
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
 

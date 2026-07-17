@@ -18,7 +18,7 @@ interface SandboxedIframeProps {
   viewerSlug: string;
 }
 
-const SANDBOX =
+export const SANDBOX =
   'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox';
 
 export function SandboxedIframe({
@@ -85,7 +85,7 @@ export function SandboxedIframe({
   );
 }
 
-function isSafeEmbedUrl(src: string, viewerSlug: string): boolean {
+export function isSafeEmbedUrl(src: string, viewerSlug: string): boolean {
   let u: URL;
   try {
     u = new URL(src, window.location.origin);
@@ -100,7 +100,7 @@ function isSafeEmbedUrl(src: string, viewerSlug: string): boolean {
   return true;
 }
 
-function downloadUrl(src: string): string {
+export function downloadUrl(src: string): string {
   // Swap /raw or /view back to the download endpoint so the browser sets
   // Content-Disposition: attachment.
   try {

@@ -2,9 +2,9 @@
  * Message — one entry in the conversation thread.
  *
  * User bubble: warm-gray rounded bubble, right-aligned, plain text (escaped).
- * Assistant: plain full-width markdown (no card) — tool chips above, copy
- * action below, then attachments. Pending state shows a "…" placeholder
- * while waiting for the first delta.
+ * Assistant: plain full-width markdown (no card) — tool chips above, work
+ * status row below while streaming, copy action when finished, then
+ * attachments.
  *
  * Spec: docs/webui-chat-design.md §9.
  */
@@ -14,7 +14,7 @@ import type { ChatMessage } from '../types.js';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 import { ToolChipView } from './ToolChip.js';
 import { AttachmentStrip } from './AttachmentStrip.js';
-import { Check, Copy, Loader } from 'lucide-react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 
 interface MessageViewProps {
   message: ChatMessage;
@@ -51,11 +51,6 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
           </div>
         ) : message.text ? (
           <MarkdownRenderer text={message.text} viewerSlug={viewerSlug} />
-        ) : message.pending ? (
-          <div className="flex items-center gap-2 text-sm text-stone-500">
-            <Loader className="h-4 w-4 animate-spin" />
-            <span>Thinking…</span>
-          </div>
         ) : null}
 
         {message.assets && message.assets.length > 0 && (
@@ -67,11 +62,42 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
             stop: <code className="rounded bg-stone-100 px-1 py-0.5">{message.stopReason}</code>
           </div>
         )}
+
+        {message.streaming && <WorkStatusRow message={message} now={now} />}
       </div>
 
-      {!message.pending && !message.error && message.text && (
+      {!message.streaming && !message.pending && !message.error && message.text && (
         <CopyButton text={message.text} />
       )}
+    </div>
+  );
+}
+
+/**
+ * Live "agent is working" indicator pinned to the bottom of a streaming
+ * message so it stays visible no matter how long the reply grows.
+ * Shows elapsed time (server heartbeat when available) + running tool names.
+ */
+function WorkStatusRow({ message, now }: { message: ChatMessage; now: number }) {
+  const running = (message.tools ?? []).filter((t) => !t.endedAt);
+  const elapsedMs =
+    message.workElapsedMs ??
+    (message.startedAt ? Math.max(0, now - message.startedAt) : 0);
+  const secs = Math.floor(elapsedMs / 1000);
+  const label = message.text ? 'Working' : 'Thinking';
+
+  return (
+    <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      <span>
+        {label}… {secs}s
+        {running.length > 0 && (
+          <span className="text-stone-400">
+            {' '}
+            · {running.map((t) => t.name).join(', ')}
+          </span>
+        )}
+      </span>
     </div>
   );
 }
