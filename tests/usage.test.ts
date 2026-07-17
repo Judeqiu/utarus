@@ -98,21 +98,21 @@ describe('loadUsage', () => {
     expect(state.lifetime_tools['firecrawl']).toBe(7);
   });
 
-  it('loads legacy files with video counters and drops them on next save', () => {
+  it('preserves domain-owned keys (e.g. video counters) on load and save', () => {
     writeDataFile('usage/alice.yaml', usageFile({
       period_video: { calls: 2, tokens: 1000, cost_cny: 3.5 },
       lifetime_video: { calls: 4, tokens: 2000, cost_cny: 7.0 },
     }));
 
     const state = loadUsage('alice');
-    expect('period_video' in state).toBe(false);
-    expect('lifetime_video' in state).toBe(false);
+    expect((state as Record<string, unknown>).period_video).toEqual({ calls: 2, tokens: 1000, cost_cny: 3.5 });
     expect(state.period_llm.calls).toBe(0);
 
     recordToolCall('alice', 'firecrawl'); // forces a save
     const raw = readFileSync(join(tmp, 'usage', 'alice.yaml'), 'utf-8');
-    expect(raw).not.toContain('period_video');
-    expect(raw).not.toContain('lifetime_video');
+    expect(raw).toContain('period_video');
+    expect(raw).toContain('lifetime_video');
+    expect(raw).toContain('cost_cny');
   });
 
   it('rejects invalid slugs', () => {

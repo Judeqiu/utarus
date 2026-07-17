@@ -81,10 +81,9 @@ function assertCoherent(raw: unknown, path: string): UsageState {
   if (typeof s.lifetime_tools !== 'object' || s.lifetime_tools === null) {
     throw new Error(`Usage file missing lifetime_tools map: ${path}`);
   }
-  // Drop legacy video-generation counters from early usage files; the next
-  // saveUsage() rewrites the file without them.
-  delete s.period_video;
-  delete s.lifetime_video;
+  // Unknown top-level keys are preserved as-is (e.g. a domain agent's
+  // video-generation counters living in the same file). The framework only
+  // owns the keys it reads — never strip what you don't own.
   return s as UsageState;
 }
 
