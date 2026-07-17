@@ -93,6 +93,8 @@ export function isSafeEmbedUrl(src: string, viewerSlug: string): boolean {
     return false;
   }
   if (u.origin !== window.location.origin) return false;
+  // Public dual-published reports are not owner-scoped.
+  if (u.pathname.startsWith('/reports/')) return true;
   if (!u.pathname.startsWith('/api/files/')) return false;
   const slug = u.searchParams.get('slug');
   // Owner-slug check: drop mismatches. Spec §8.7 rule 2.

@@ -17,10 +17,12 @@ interface AssetPanelProps {
   onClose: () => void;
 }
 
-/** Ensure the iframe/img hits the /raw endpoint (correct Content-Type). */
+/** Ensure the iframe/img hits the /raw endpoint (correct Content-Type).
+ *  /reports/* files are served directly — no /raw suffix exists there. */
 function rawUrl(url: string): string {
   try {
     const u = new URL(url, window.location.origin);
+    if (u.pathname.startsWith('/reports/')) return u.pathname + u.search;
     if (!/\/(raw|view)$/.test(u.pathname)) {
       u.pathname = u.pathname.replace(/\/?$/, '/raw');
     }

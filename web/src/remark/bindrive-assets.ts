@@ -58,11 +58,19 @@ export function classifyBinDriveUrl(
   if (url.origin !== window.location.origin) return null;
 
   const m = ASSET_PATH.exec(url.pathname + (url.search || ''));
-  if (!m) return null;
-  // ASSET_PATH combines pathname and search; re-split to be safe.
   const pathOnly = url.pathname;
   const m2 = /^\/api\/files\/([^/]+?)(?:\/(view|raw))?$/.exec(pathOnly);
-  if (!m2) return null;
+  if (!m || !m2) {
+    // Same-origin public /reports/<file> — dual-published HTML reports.
+    // Not owner-scoped: these are public by design (Caddy serves them).
+    const rm = /^\/reports\/([^/?]+)$/.exec(pathOnly);
+    if (!rm) return null;
+    const filename = decodeURIComponent(rm[1]);
+    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+    const kind = EXT_KIND[ext] ?? 'unknown';
+    if (kind === 'unknown') return null;
+    return { filename, ownerSlug: undefined, kind, normalisedUrl: pathOnly };
+  }
   const filename = decodeURIComponent(m2[1]);
   const ownerSlug = url.searchParams.get('slug') ?? undefined;
 
