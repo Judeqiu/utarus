@@ -180,8 +180,8 @@ export function Shell({ session, path, navigate }: ShellProps) {
   const showChat = path === '/' || path === '';
 
   return (
-    <div className="flex min-h-dvh flex-col bg-white">
-      <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 backdrop-blur">
+    <div className="flex h-dvh flex-col overflow-hidden bg-white">
+      <header className="sticky top-0 z-20 shrink-0 border-b border-stone-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-6xl items-center gap-3 px-3 sm:px-4">
           <div className="truncate font-serif text-sm font-semibold text-stone-900">
             {manifest.productName}
@@ -239,7 +239,7 @@ export function Shell({ session, path, navigate }: ShellProps) {
         )}
       </header>
 
-      <main className="flex min-h-0 flex-1 flex-col">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {showChat && <ChatPage session={session} />}
         {!showChat && route?.pageKind === 'notifications' && (
           <NotificationsPage
