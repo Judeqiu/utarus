@@ -5,6 +5,7 @@
 
 import { completeSimple } from '@earendil-works/pi-ai';
 import { getDeepSeekModel } from '../../llm/index.js';
+import { recordLlm } from '../../usage/index.js';
 
 const TITLE_MAX = 60;
 
@@ -33,11 +34,14 @@ function sanitizeTitle(raw: string): string {
 
 /**
  * Produce a 3–7 word chat title from the first user turn (+ optional assistant excerpt).
- * Fails fast if the model returns nothing usable.
+ * Fails fast if the model returns nothing usable. When `userSlug` is given, the
+ * call's token usage is recorded into the per-user usage file (best-effort —
+ * a usage-file error never breaks title generation).
  */
 export async function summarizeChatTitle(
   userText: string,
   assistantText?: string,
+  userSlug?: string,
 ): Promise<string> {
   const user = userText.trim();
   if (!user) {
@@ -70,6 +74,24 @@ export async function summarizeChatTitle(
     throw new Error(
       `summarizeChatTitle failed: ${response.errorMessage ?? response.stopReason}`,
     );
+  }
+
+  if (userSlug && response.usage) {
+    try {
+      const u = response.usage;
+      recordLlm(userSlug, {
+        input_tokens: u.input,
+        output_tokens: u.output,
+        cache_read: u.cacheRead,
+        cache_write: u.cacheWrite,
+        total_tokens: u.totalTokens,
+        cost_usd: u.cost?.total,
+      });
+    } catch (e) {
+      console.warn(
+        `[chat/title] usage record failed for slug=${userSlug}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
   const title = sanitizeTitle(extractText(response.content));

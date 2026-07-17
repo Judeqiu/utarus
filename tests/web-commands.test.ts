@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import type { DomainExtension } from '../src/extension.js';
 import {
   parseWebSlashCommand,
@@ -78,6 +81,11 @@ describe('listWebCommandCatalog', () => {
       { isAdmin: false },
     );
     expect(catalog.some(c => c.name === 'secret')).toBe(false);
+  });
+
+  it('lists usage as a framework command', () => {
+    const catalog = listWebCommandCatalog(baseExtension());
+    expect(catalog.some(c => c.name === 'usage' && c.source === 'framework')).toBe(true);
   });
 
   it('skips domain commands that collide with framework reserved names', () => {
@@ -190,5 +198,47 @@ describe('dispatchWebCommand', () => {
         isAdmin: false,
       }),
     ).toEqual({ kind: 'unmatched' });
+  });
+});
+
+
+describe('dispatchWebCommand /usage', () => {
+  let tmp: string;
+  let prevDataRoot: string | undefined;
+
+  beforeEach(() => {
+    prevDataRoot = process.env.UTARUS_DATA_ROOT;
+    tmp = mkdtempSync(join(tmpdir(), 'utarus-web-cmd-test-'));
+    process.env.UTARUS_DATA_ROOT = tmp;
+  });
+
+  afterEach(() => {
+    if (prevDataRoot === undefined) delete process.env.UTARUS_DATA_ROOT;
+    else process.env.UTARUS_DATA_ROOT = prevDataRoot;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('replies with the caller\'s own usage report', async () => {
+    const result = await dispatchWebCommand({
+      text: '/usage',
+      extension: baseExtension(),
+      userSlug: 'alice',
+      isAdmin: false,
+    });
+    expect(result.kind).toBe('handled');
+    const text = (result as { kind: 'handled'; text: string }).text;
+    expect(text).toContain('**This month (LLM)**');
+    expect(text).toContain('**Lifetime (Tools)**');
+  });
+
+  it('handles sessions without a linked user slug', async () => {
+    const result = await dispatchWebCommand({
+      text: '/usage',
+      extension: baseExtension(),
+      userSlug: '',
+      isAdmin: false,
+    });
+    expect(result.kind).toBe('handled');
+    expect((result as { kind: 'handled'; text: string }).text).toMatch(/No user profile/);
   });
 });

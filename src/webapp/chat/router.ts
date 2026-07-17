@@ -24,7 +24,7 @@ import { UTARUS_VERSION } from '../../version.js';
 import { requireAuth, type AuthUser } from '../auth.js';
 import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
-import { loadUsage, getCap } from '../../usage/index.js';
+import { checkLlmCap } from '../../usage/index.js';
 import type { Framework } from '../../framework.js';
 import { runAgent } from './run-agent.js';
 import { sendSSEEvent, sendSSEComment, setSSEHeaders } from './sse.js';
@@ -598,7 +598,7 @@ async function maybeEmitAiTitle(
 ): Promise<void> {
   try {
     if (!needsAiTitle(slug, conversationId)) return;
-    const title = await summarizeChatTitle(userText, assistantText);
+    const title = await summarizeChatTitle(userText, assistantText, slug);
     setConversationTitle(slug, conversationId, title, 'ai');
     emit(messageId, { type: 'title', conversationId, title });
   } catch (e) {
@@ -606,25 +606,5 @@ async function maybeEmitAiTitle(
     console.warn(
       `[chat/title] conversation=${conversationId}: ${e instanceof Error ? e.message : String(e)}`,
     );
-  }
-}
-
-function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {
-  if (!userSlug) return null;
-  try {
-    if (isAdmin) return null;
-    const cap = getCap(userSlug, 'llm_total_tokens');
-    if (cap === undefined) return null;
-    const usage = loadUsage(userSlug);
-    const current = usage.period_llm.total_tokens;
-    if (current >= cap) {
-      return `You've hit your monthly LLM token cap (${current.toLocaleString('en-US')}/${cap.toLocaleString('en-US')} tokens). Contact an admin to raise it.`;
-    }
-    return null;
-  } catch (e) {
-    console.warn(
-      `[chat/cap] check failed for slug=${userSlug}: ${(e as Error).message}`,
-    );
-    return null;
   }
 }

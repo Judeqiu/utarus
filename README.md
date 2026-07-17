@@ -18,6 +18,7 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 - **Demo mode** (`/demomode on|off`) — admin-only open access; auto-create profiles for anyone who chats. Same doc as above.
 - **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram/Slack users at runtime.
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
+- **Usage tracking + caps** — every agent turn records LLM tokens/cost and tool calls per user (monthly + lifetime) at `data/usage/<slug>.yaml`; optional per-user caps via `data/config/caps.yaml` are enforced on all chat interfaces.
 - **WebUI domain slash commands** — type `/` for a Slack-style menu; register `webCommands` on `DomainExtension`; `/name args` is handled without the LLM.
 - **TypeBox-schematized tools** — every tool parameter is validated by the runtime before your code runs.
 - **Dynamic admin list** — file-backed, no restart needed when new admins are granted.
@@ -141,6 +142,7 @@ Slash commands bypass the LLM for speed. Anything else is sent to the agent as a
 | `/list` | List all users (admin only) |
 | `/get <slug>` | Show user record (admin only) |
 | `/clear` | Clear your conversation context |
+| `/usage` | Show your LLM + tool usage (monthly + lifetime) |
 | `/invite [comment]` | Issue invite code (admin only) |
 | `/invites [all\|unused\|used]` | List invite codes (admin only) |
 | `/admincode [comment]` | Issue admin onboard code (admin only) |
@@ -189,6 +191,7 @@ Domain prompts may still guide *what* the model writes (prefer bullets over wide
 | `/list` | List all users (admin only) |
 | `/get <slug>` | Show user record (admin only) |
 | `/clear` | Clear your conversation context |
+| `/usage` | Show your LLM + tool usage (monthly + lifetime) |
 | `/invite [comment]` | Issue invite code (admin only) |
 | `/invites [all\|unused\|used]` | List invite codes (admin only) |
 | `/admincode [comment]` | Issue admin onboard code (admin only) |
@@ -338,10 +341,30 @@ data/
 │   └── <slug>.yaml       # one YAML per user
 ├── invites.yaml          # invite codes
 ├── admin_codes.yaml      # admin onboard codes
-└── admin_ids.yaml        # dynamically-granted admin Telegram IDs
+├── admin_ids.yaml        # dynamically-granted admin Telegram IDs
+├── usage/
+│   └── <slug>.yaml       # per-user LLM + tool usage (monthly period + lifetime)
+└── config/
+    └── caps.yaml         # optional per-user usage caps
 ```
 
 The `data/` directory is gitignored. Files are created on first use.
+
+### Usage caps
+
+`data/config/caps.yaml` is optional — a missing file or key means "no cap". Per-slug `overrides` merge over `default`:
+
+```yaml
+default:
+  llm_total_tokens: 500000      # monthly LLM token budget per user
+  tools:
+    firecrawl: 50               # monthly call budget for one tool
+overrides:
+  some-user-slug:
+    llm_total_tokens: 1000000
+```
+
+The LLM token cap is checked before every agent turn on WebUI, Slack, and Telegram; tool caps are enforced inside the tool wrapper. Admins always bypass caps. Users can check their own counters anytime with the `/usage` command on WebUI, Telegram, and Slack. Programmatic access: `loadUsage(slug)`, `formatUsageReport(state)`, `recordLlm` / `recordToolCall` (all exported from the package root).
 
 ---
 

@@ -52,7 +52,7 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 | Tools | `use_skill`, user/invite tools, firecrawl, `post_html_report`, BinDrive | Domain tools (e.g. `get_portfolio`, `add_holding`) |
 | Channels | Telegram, Slack, CLI, **WebUI chat** (SPA + SSE + multi-chat) | — |
 | Chat history | `data/chats/<slug>/…` conversations, AI titles | Never store `enrichMessage` text as the user bubble |
-| Slash commands | `/demomode`, invite/admin commands; WebUI `/clear` `/help` | Domain commands via `DomainExtension.{telegram,slack,web}Commands` |
+| Slash commands | `/demomode`, invite/admin commands, `/usage`; WebUI `/clear` `/help` | Domain commands via `DomainExtension.{telegram,slack,web}Commands` |
 
 ---
 
@@ -374,7 +374,7 @@ See `src/skills/` for the framework's own skill files.
 
 ### 5.4 `telegramCommands` / `slackCommands` / `webCommands` *(optional)*
 
-Domain-specific slash commands. Framework owns channel admin commands (`/invite`, `/demomode`, `/admincode` on Telegram/Slack; `/clear` and `/help` on WebUI). Domains add their own on each channel they care about.
+Domain-specific slash commands. Framework owns channel admin commands (`/invite`, `/demomode`, `/admincode` on Telegram/Slack; `/clear` and `/help` on WebUI) plus `/usage` on all chat channels. Domains add their own on each channel they care about.
 
 ```ts
 // invage: src/extension.ts

@@ -1,7 +1,6 @@
 /**
  * Agent event subscription — records LLM token usage and tool call counts
- * into the per-user usage file. Ported from Marie's llm/agent.ts
- * (attachUsageTracking / wrapToolWithCap).
+ * into the per-user usage file, and wraps tools with per-period cap checks.
  */
 
 import type { Agent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
@@ -68,6 +67,3 @@ export function wrapToolWithCap(tool: AgentTool, userSlug: string): AgentTool {
 export function wrapToolsWithCaps(tools: AgentTool[], userSlug: string): AgentTool[] {
   return tools.map(t => wrapToolWithCap(t, userSlug));
 }
-
-export { loadUsage };
-export type { UsageState };

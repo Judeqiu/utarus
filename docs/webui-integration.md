@@ -21,6 +21,7 @@ How a **domain agent** enables the Utarus browser chat (Claude-style multi-chat,
 | Conversation files | **Utarus** | `data/chats/<slug>/…` |
 | `enrichMessage` content | **Domain** | Prepended for the *agent only* — never shown in the user bubble |
 | Slash commands (`/clear`, `/help`) | **Utarus SPA** | Client-side |
+| `/usage` | **Utarus** | Server intercept on `POST /messages`; no LLM |
 | Domain `webCommands` (`/name …`) | **Domain** | Server intercept on `POST /messages`; no LLM |
 | Landing `POST /api/onboard/register` (QR → BIND) | **Domain (optional)** | Mount via `extraRouters` |
 | Domain tools / skills / purpose | **Domain** | Unchanged by WebUI |

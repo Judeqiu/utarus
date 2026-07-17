@@ -2,14 +2,16 @@
  * WebUI slash-command dispatch — domain commands from DomainExtension.webCommands.
  *
  * Mirror of Telegram bot.command / Slack app.command: a leading `/name [args]`
- * message is handled without the LLM. Framework-reserved names stay on the
- * SPA client (/clear, /help).
+ * message is handled without the LLM. Framework commands: /clear and /help stay
+ * on the SPA client; /usage is answered here server-side. All framework names
+ * are reserved — domains must not register them.
  */
 
 import type { DomainExtension } from '../../extension.js';
+import { loadUsage, formatUsageReport } from '../../usage/index.js';
 
-/** Client-side framework commands — domains must not register these. */
-export const WEB_FRAMEWORK_COMMAND_NAMES = new Set(['clear', 'help']);
+/** Framework-owned command names — domains must not register these. */
+export const WEB_FRAMEWORK_COMMAND_NAMES = new Set(['clear', 'help', 'usage']);
 
 export interface ParsedWebCommand {
   name: string;
@@ -56,6 +58,12 @@ export function listWebCommandCatalog(
       adminOnly: false,
       source: 'framework',
     },
+    {
+      name: 'usage',
+      description: 'Show your LLM + tool usage for this month.',
+      adminOnly: false,
+      source: 'framework',
+    },
   ];
 
   const domain: WebCommandCatalogEntry[] = [];
@@ -86,8 +94,9 @@ export type WebCommandDispatchResult =
   | { kind: 'handled'; text: string };
 
 /**
- * Try to run a domain web command. Framework reserved names return unmatched
- * so the client/UX owns them (or the agent sees free text if mis-sent).
+ * Try to run a slash command. Framework commands: /usage is answered here
+ * (server-side usage data); /clear and /help return unmatched so the SPA
+ * client owns them. Unknown names return unmatched for the agent.
  */
 export async function dispatchWebCommand(params: {
   text: string;
@@ -98,6 +107,18 @@ export async function dispatchWebCommand(params: {
 }): Promise<WebCommandDispatchResult> {
   const parsed = parseWebSlashCommand(params.text);
   if (!parsed) return { kind: 'not_a_command' };
+
+  if (parsed.name === 'usage') {
+    if (!params.userSlug) {
+      return { kind: 'handled', text: '❌ No user profile linked to this session — nothing to show.' };
+    }
+    try {
+      return { kind: 'handled', text: formatUsageReport(loadUsage(params.userSlug)) };
+    } catch (e) {
+      return { kind: 'handled', text: `❌ ${e instanceof Error ? e.message : String(e)}` };
+    }
+  }
+
   if (WEB_FRAMEWORK_COMMAND_NAMES.has(parsed.name)) return { kind: 'unmatched' };
 
   const cmd = (params.extension.webCommands ?? []).find(

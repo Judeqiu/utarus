@@ -6,7 +6,7 @@
  *   - Auto-resets counters when the calendar month changes
  *   - Tracks lifetime totals alongside period counters
  *
- * Design rules (per project CLAUDE.md):
+ * Design rules:
  *   - No fallbacks. If something fails, throw.
  *   - No caching. Always read fresh from disk.
  */
@@ -14,11 +14,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { parse, stringify } from 'yaml';
-import { config } from '../config.js';
+import { resolveDataRoot } from '../config.js';
 import { assertValidSlug } from '../state/state-file.js';
-
-const DATA_ROOT = config.dataRoot;
-const USAGE_DIR = join(DATA_ROOT, 'usage');
 
 const CURRENT_VERSION = 1;
 
@@ -32,12 +29,6 @@ export interface LlmCounters {
   cost_usd: number;
 }
 
-export interface VideoCounters {
-  calls: number;
-  tokens: number;        // Ark usage.completion_tokens (Volcengine's metering unit)
-  cost_cny: number;      // computed from pricing.yaml + tokens (Ark bills in CNY)
-}
-
 export interface UsageState {
   version: number;
   user_slug: string;
@@ -45,10 +36,8 @@ export interface UsageState {
   created_at: string;        // ISO
   updated_at: string;        // ISO
   period_llm: LlmCounters;
-  period_video: VideoCounters;
   period_tools: Record<string, number>;
   lifetime_llm: LlmCounters;
-  lifetime_video: VideoCounters;
   lifetime_tools: Record<string, number>;
 }
 
@@ -64,10 +53,6 @@ function emptyLlm(): LlmCounters {
   };
 }
 
-function emptyVideo(): VideoCounters {
-  return { calls: 0, tokens: 0, cost_cny: 0 };
-}
-
 function currentPeriod(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -75,40 +60,14 @@ function currentPeriod(): string {
 
 function usageFilePath(slug: string): string {
   assertValidSlug(slug);
-  return join(USAGE_DIR, `${slug}.yaml`);
-}
-
-function coerceVideoCounters(raw: unknown, where: string): VideoCounters {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Usage file has invalid video counters (not a mapping) at ${where}`);
-  }
-  const v = raw as Partial<VideoCounters> & { cost_usd?: unknown };
-  if (typeof v.calls !== 'number' || Number.isNaN(v.calls)) {
-    throw new Error(`Usage file has invalid video.calls at ${where}: ${JSON.stringify(raw)}`);
-  }
-  if (typeof v.tokens !== 'number' || Number.isNaN(v.tokens)) {
-    throw new Error(`Usage file has invalid video.tokens at ${where}: ${JSON.stringify(raw)}`);
-  }
-  if (typeof v.cost_cny === 'number' && !Number.isNaN(v.cost_cny)) {
-    return { calls: v.calls, tokens: v.tokens, cost_cny: v.cost_cny };
-  }
-  // cost_cny is missing or NaN. Two known causes:
-  //   1. File written before commit 559f5ad (which renamed cost_usd → cost_cny).
-  //      Old shape had cost_usd; the value was a fabricated USD placeholder.
-  //   2. File corrupted by the resulting undefined + number = NaN arithmetic.
-  // Either way the historical cost is unreliable — fail fast with instructions.
-  throw new Error(
-    `Usage file has invalid video.cost_cny at ${where} (got: ${JSON.stringify(v.cost_cny ?? null)}). ` +
-    `This usually means the file was written before the cost_usd→cost_cny rename in commit 559f5ad. ` +
-    `Delete the file to reset video usage counters; calls and tokens will be lost but future tracking will be correct.`
-  );
+  return join(resolveDataRoot(), 'usage', `${slug}.yaml`);
 }
 
 function assertCoherent(raw: unknown, path: string): UsageState {
   if (!raw || typeof raw !== 'object') {
     throw new Error(`Usage file is not a mapping: ${path}`);
   }
-  const s = raw as Partial<UsageState>;
+  const s = raw as Partial<UsageState> & Record<string, unknown>;
   if (!s.user_slug) throw new Error(`Usage file missing user_slug: ${path}`);
   if (!s.period || !/^\d{4}-\d{2}$/.test(s.period)) {
     throw new Error(`Usage file has invalid period: ${path}`);
@@ -122,14 +81,10 @@ function assertCoherent(raw: unknown, path: string): UsageState {
   if (typeof s.lifetime_tools !== 'object' || s.lifetime_tools === null) {
     throw new Error(`Usage file missing lifetime_tools map: ${path}`);
   }
-  if (!s.period_video && !s.lifetime_video) {
-    // Pre-video-tracking file (commit 4b5d179): both sections absent.
-    s.period_video = emptyVideo();
-    s.lifetime_video = emptyVideo();
-  } else {
-    s.period_video = coerceVideoCounters(s.period_video, `${path}:period_video`);
-    s.lifetime_video = coerceVideoCounters(s.lifetime_video, `${path}:lifetime_video`);
-  }
+  // Drop legacy video-generation counters from early usage files; the next
+  // saveUsage() rewrites the file without them.
+  delete s.period_video;
+  delete s.lifetime_video;
   return s as UsageState;
 }
 
@@ -142,10 +97,8 @@ function freshState(slug: string): UsageState {
     created_at: now,
     updated_at: now,
     period_llm: emptyLlm(),
-    period_video: emptyVideo(),
     period_tools: {},
     lifetime_llm: emptyLlm(),
-    lifetime_video: emptyVideo(),
     lifetime_tools: {},
   };
 }
@@ -173,7 +126,6 @@ export function loadUsage(slug: string): UsageState {
   if (state.period !== now) {
     state.period = now;
     state.period_llm = emptyLlm();
-    state.period_video = emptyVideo();
     state.period_tools = {};
     state.updated_at = new Date().toISOString();
     saveUsage(state);
@@ -230,27 +182,6 @@ export function recordToolCall(slug: string, toolName: string): void {
   saveUsage(state);
 }
 
-export interface VideoUsageDelta {
-  tokens: number;
-  cost_cny: number;
-}
-
-export function recordVideoUsage(slug: string, delta: VideoUsageDelta): void {
-  if (typeof delta.tokens !== 'number' || Number.isNaN(delta.tokens) || delta.tokens < 0) {
-    throw new Error(`recordVideoUsage requires non-negative tokens (got: ${delta.tokens})`);
-  }
-  if (typeof delta.cost_cny !== 'number' || Number.isNaN(delta.cost_cny) || delta.cost_cny < 0) {
-    throw new Error(`recordVideoUsage requires non-negative cost_cny (got: ${delta.cost_cny})`);
-  }
-  const state = loadUsage(slug);
-  for (const target of [state.period_video, state.lifetime_video]) {
-    target.calls += 1;
-    target.tokens += delta.tokens;
-    target.cost_cny += delta.cost_cny;
-  }
-  saveUsage(state);
-}
-
 function fmtNum(n: number): string {
   return n.toLocaleString('en-US');
 }
@@ -258,11 +189,6 @@ function fmtNum(n: number): string {
 function fmtUsd(n: number): string {
   if (n < 0.01) return `$${n.toFixed(4)}`;
   return `$${n.toFixed(2)}`;
-}
-
-function fmtCny(n: number): string {
-  if (n < 0.01) return `¥${n.toFixed(4)}`;
-  return `¥${n.toFixed(2)}`;
 }
 
 function periodEndDate(period: string): string {
@@ -274,7 +200,7 @@ function periodEndDate(period: string): string {
 
 function renderLlmSection(title: string, llm: LlmCounters): string {
   return [
-    `*${title}*`,
+    `**${title}**`,
     `• LLM calls: ${fmtNum(llm.calls)}`,
     `• Input tokens: ${fmtNum(llm.input_tokens)}`,
     `• Output tokens: ${fmtNum(llm.output_tokens)}`,
@@ -286,38 +212,25 @@ function renderLlmSection(title: string, llm: LlmCounters): string {
 
 function renderToolsSection(title: string, tools: Record<string, number>): string {
   const entries = Object.entries(tools);
-  if (entries.length === 0) return `*${title}*\n• _none yet_`;
+  if (entries.length === 0) return `**${title}**\n• _none yet_`;
   const sorted = entries.sort((a, b) => b[1] - a[1]);
   const lines = sorted.map(([name, count]) => `• \`${name}\`: ${fmtNum(count)}`);
-  return `*${title}*\n${lines.join('\n')}`;
-}
-
-function renderVideoSection(title: string, v: VideoCounters): string {
-  return [
-    `*${title}*`,
-    `• Videos: ${fmtNum(v.calls)}`,
-    `• Tokens: ${fmtNum(v.tokens)}`,
-    `• Est. cost: ${fmtCny(v.cost_cny)}`,
-  ].join('\n');
+  return `**${title}**\n${lines.join('\n')}`;
 }
 
 export function formatUsageReport(state: UsageState): string {
   const reset = periodEndDate(state.period);
-  const header = `📊 *Your Usage* — period ${state.period}`;
+  const header = `📊 **Your Usage** — period ${state.period}`;
   const periodLlm = renderLlmSection('This month (LLM)', state.period_llm);
-  const periodVideo = renderVideoSection('This month (Video)', state.period_video);
   const periodTools = renderToolsSection('This month (Tools)', state.period_tools);
   const lifeLlm = renderLlmSection('Lifetime (LLM)', state.lifetime_llm);
-  const lifeVideo = renderVideoSection('Lifetime (Video)', state.lifetime_video);
   const lifeTools = renderToolsSection('Lifetime (Tools)', state.lifetime_tools);
   const footer = reset ? `_Counters reset on ${reset}_` : '';
   return [
     header, '',
     periodLlm, '',
-    periodVideo, '',
     periodTools, '',
     lifeLlm, '',
-    lifeVideo, '',
     lifeTools, '',
     footer,
   ].join('\n');

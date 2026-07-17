@@ -122,7 +122,19 @@ export {
   loadDynamicAdminIds,
   addDynamicAdminId,
 } from './state/index.js';
-export { loadUsage, getCap, attachUsageTracking } from './usage/index.js';
+export {
+  loadUsage,
+  saveUsage,
+  recordLlm,
+  recordToolCall,
+  formatUsageReport,
+  getCap,
+  checkLlmCap,
+  attachUsageTracking,
+  wrapToolWithCap,
+  wrapToolsWithCaps,
+} from './usage/index.js';
+export type { LlmCounters, LlmUsageDelta, UsageState, CapKind } from './usage/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
 export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';
 export { publishReportHtml, formatReportLinkMessage } from './report/publish.js';

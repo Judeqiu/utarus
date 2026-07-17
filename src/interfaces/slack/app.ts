@@ -32,8 +32,7 @@ import {
   listAdminOnboardCodes,
   revokeAdminOnboardCode,
 } from '../../state/index.js';
-import { loadUsage } from '../../usage/usage-file.js';
-import { getCap } from '../../usage/caps.js';
+import { checkLlmCap, loadUsage, formatUsageReport } from '../../usage/index.js';
 import {
   formatMarkdownForSlack,
   splitSlackText,
@@ -425,27 +424,6 @@ function createRunMonitor(updater: ReturnType<typeof createThrottledUpdater>) {
 }
 
 /**
- * Returns a cap-rejection message if the user is over their LLM token cap for
- * the current period. Admins and users without a configured cap are allowed.
- * Returns null when the call may proceed.
- */
-function checkLlmCap(slackUserId: string, isAdmin: boolean, userSlug: string): string | null {
-  try {
-    if (isAdmin) return null;
-    const cap = getCap(userSlug, 'llm_total_tokens');
-    if (cap === undefined) return null;
-    const usage = loadUsage(userSlug);
-    const current = usage.period_llm.total_tokens;
-    if (current >= cap) {
-      return `🚫 You've hit your monthly LLM token cap (${current.toLocaleString('en-US')}/${cap.toLocaleString('en-US')} tokens). Contact an admin to raise it.`;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Hard cap on a single agent run. Tools can run for several minutes, so this
  * is generous — but if a tool truly hangs we want to abort, surface an error
  * to the user, and free the agent for the next request instead of leaving the
@@ -550,6 +528,7 @@ function helpText(handle?: { extension: { slackCommands?: Array<{ name: string; 
     '/list — list all users (admin)',
     '/get `<slug>` — show user record (admin)',
     '/clear — clear your conversation context',
+    '/usage — show your LLM + tool usage',
     '/help — show this help',
     '',
     'Admin commands:',
@@ -644,6 +623,22 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     const key = user ? user.user.slug : `slack-${slackUserId}`;
     clearAgentContext(key);
     await respond({ response_type: 'ephemeral', text: '✅ Context cleared. Starting fresh conversation.' });
+  });
+
+  // /usage command — the caller's own LLM + tool usage for this month
+  app.command('/usage', async ({ ack, command, respond }) => {
+    await ack();
+    const slackUserId = command.user_id;
+    const user = resolveUserBySlackUser(slackUserId);
+    const slug = user ? user.user.slug : `slack-${slackUserId}`;
+    try {
+      await respond({
+        response_type: 'ephemeral',
+        text: formatMarkdownForSlack(formatUsageReport(loadUsage(slug))),
+      });
+    } catch (e) {
+      await respond({ response_type: 'ephemeral', text: `❌ ${e instanceof Error ? e.message : e}` });
+    }
   });
 
   // /list command (admin only)
@@ -910,7 +905,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const capMsg = checkLlmCap(slackUserId, admin, userSlug);
+      const capMsg = checkLlmCap(userSlug, admin);
       if (capMsg) {
         console.log(`[Run] user=${userSlug} surface=dm phase=cap_hit`);
         await safeSay(say, capMsg, threadTs);
@@ -1054,7 +1049,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const capMsg = checkLlmCap(slackUserId, admin, userSlug);
+      const capMsg = checkLlmCap(userSlug, admin);
       if (capMsg) {
         console.log(`[Run] user=${userSlug} surface=mention phase=cap_hit`);
         await safeSay(say, capMsg, threadTs);

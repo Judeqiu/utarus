@@ -5,13 +5,13 @@
  *     llm_total_tokens: 500000
  *     llm_cost_usd: 5.0
  *     tools:
- *       seedance_generate: 10
  *       firecrawl: 50
+ *       post_html_report: 20
  *   overrides:
  *     some-user-slug:
  *       llm_total_tokens: 1000000
  *       tools:
- *         seedance_generate: 50
+ *         firecrawl: 200
  *
  * - Missing file or section = no cap (unlimited).
  * - Admins always bypass caps (handled by callers, not here).
@@ -21,9 +21,8 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from 'yaml';
-import { config } from '../config.js';
-
-const CAPS_FILE = join(config.dataRoot, 'config', 'caps.yaml');
+import { resolveDataRoot } from '../config.js';
+import { loadUsage } from './usage-file.js';
 
 export type CapKind = 'llm_total_tokens' | 'llm_cost_usd' | `tools.${string}`;
 
@@ -35,18 +34,26 @@ interface CapsConfig {
 let cachedRaw: string | null = null;
 let cachedConfig: CapsConfig = {};
 
+/**
+ * Returns the path to the caps file (for error messages / surfacing to user).
+ */
+export function capsFilePath(): string {
+  return join(resolveDataRoot(), 'config', 'caps.yaml');
+}
+
 function reload(): void {
-  if (!existsSync(CAPS_FILE)) {
+  const path = capsFilePath();
+  if (!existsSync(path)) {
     cachedConfig = {};
     cachedRaw = '';
     return;
   }
-  const raw = readFileSync(CAPS_FILE, 'utf-8');
+  const raw = readFileSync(path, 'utf-8');
   if (raw === cachedRaw) return;
   cachedRaw = raw;
   const parsed = parse(raw);
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Caps file is not a mapping: ${CAPS_FILE}`);
+    throw new Error(`Caps file is not a mapping: ${path}`);
   }
   cachedConfig = parsed as CapsConfig;
 }
@@ -74,8 +81,25 @@ export function getCap(slug: string, kind: CapKind): number | undefined {
 }
 
 /**
- * Returns the path to the caps file (for error messages / surfacing to user).
+ * Pre-turn LLM cap check shared by all chat interfaces. Returns a user-facing
+ * rejection message when the user is at/over their monthly token cap, or null
+ * when the turn may proceed. Fails open (logs + null) so a broken usage file
+ * never blocks chat.
  */
-export function capsFilePath(): string {
-  return CAPS_FILE;
+export function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {
+  try {
+    if (!userSlug || isAdmin) return null;
+    const cap = getCap(userSlug, 'llm_total_tokens');
+    if (cap === undefined) return null;
+    const current = loadUsage(userSlug).period_llm.total_tokens;
+    if (current >= cap) {
+      return `🚫 You've hit your monthly LLM token cap (${current.toLocaleString('en-US')}/${cap.toLocaleString('en-US')} tokens). Contact an admin to raise it.`;
+    }
+    return null;
+  } catch (err) {
+    console.warn(
+      `[usage/caps] LLM cap check failed for slug=${userSlug}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }

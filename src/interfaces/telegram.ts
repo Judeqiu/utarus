@@ -19,6 +19,7 @@ import {
   revokeAdminOnboardCode,
 } from '../state/index.js';
 import { markdownToTelegramHtml, splitTelegramHtml } from './telegram-format.js';
+import { checkLlmCap, loadUsage, formatUsageReport } from '../usage/index.js';
 
 export interface TelegramOptions {
   handle: FrameworkHandle;
@@ -164,6 +165,7 @@ function helpText(ext?: DomainExtension): string {
     '/list — list all users',
     '/get `<slug>` — show user record',
     '/clear — clear your conversation context',
+    '/usage — show your LLM + tool usage',
     '/help — show this help',
     '',
     'Admin commands:',
@@ -279,6 +281,22 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
     const slug = user ? user.user.slug : (telegramUserId ? `tg-${telegramUserId}` : null);
     if (slug) clearAgentContext(slug);
     await ctx.reply('✅ Context cleared.');
+  });
+
+  telegramBotCommands.push({ command: 'usage', description: 'show your LLM + tool usage' });
+  bot.command('usage', async (ctx) => {
+    const telegramUserId = ctx.from?.id;
+    const user = telegramUserId ? resolveUserByTelegramUser(telegramUserId) : null;
+    const slug = user ? user.user.slug : (telegramUserId ? `tg-${telegramUserId}` : null);
+    if (!slug) {
+      await ctx.reply('Could not resolve your user.');
+      return;
+    }
+    try {
+      await replyFormatted(ctx, formatUsageReport(loadUsage(slug)));
+    } catch (e) {
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
+    }
   });
 
   telegramBotCommands.push({ command: 'invite', description: 'issue a new user invite code (admin)' });
@@ -502,6 +520,13 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       }
 
       const enrichedText = inbound.text;
+
+      const capMsg = checkLlmCap(userSlug, admin);
+      if (capMsg) {
+        await replyFormatted(ctx, capMsg);
+        return;
+      }
+
       const response = await callAgent(handle, userSlug, admin, enrichedText);
 
       // Auto-detect BinDrive file references in the response and send them as documents.
