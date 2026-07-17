@@ -227,8 +227,8 @@ describe('dispatchWebCommand /usage', () => {
     });
     expect(result.kind).toBe('handled');
     const text = (result as { kind: 'handled'; text: string }).text;
-    expect(text).toContain('**This month (LLM)**');
-    expect(text).toContain('**Lifetime (Tools)**');
+    expect(text).toContain('**LLM**');
+    expect(text).toContain('**Tools**');
   });
 
   it('handles sessions without a linked user slug', async () => {

@@ -231,16 +231,22 @@ describe('wrapToolWithCap', () => {
 });
 
 describe('formatUsageReport', () => {
-  it('renders LLM and tool sections without video counters', () => {
+  it('renders LLM and tool tables with month vs lifetime columns', () => {
     recordLlm('alice', { input_tokens: 100, output_tokens: 50, total_tokens: 150, cost_usd: 0.01 });
     recordToolCall('alice', 'firecrawl');
 
     const report = formatUsageReport(loadUsage('alice'));
-    expect(report).toContain('**This month (LLM)**');
-    expect(report).toContain('**Lifetime (LLM)**');
-    expect(report).toContain('**This month (Tools)**');
-    expect(report).toContain('**Lifetime (Tools)**');
-    expect(report).toContain('firecrawl');
+    expect(report).toContain('**LLM**');
+    expect(report).toContain('**Tools**');
+    expect(report).toContain('| Metric | This month | Lifetime |');
+    expect(report).toContain('| Total tokens | 150 | 150 |');
+    expect(report).toContain('| Tool | This month | Lifetime |');
+    expect(report).toContain('| `firecrawl` | 1 | 1 |');
     expect(report).not.toContain('Video');
+  });
+
+  it('renders a friendly empty state when no tools were called', () => {
+    const report = formatUsageReport(loadUsage('alice'));
+    expect(report).toContain('_No tool calls yet._');
   });
 });

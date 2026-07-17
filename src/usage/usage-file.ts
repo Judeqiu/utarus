@@ -194,44 +194,60 @@ function fmtUsd(n: number): string {
 function periodEndDate(period: string): string {
   const [y, m] = period.split('-').map(Number);
   if (!y || !m) return '';
+  // Local-time formatting — toISOString() would shift the date back a day
+  // in timezones ahead of UTC.
   const firstOfNext = new Date(y, m, 1);
-  return firstOfNext.toISOString().slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${firstOfNext.getFullYear()}-${pad(firstOfNext.getMonth() + 1)}-${pad(firstOfNext.getDate())}`;
 }
 
-function renderLlmSection(title: string, llm: LlmCounters): string {
+function renderLlmTable(period: LlmCounters, lifetime: LlmCounters): string {
+  const rows: Array<[string, string, string]> = [
+    ['Calls', fmtNum(period.calls), fmtNum(lifetime.calls)],
+    ['Input tokens', fmtNum(period.input_tokens), fmtNum(lifetime.input_tokens)],
+    ['Output tokens', fmtNum(period.output_tokens), fmtNum(lifetime.output_tokens)],
+    ['Cache read', fmtNum(period.cache_read), fmtNum(lifetime.cache_read)],
+    ['Cache write', fmtNum(period.cache_write), fmtNum(lifetime.cache_write)],
+    ['Total tokens', fmtNum(period.total_tokens), fmtNum(lifetime.total_tokens)],
+    ['Est. cost', fmtUsd(period.cost_usd), fmtUsd(lifetime.cost_usd)],
+  ];
   return [
-    `**${title}**`,
-    `• LLM calls: ${fmtNum(llm.calls)}`,
-    `• Input tokens: ${fmtNum(llm.input_tokens)}`,
-    `• Output tokens: ${fmtNum(llm.output_tokens)}`,
-    `• Cache read: ${fmtNum(llm.cache_read)} | cache write: ${fmtNum(llm.cache_write)}`,
-    `• Total tokens: ${fmtNum(llm.total_tokens)}`,
-    `• Est. cost: ${fmtUsd(llm.cost_usd)}`,
+    '**LLM**',
+    '',
+    '| Metric | This month | Lifetime |',
+    '| --- | ---: | ---: |',
+    ...rows.map(([m, p, l]) => `| ${m} | ${p} | ${l} |`),
   ].join('\n');
 }
 
-function renderToolsSection(title: string, tools: Record<string, number>): string {
-  const entries = Object.entries(tools);
-  if (entries.length === 0) return `**${title}**\n• _none yet_`;
-  const sorted = entries.sort((a, b) => b[1] - a[1]);
-  const lines = sorted.map(([name, count]) => `• \`${name}\`: ${fmtNum(count)}`);
-  return `**${title}**\n${lines.join('\n')}`;
+function renderToolsTable(period: Record<string, number>, lifetime: Record<string, number>): string {
+  const names = [...new Set([...Object.keys(period), ...Object.keys(lifetime)])];
+  if (names.length === 0) return '**Tools**\n\n_No tool calls yet._';
+  names.sort((a, b) => (period[b] ?? 0) - (period[a] ?? 0) || (lifetime[b] ?? 0) - (lifetime[a] ?? 0));
+  return [
+    '**Tools**',
+    '',
+    '| Tool | This month | Lifetime |',
+    '| --- | ---: | ---: |',
+    ...names.map(n => `| \`${n}\` | ${fmtNum(period[n] ?? 0)} | ${fmtNum(lifetime[n] ?? 0)} |`),
+  ].join('\n');
 }
 
+/**
+ * Render the per-user usage report as GitHub-flavored markdown — one table
+ * per section with This-month vs Lifetime columns. Renders natively on
+ * WebUI (react-markdown + remark-gfm); Telegram/Slack convert tables to
+ * bullets / monospace blocks in their channel formatters.
+ */
 export function formatUsageReport(state: UsageState): string {
   const reset = periodEndDate(state.period);
-  const header = `📊 **Your Usage** — period ${state.period}`;
-  const periodLlm = renderLlmSection('This month (LLM)', state.period_llm);
-  const periodTools = renderToolsSection('This month (Tools)', state.period_tools);
-  const lifeLlm = renderLlmSection('Lifetime (LLM)', state.lifetime_llm);
-  const lifeTools = renderToolsSection('Lifetime (Tools)', state.lifetime_tools);
-  const footer = reset ? `_Counters reset on ${reset}_` : '';
   return [
-    header, '',
-    periodLlm, '',
-    periodTools, '',
-    lifeLlm, '',
-    lifeTools, '',
-    footer,
+    `📊 **Your Usage** — period ${state.period}`,
+    '',
+    renderLlmTable(state.period_llm, state.lifetime_llm),
+    '',
+    renderToolsTable(state.period_tools, state.lifetime_tools),
+    '',
+    reset ? `_Counters reset on ${reset}_` : '',
   ].join('\n');
 }
