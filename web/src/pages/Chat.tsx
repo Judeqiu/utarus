@@ -1,5 +1,6 @@
 /**
- * Chat — main page with Claude-style conversation list + thread.
+ * Chat — main page with StoreClaw-style sidebar (brand, nav, recents, user
+ * footer) + thread.
  *
  * Conversations are server-persisted (data/chats/<slug>/). Refresh reloads
  * the list and the active conversation's messages.
@@ -32,7 +33,7 @@ import type {
 import { ThreadView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
 import { ConversationSidebar } from '../components/ConversationSidebar.js';
-import { KeyRound, LogOut, Menu, Settings, Sparkles, X } from 'lucide-react';
+import { Menu, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
   session: SessionUser;
@@ -499,74 +500,39 @@ export function ChatPage({ session }: ChatPageProps) {
 
   if (bootLoading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-slate-50 text-sm text-slate-500">
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-white text-sm text-stone-500">
         Loading chats…
       </div>
     );
   }
 
+  const activeConversation = conversations.find((c) => c.id === activeConversationId);
+  const headerTitle = activeConversation?.title?.trim() || 'New chat';
+
   return (
-    <div className="flex h-dvh flex-col bg-slate-50">
-      <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-2.5">
+    <div className="flex min-h-0 flex-1 flex-col bg-white">
+      <header className="flex items-center justify-between gap-2 px-3 py-2.5 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setSidebarMobileOpen(true)}
-            className="-ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-100 sm:hidden"
+            className="-ml-1 rounded-lg p-2 text-stone-600 hover:bg-stone-100 sm:hidden"
             aria-label="Open chats"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white">
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-semibold text-slate-900">
-              {agentName} · {session.displayName}
-            </div>
-            <div className="hidden text-[11px] text-slate-500 sm:block">
-              slug: <code className="rounded bg-slate-100 px-1 py-0.5">{session.slug}</code>
-              {version && <> · v{version}</>}
-            </div>
+          <div className="truncate text-sm font-medium text-stone-900">
+            {headerTitle}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-          {version && (
-            <span
-              className="hidden sm:inline rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500"
-              title="Utarus framework version"
-            >
-              v{version}
-            </span>
-          )}
-          {session.type === 'admin' && (
-            <a
-              href="/admin"
-              title="Admin"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
-            >
-              <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Admin</span>
-            </a>
-          )}
-          {session.type === 'user' && (
-            <button
-              type="button"
-              onClick={() => setShowChangePassword(true)}
-              title="Change password"
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
-            >
-              <KeyRound className="h-4 w-4" /> <span className="hidden sm:inline">Password</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void logout()}
-            title="Logout"
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-2 text-xs text-slate-700 hover:bg-slate-50 sm:py-1"
+        {version && (
+          <span
+            className="hidden shrink-0 rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-mono text-[10px] text-stone-500 sm:inline"
+            title="Utarus framework version"
           >
-            <LogOut className="h-4 w-4" /> <span className="hidden sm:inline">Logout</span>
-          </button>
-        </div>
+            v{version}
+          </span>
+        )}
       </header>
 
       {banner && (
@@ -590,11 +556,16 @@ export function ChatPage({ session }: ChatPageProps) {
           collapsed={sidebarCollapsed}
           busy={isStreaming}
           mobileOpen={sidebarMobileOpen}
+          session={session}
+          agentName={agentName}
           onSelect={(id) => void handleSelectChat(id)}
           onNew={() => void handleNewChat()}
           onDelete={(id) => void handleDeleteChat(id)}
           onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
           onCloseMobile={() => setSidebarMobileOpen(false)}
+          onLogout={() => void logout()}
+          onChangePassword={() => setShowChangePassword(true)}
+          onHelp={() => setShowHelp(true)}
         />
 
         {sidebarMobileOpen && (
@@ -668,46 +639,46 @@ function HelpModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Commands</h2>
+          <h2 className="text-base font-semibold text-stone-900">Commands</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <ul className="space-y-2 text-sm text-slate-700">
+        <ul className="space-y-2 text-sm text-stone-700">
           <li>
-            <strong>New</strong> — start a separate conversation (sidebar).
+            <strong>New chat</strong> — start a separate conversation (sidebar).
           </li>
           {commands === null && !error && (
-            <li className="text-xs text-slate-400">Loading commands…</li>
+            <li className="text-xs text-stone-400">Loading commands…</li>
           )}
           {error && (
             <li className="text-xs text-rose-600">{error}</li>
           )}
           {framework.map((c) => (
             <li key={`fw-${c.name}`}>
-              <code className="rounded bg-slate-100 px-1 py-0.5">/{c.name}</code>
+              <code className="rounded bg-stone-100 px-1 py-0.5">/{c.name}</code>
               {c.usageHint ? (
-                <span className="text-slate-500"> {c.usageHint}</span>
+                <span className="text-stone-500"> {c.usageHint}</span>
               ) : null}
               {' — '}
               {c.description}
             </li>
           ))}
           {domain.length > 0 && (
-            <li className="pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <li className="pt-1 text-xs font-semibold uppercase tracking-wide text-stone-500">
               Domain
             </li>
           )}
           {domain.map((c) => (
             <li key={`dom-${c.name}`}>
-              <code className="rounded bg-slate-100 px-1 py-0.5">/{c.name}</code>
+              <code className="rounded bg-stone-100 px-1 py-0.5">/{c.name}</code>
               {c.usageHint ? (
-                <span className="text-slate-500"> {c.usageHint}</span>
+                <span className="text-stone-500"> {c.usageHint}</span>
               ) : null}
               {c.adminOnly ? (
                 <span className="ml-1 text-xs text-amber-700">(admin)</span>
@@ -716,9 +687,9 @@ function HelpModal({ onClose }: { onClose: () => void }) {
               {c.description}
             </li>
           ))}
-          <li className="text-xs text-slate-500">
+          <li className="text-xs text-stone-500">
             Chats are saved on the server. Refresh keeps history. Domain agents
-            register extra commands via <code className="rounded bg-slate-100 px-1">webCommands</code>.
+            register extra commands via <code className="rounded bg-stone-100 px-1">webCommands</code>.
           </li>
         </ul>
       </div>
@@ -757,11 +728,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Change password</h2>
+          <h2 className="text-base font-semibold text-stone-900">Change password</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded p-1 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -775,7 +746,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={onClose}
-              className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="w-full rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700"
             >
               Done
             </button>
@@ -783,7 +754,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         ) : (
           <form onSubmit={submit} className="space-y-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">
+              <span className="mb-1 block text-xs font-medium text-stone-600">
                 New password (≥6 chars)
               </span>
               <input
@@ -791,11 +762,11 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-600">
+              <span className="mb-1 block text-xs font-medium text-stone-600">
                 Confirm new password
               </span>
               <input
@@ -803,7 +774,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
                 autoComplete="new-password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-stone-500 focus:outline-none focus:ring-1 focus:ring-stone-500"
               />
             </label>
             {error && (
@@ -814,7 +785,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             <button
               type="submit"
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:bg-stone-300"
             >
               {busy && <Sparkles className="h-4 w-4 animate-spin" />}
               Update password

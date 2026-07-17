@@ -1,12 +1,16 @@
 /**
  * Composer — message input box at the bottom of the chat page.
  *
+ * StoreClaw-style pill: one rounded container holding the textarea and a
+ * bottom row with a "+" button (opens the slash-command menu) and a black
+ * circular send/stop button. A disclaimer line sits centered below.
+ *
  * States:
  *  - idle: type + ↵ to send
- *  - streaming: input disabled, send button replaced with "■ stop"
+ *  - streaming: send button replaced with stop
  *
  * Slash commands (Slack-style):
- *  - Type `/` to open the command menu (framework + domain webCommands)
+ *  - Type `/` (or press "+") to open the command menu (framework + domain webCommands)
  *  - Filter as you type; ↑/↓ + Enter or click to pick; Esc to dismiss
  *  - /clear → clears agent context (client)
  *  - /help  → opens help modal (client)
@@ -23,7 +27,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react';
-import { CornerDownLeft, Square } from 'lucide-react';
+import { ArrowUp, Plus, Square } from 'lucide-react';
 import { listChatCommands, type WebCommandInfo } from '../api.js';
 
 interface ComposerProps {
@@ -153,6 +157,13 @@ export function Composer({
     focusInput();
   }
 
+  function openSlashMenu() {
+    setText('/');
+    setMenuOpen(true);
+    setHighlight(0);
+    focusInput();
+  }
+
   function submit() {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
@@ -231,26 +242,26 @@ export function Composer({
   return (
     <form
       onSubmit={handleSubmit}
-      className="pb-safe border-t border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-3"
+      className="pb-safe bg-white px-3 pb-2 pt-1 sm:px-4"
     >
-      <div className="relative flex items-end gap-2">
+      <div className="relative mx-auto max-w-3xl">
         {showMenu && (
           <div
-            className="absolute bottom-full left-0 right-12 z-20 mb-1 max-h-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg sm:right-24"
+            className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-56 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-lg"
             role="listbox"
             aria-label="Slash commands"
           >
-            <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+            <div className="border-b border-stone-100 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-stone-400">
               Commands
             </div>
             {commands === null && (
-              <div className="px-3 py-3 text-xs text-slate-400">Loading…</div>
+              <div className="px-3 py-3 text-xs text-stone-400">Loading…</div>
             )}
             {loadError && (
               <div className="px-3 py-3 text-xs text-rose-600">{loadError}</div>
             )}
             {commands !== null && !loadError && filtered.length === 0 && (
-              <div className="px-3 py-3 text-xs text-slate-400">
+              <div className="px-3 py-3 text-xs text-stone-400">
                 No matching commands
               </div>
             )}
@@ -273,21 +284,21 @@ export function Composer({
                         }}
                         className={
                           'flex w-full items-start gap-2 px-3 py-2 text-left text-sm ' +
-                          (active ? 'bg-blue-50 text-slate-900' : 'text-slate-700 hover:bg-slate-50')
+                          (active ? 'bg-stone-100 text-stone-900' : 'text-stone-700 hover:bg-stone-50')
                         }
                       >
-                        <code className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">
+                        <code className="shrink-0 rounded bg-stone-100 px-1.5 py-0.5 font-mono text-xs text-stone-800">
                           /{cmd.name}
                         </code>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs text-slate-600">
+                          <span className="block truncate text-xs text-stone-600">
                             {cmd.description}
                             {cmd.adminOnly ? (
                               <span className="ml-1 text-amber-700">(admin)</span>
                             ) : null}
                           </span>
                           {cmd.usageHint ? (
-                            <span className="block truncate text-[11px] text-slate-400">
+                            <span className="block truncate text-[11px] text-stone-400">
                               /{cmd.name} {cmd.usageHint}
                             </span>
                           ) : null}
@@ -301,7 +312,7 @@ export function Composer({
           </div>
         )}
 
-        <div className="flex-1">
+        <div className="rounded-[28px] border border-stone-200 bg-white shadow-sm transition focus-within:border-stone-400">
           <textarea
             ref={textareaRef}
             value={text}
@@ -313,39 +324,45 @@ export function Composer({
                 ? `${agentName} is replying…`
                 : `Message ${agentName}…  (type / for commands)`
             }
-            className={
-              'w-full resize-none rounded-2xl border border-slate-300 px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ' +
-              (isStreaming ? 'bg-slate-50 text-slate-700' : '')
-            }
+            className="w-full resize-none rounded-t-[28px] bg-transparent px-4 pb-1 pt-3.5 text-sm text-stone-900 placeholder:text-stone-400 focus:outline-none"
           />
+          <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5">
+            <button
+              type="button"
+              onClick={openSlashMenu}
+              title="Commands"
+              aria-label="Open commands"
+              className="rounded-full p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={onAbort}
+                title="Stop"
+                aria-label="Stop"
+                className="rounded-full bg-stone-900 p-2 text-white hover:bg-stone-700"
+              >
+                <Square className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!text.trim()}
+                title="Send"
+                aria-label="Send"
+                className="rounded-full bg-stone-900 p-2 text-white hover:bg-stone-700 disabled:bg-stone-300"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-        {isStreaming ? (
-          <button
-            type="button"
-            onClick={onAbort}
-            title="Stop"
-            aria-label="Stop"
-            className="inline-flex items-center gap-1 rounded-2xl bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700"
-          >
-            <Square className="h-4 w-4" /> <span className="hidden sm:inline">Stop</span>
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!text.trim()}
-            title="Send"
-            aria-label="Send"
-            className="inline-flex items-center gap-1 rounded-2xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-slate-300"
-          >
-            <CornerDownLeft className="h-4 w-4" /> <span className="hidden sm:inline">Send</span>
-          </button>
-        )}
-      </div>
-      <div className="mt-1 hidden items-center justify-between text-[11px] text-slate-400 sm:flex">
-        <span>
-          <code className="rounded bg-slate-100 px-1 py-0.5">/</code> commands ·{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">shift+enter</code> for newline
-        </span>
+
+        <div className="mt-1.5 text-center text-[11px] text-stone-400">
+          {agentName} can make mistakes. Check important info.
+        </div>
       </div>
     </form>
   );

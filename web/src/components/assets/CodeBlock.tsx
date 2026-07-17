@@ -30,12 +30,12 @@ export function CodeBlock(props: CodeBlockProps) {
             window.setTimeout(() => setCopied(false), 1500);
           });
         }}
-        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-600"
+        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-stone-700 px-2 py-1 text-xs text-stone-200 hover:bg-stone-600"
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         {copied ? 'Copied' : 'Copy'}
       </button>
-      <pre className="my-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-slate-100">
+      <pre className="my-3 overflow-x-auto rounded-lg bg-stone-900 p-3 text-stone-100">
         <code {...props} />
       </pre>
     </div>

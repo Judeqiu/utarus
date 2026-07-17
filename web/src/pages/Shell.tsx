@@ -156,8 +156,8 @@ export function Shell({ session, path, navigate }: ShellProps) {
 
   if (!manifest) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-50">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className="flex min-h-dvh items-center justify-center bg-white">
+        <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
       </div>
     );
   }
@@ -165,9 +165,9 @@ export function Shell({ session, path, navigate }: ShellProps) {
   if (path.startsWith('/admin')) {
     if (session.type !== 'admin') {
       return (
-        <div className="flex min-h-dvh items-center justify-center bg-slate-50 text-sm text-slate-600">
+        <div className="flex min-h-dvh items-center justify-center bg-white text-sm text-stone-600">
           Admins only.{' '}
-          <button onClick={() => navigate('/')} className="ml-2 text-blue-600 hover:underline">
+          <button onClick={() => navigate('/')} className="ml-2 text-stone-900 underline hover:text-stone-600">
             Back to chat
           </button>
         </div>
@@ -180,10 +180,10 @@ export function Shell({ session, path, navigate }: ShellProps) {
   const showChat = path === '/' || path === '';
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-50">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <div className="flex min-h-dvh flex-col bg-white">
+      <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-6xl items-center gap-3 px-3 sm:px-4">
-          <div className="truncate text-sm font-semibold text-slate-800">
+          <div className="truncate font-serif text-sm font-semibold text-stone-900">
             {manifest.productName}
           </div>
           <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
@@ -201,8 +201,8 @@ export function Shell({ session, path, navigate }: ShellProps) {
                   onClick={() => navigate(item.path)}
                   className={`relative inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                     active
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-stone-900 text-white'
+                      : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" />
@@ -210,7 +210,7 @@ export function Shell({ session, path, navigate }: ShellProps) {
                   {badge > 0 && (
                     <span
                       className={`ml-0.5 min-w-[1.1rem] rounded-full px-1 text-[10px] font-semibold leading-4 ${
-                        active ? 'bg-white text-slate-900' : 'bg-rose-500 text-white'
+                        active ? 'bg-white text-stone-900' : 'bg-rose-500 text-white'
                       }`}
                     >
                       {badge > 99 ? '99+' : badge}
@@ -220,13 +220,13 @@ export function Shell({ session, path, navigate }: ShellProps) {
               );
             })}
           </nav>
-          <div className="hidden text-xs text-slate-500 sm:block">
+          <div className="hidden text-xs text-stone-500 sm:block">
             {session.displayName || session.slug}
           </div>
           <button
             type="button"
             onClick={() => void logout()}
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-600 hover:bg-stone-100"
             title="Log out"
           >
             <LogOut className="h-3.5 w-3.5" />
@@ -239,7 +239,7 @@ export function Shell({ session, path, navigate }: ShellProps) {
         )}
       </header>
 
-      <main className="min-h-0 flex-1">
+      <main className="flex min-h-0 flex-1 flex-col">
         {showChat && <ChatPage session={session} />}
         {!showChat && route?.pageKind === 'notifications' && (
           <NotificationsPage
@@ -259,9 +259,9 @@ export function Shell({ session, path, navigate }: ShellProps) {
           <iframe title={route.title || 'Domain'} src={route.iframeSrc} className="h-[calc(100dvh-3rem)] w-full border-0" />
         )}
         {!showChat && !route && (
-          <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-slate-600">
+          <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 text-sm text-stone-600">
             <p>Page not found.</p>
-            <button type="button" className="text-blue-600 hover:underline" onClick={() => navigate('/')}>
+            <button type="button" className="text-stone-900 underline hover:text-stone-600" onClick={() => navigate('/')}>
               Back to chat
             </button>
           </div>

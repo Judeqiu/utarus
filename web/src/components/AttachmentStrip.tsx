@@ -1,12 +1,12 @@
 /**
- * AttachmentStrip — small summary row rendered below an assistant message
- * bubble. Populated from the `done.assets[]` SSE field.
+ * AttachmentStrip — file cards rendered below an assistant message.
+ * Populated from the `done.assets[]` SSE field.
  *
  * Spec: docs/webui-chat-design.md §9 (chat page layout, "📎 3 attachments: …").
  */
 
 import type { AssetRef } from '../types.js';
-import { FileText, FileImage, FileCode, FileSpreadsheet } from 'lucide-react';
+import { Download, FileText, FileImage, FileCode, FileSpreadsheet } from 'lucide-react';
 
 interface AttachmentStripProps {
   assets: AssetRef[];
@@ -18,18 +18,22 @@ export function AttachmentStrip({ assets, viewerSlug }: AttachmentStripProps) {
   if (own.length === 0) return null;
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 text-xs text-slate-600">
-      <span className="font-medium">📎 {own.length} attachment{own.length === 1 ? '' : 's'}:</span>
+    <div className="mt-3 flex flex-col gap-2">
       {own.map((a) => (
         <a
           key={a.url}
           href={a.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 hover:bg-slate-200"
+          className="flex max-w-md items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2.5 transition hover:border-stone-300 hover:bg-stone-50"
         >
-          {iconFor(a.kind)}
-          <span className="max-w-[200px] truncate">{a.filename}</span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f0eeea] text-stone-700">
+            {iconFor(a.kind)}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-stone-900">
+            {a.filename}
+          </span>
+          <Download className="h-4 w-4 shrink-0 text-stone-400" />
         </a>
       ))}
     </div>
@@ -39,12 +43,12 @@ export function AttachmentStrip({ assets, viewerSlug }: AttachmentStripProps) {
 function iconFor(kind: AssetRef['kind']) {
   switch (kind) {
     case 'image':
-      return <FileImage className="h-3 w-3" />;
+      return <FileImage className="h-5 w-5" />;
     case 'csv':
-      return <FileSpreadsheet className="h-3 w-3" />;
+      return <FileSpreadsheet className="h-5 w-5" />;
     case 'json':
-      return <FileCode className="h-3 w-3" />;
+      return <FileCode className="h-5 w-5" />;
     default:
-      return <FileText className="h-3 w-3" />;
+      return <FileText className="h-5 w-5" />;
   }
 }

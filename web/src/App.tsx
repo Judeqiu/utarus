@@ -88,8 +88,8 @@ export function App() {
 
   if (state.kind === 'boot') {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-50">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+      <div className="flex min-h-dvh items-center justify-center bg-white">
+        <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
       </div>
     );
   }

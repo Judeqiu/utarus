@@ -19,11 +19,11 @@ interface ToolChipViewProps {
 export function ToolChipView({ tool, now }: ToolChipViewProps) {
   if (tool.endedAt) {
     return (
-      <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
+      <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-700">
         <Wrench className="h-3 w-3" />
         <span className="font-mono">{tool.name}</span>
         {tool.durationMs !== undefined && (
-          <span className="text-slate-500">· {formatMs(tool.durationMs)}</span>
+          <span className="text-stone-500">· {formatMs(tool.durationMs)}</span>
         )}
         {tool.ok ? (
           <CheckCircle2 className="h-3 w-3 text-emerald-600" />
@@ -36,10 +36,10 @@ export function ToolChipView({ tool, now }: ToolChipViewProps) {
 
   const elapsedMs = now - tool.startedAt;
   return (
-    <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-900">
+    <div className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-700">
       <Wrench className="h-3 w-3" />
       <span className="font-mono">{tool.name}</span>
-      <span className="text-amber-700">· {formatMs(elapsedMs)}…</span>
+      <span className="text-stone-500">· {formatMs(elapsedMs)}…</span>
       <Loader2 className="h-3 w-3 animate-spin" />
     </div>
   );
