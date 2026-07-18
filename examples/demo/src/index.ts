@@ -19,9 +19,16 @@ const demoRoot = resolve(__dirname, '..');
 dotenvConfig({ path: resolve(demoRoot, '.env') });
 process.env.UTARUS_LOADED_BY_HOST = '1';
 
-// Prefer demo-local data root unless the user set one
-if (!process.env.UTARUS_DATA_ROOT) {
-  process.env.UTARUS_DATA_ROOT = resolve(demoRoot, 'data');
+// Always use an absolute data root under this demo package.
+// resolveDataRoot() in utarus joins relative paths against the *package*
+// root (not process.cwd), so "./data" would land in utarus/data — wrong.
+{
+  const raw = process.env.UTARUS_DATA_ROOT?.trim();
+  if (!raw || raw === './data' || raw === 'data') {
+    process.env.UTARUS_DATA_ROOT = resolve(demoRoot, 'data');
+  } else if (!raw.startsWith('/')) {
+    process.env.UTARUS_DATA_ROOT = resolve(demoRoot, raw);
+  }
 }
 
 // Seed minimal data files if missing (fail-fast agent still needs them later)
