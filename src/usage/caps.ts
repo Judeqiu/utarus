@@ -58,26 +58,45 @@ function reload(): void {
   cachedConfig = parsed as CapsConfig;
 }
 
+function lookupCap(
+  section: Record<string, unknown> | undefined,
+  kind: CapKind,
+): number | undefined {
+  if (!section) return undefined;
+  if (kind.startsWith('tools.')) {
+    const toolName = kind.slice('tools.'.length);
+    const tools = section.tools as Record<string, number> | undefined;
+    const v = tools?.[toolName];
+    return typeof v === 'number' ? v : undefined;
+  }
+  const v = section[kind];
+  return typeof v === 'number' ? v : undefined;
+}
+
 /**
  * Read a cap value for a user. Returns undefined if no cap is set (unlimited).
  * Merge order: override.<slug>.<key> → default.<key>.
  */
 export function getCap(slug: string, kind: CapKind): number | undefined {
   reload();
-  const lookup = (section: Record<string, unknown> | undefined): number | undefined => {
-    if (!section) return undefined;
-    if (kind.startsWith('tools.')) {
-      const toolName = kind.slice('tools.'.length);
-      const tools = section.tools as Record<string, number> | undefined;
-      const v = tools?.[toolName];
-      return typeof v === 'number' ? v : undefined;
-    }
-    const v = section[kind];
-    return typeof v === 'number' ? v : undefined;
-  };
-  const overrideVal = lookup(cachedConfig.overrides?.[slug]);
+  const overrideVal = lookupCap(cachedConfig.overrides?.[slug], kind);
   if (overrideVal !== undefined) return overrideVal;
-  return lookup(cachedConfig.default);
+  return lookupCap(cachedConfig.default, kind);
+}
+
+/**
+ * Per-slug override only (no default). Used when billing is enabled so plan
+ * caps supply the free-tier baseline and overrides remain admin comps.
+ */
+export function getCapOverride(slug: string, kind: CapKind): number | undefined {
+  reload();
+  return lookupCap(cachedConfig.overrides?.[slug], kind);
+}
+
+/** True when caps.yaml defines a `default` section (forbidden when billing on). */
+export function capsYamlHasDefault(): boolean {
+  reload();
+  return cachedConfig.default !== undefined && cachedConfig.default !== null;
 }
 
 /**

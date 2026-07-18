@@ -1,0 +1,54 @@
+/**
+ * Billing subsystem — plan catalog, per-user billing YAML, entitlements.
+ * Stripe Checkout/webhooks land in a later PR; this module is usable with
+ * flag off (no-op) or flag on for entitlement reads + admin/comp file writes.
+ */
+
+export type {
+  BillingState,
+  BillingStatus,
+  CapKind,
+  DomainBillingConfig,
+  Entitlement,
+  EntitlementSource,
+  PastDuePolicy,
+  PlanCaps,
+  PlanDefinition,
+  PlansCatalog,
+  PlansCatalogInput,
+} from './types.js';
+export { TRIAL_PERIOD_DAYS } from './types.js';
+
+export {
+  assertPlansCatalog,
+  freePlanId,
+  getBillingExtension,
+  getPlan,
+  loadPlansCatalog,
+  plansFilePath,
+  resetPlansCacheForTests,
+  setBillingExtension,
+} from './plans.js';
+
+export {
+  assertBillingStateCoherent,
+  billingDir,
+  billingFilePath,
+  billingStatusIs,
+  loadBillingState,
+  saveBillingState,
+  withBillingLock,
+} from './billing-file.js';
+
+export {
+  entitlementFromBillingState,
+  getEffectiveCap,
+  getEntitlement,
+  hasFeature,
+} from './entitlements.js';
+
+export {
+  assertBillingConfig,
+  assertCapsYamlCompatibleWithBilling,
+  isBillingEnabled,
+} from './validate.js';

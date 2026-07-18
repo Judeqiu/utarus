@@ -28,6 +28,7 @@ import {
 } from './webapp/server.js';
 import type { Express } from 'express';
 import type { DomainExtension, Skill } from './extension.js';
+import { assertBillingConfig, isBillingEnabled, setBillingExtension } from './billing/index.js';
 
 export interface FrameworkOptions {
   extension: DomainExtension;
@@ -228,6 +229,15 @@ Do **not** dump raw HTML tags into Slack chat. Do not rely on Slack file preview
 
 export function createFramework(opts: FrameworkOptions): Framework {
   const { extension } = opts;
+
+  // Billing: register domain plans/copy and fail-fast when flag is on.
+  // Domain hosts (Binary/Marie/Invage) call createFramework and never hit
+  // standalone index.ts validateConfig — validation must live here.
+  setBillingExtension(extension.billing);
+  if (isBillingEnabled()) {
+    assertBillingConfig(extension);
+  }
+
   const allSkills = [...frameworkSkills, ...extension.skills];
 
   const systemPrompt = buildSystemPrompt(extension, allSkills);

@@ -9,6 +9,7 @@ export type {
 } from './framework.js';
 export type {
   DomainExtension,
+  DomainBillingConfig,
   DomainWebUiExtension,
   DomainWebNavItem,
   DomainWebRoute,
@@ -131,12 +132,41 @@ export {
   recordToolCall,
   formatUsageReport,
   getCap,
+  getCapOverride,
   checkLlmCap,
   attachUsageTracking,
   wrapToolWithCap,
   wrapToolsWithCaps,
 } from './usage/index.js';
 export type { LlmCounters, LlmUsageDelta, UsageState, CapKind } from './usage/index.js';
+export {
+  TRIAL_PERIOD_DAYS,
+  isBillingEnabled,
+  assertBillingConfig,
+  setBillingExtension,
+  loadPlansCatalog,
+  assertPlansCatalog,
+  freePlanId,
+  getPlan,
+  loadBillingState,
+  saveBillingState,
+  withBillingLock,
+  getEntitlement,
+  entitlementFromBillingState,
+  getEffectiveCap,
+  hasFeature,
+} from './billing/index.js';
+export type {
+  BillingState,
+  BillingStatus,
+  Entitlement,
+  EntitlementSource,
+  PlanDefinition,
+  PlansCatalog,
+  PlansCatalogInput,
+  PlanCaps,
+  PastDuePolicy,
+} from './billing/index.js';
 export { wantsHtmlDelivery, publishHtmlReport } from './report/html-delivery.js';
 export type { PublishHtmlReportParams, PublishHtmlReportResult } from './report/html-delivery.js';
 export { publishReportHtml, formatReportLinkMessage } from './report/publish.js';

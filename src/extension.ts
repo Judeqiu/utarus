@@ -10,6 +10,9 @@
  */
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
+import type { DomainBillingConfig } from './billing/types.js';
+
+export type { DomainBillingConfig };
 
 export interface Skill {
   id: string;
@@ -197,4 +200,11 @@ export interface DomainExtension {
    * When omitted, SPA stays Chat + Admin only (backward compatible).
    */
   webUi?: DomainWebUiExtension;
+
+  /**
+   * Optional: billing / paywall configuration for this domain deployment.
+   * Used when UTARUS_BILLING_ENABLED=true. Extension `plans` win entirely
+   * over data/config/plans.yaml (no deep-merge). See docs/paywall-stripe-design.md.
+   */
+  billing?: DomainBillingConfig;
 }
