@@ -41,7 +41,7 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 ## Prerequisites
 
 - **Node.js 20+** and npm
-- A **DeepSeek API key** (the LLM). Get one at https://platform.deepseek.com → API Keys
+- An **LLM API key** — DeepSeek is the default provider. Get one at https://platform.deepseek.com → API Keys. Kimi or any OpenAI-compatible endpoint works too — see [LLM providers](#llm-providers).
 - A **Telegram bot token** — optional, only if you want the Telegram interface. Talk to [@BotFather](https://t.me/BotFather), run `/newbot`, copy the token.
 - A **Slack app** — optional, only if you want the Slack interface. Create one at https://api.slack.com/apps, enable Socket Mode, and add Bot Token Scopes: `chat:write`, `commands`, `im:write`.
 
@@ -59,6 +59,7 @@ Edit `.env` and fill in the values:
 ```env
 # Required — the agent will not start without these
 DEEPSEEK_API_KEY=sk-...
+# (or swap providers: UTARUS_LLM_PROVIDER=kimi + KIMI_API_KEY=... — see LLM providers)
 UTARUS_AGENT_NAME=Acme Support Bot
 UTARUS_AGENT_PURPOSE=You are the support bot for Acme Corp. Help users file tickets, check order status, and answer FAQ. Decline anything off-scope.
 
@@ -77,6 +78,18 @@ UTARUS_DATA_ROOT=./data
 ```
 
 The `.env` file is gitignored. **Never commit it.**
+
+## LLM providers
+
+DeepSeek is the default. Switch providers via env — no code changes, no fork:
+
+| `UTARUS_LLM_PROVIDER` | Required env | Default model / base URL |
+|---|---|---|
+| `deepseek` (default) | `DEEPSEEK_API_KEY` | `deepseek-v4-pro` @ `https://api.deepseek.com` |
+| `kimi` | `KIMI_API_KEY` | `k3` @ `https://api.kimi.com/coding/v1` |
+| `generic` | `UTARUS_LLM_MODEL` + `UTARUS_LLM_BASE_URL` + `UTARUS_LLM_API_KEY` | none — all three required |
+
+`UTARUS_LLM_MODEL` / `UTARUS_LLM_BASE_URL` override the defaults of the well-known providers; `UTARUS_LLM_API_KEY_ENV` renames the api-key env var. Missing values fail fast at boot with the exact variable named. Domain code can read the resolved model/key via `getAgentModel()` / `getAgentApiKey()` / `getAgentLLM()`, exported from the package root.
 
 ## Run
 
@@ -109,8 +122,8 @@ On startup you'll see:
 
 ```
 Acme Support Bot starting...
-Initializing DeepSeek model...
-DeepSeek model: deepseek-v4-pro
+Initializing LLM (provider=deepseek)...
+LLM ready: provider=deepseek model=deepseek-v4-pro baseUrl=https://api.deepseek.com
 TELEGRAM_BOT_TOKEN not set — Telegram interface disabled.
 Slack tokens not set — Slack interface disabled.
 Acme Support Bot running. Type /help for commands.
@@ -402,7 +415,7 @@ Tests cover the slug validator, `blankState`, and the fail-fast guards.
 
 Runtime:
 - [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core) — agent runtime, tool loop, event subscribe
-- [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai) — DeepSeek model adapter
+- [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai) — OpenAI-compatible model adapters (DeepSeek, Kimi, …)
 - [`telegraf`](https://www.npmjs.com/package/telegraf) — Telegram bot client
 - [`typebox`](https://www.npmjs.com/package/typebox) — JSON-schema-compatible parameter validation
 - [`yaml`](https://www.npmjs.com/package/yaml) — parse and stringify state files
@@ -414,7 +427,7 @@ Dev:
 - [`vitest`](https://www.npmjs.com/package/vitest) — test runner
 
 External services:
-- **DeepSeek API** — required (the LLM)
+- **DeepSeek API** — the default LLM (Kimi / generic OpenAI-compatible endpoints also supported — see [LLM providers](#llm-providers))
 - **Telegram Bot API** — optional (omit for CLI-only)
 
 ---
