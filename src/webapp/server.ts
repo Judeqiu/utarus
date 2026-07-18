@@ -31,6 +31,9 @@ import { adminRouter } from './chat/admin-router.js';
 import { onboardRedeemRouter } from './chat/onboard.js';
 import { createWebUiRouter } from './webui-router.js';
 import { requireAuth, requireAdmin } from './auth.js';
+import { isBillingEnabled, assertBillingConfig } from '../billing/index.js';
+import { billingWebhookHandler } from '../billing/webhooks.js';
+import { createBillingRouter } from './billing-router.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -118,9 +121,24 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   const webDistDir = opts.webDistDir ?? resolveWebDistDir();
   const app = express();
 
+  // Cookies before anything that may set sessions; parsers ordered carefully
+  // so Stripe webhooks receive a raw body for signature verification.
+  app.use(cookieParser());
+
+  if (isBillingEnabled()) {
+    // WebUI mounts billing UI — require publishable key as well as core secrets.
+    assertBillingConfig(framework.extension, { requirePublishableKey: true });
+    app.post(
+      '/api/billing/webhook',
+      express.raw({ type: 'application/json' }),
+      (req, res) => {
+        void billingWebhookHandler(req, res);
+      },
+    );
+  }
+
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json({ limit: '10mb' }));
-  app.use(cookieParser());
 
   if (existsSync(webDistDir)) {
     app.use(
@@ -150,6 +168,9 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   app.use('/api/chat', createChatRouter({ framework }));
   app.use('/api/admin', adminRouter);
   app.use('/api/webui', createWebUiRouter(framework));
+  if (isBillingEnabled()) {
+    app.use('/api/billing', createBillingRouter());
+  }
 
   // Domain WebUI APIs + static assets (DomainExtension.webUi)
   const webUi = framework.extension.webUi;

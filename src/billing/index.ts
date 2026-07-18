@@ -63,3 +63,33 @@ export {
 } from './messages.js';
 
 export { checkLlmCap, checkTurnAllowed } from './gate.js';
+
+export {
+  getStripe,
+  getStripePublishableKey,
+  getStripeSecretKey,
+  getStripeWebhookSecret,
+  setStripeClientForTests,
+} from './stripe-client.js';
+
+export {
+  BillingHttpError,
+  createCheckoutSessionUrl,
+  createPortalSessionUrl,
+  isCheckoutBlocked,
+} from './checkout.js';
+
+export {
+  applyStripeEvent,
+  applySubscriptionToBilling,
+  billingWebhookHandler,
+  findSlugByCustomerId,
+  resolveSlugFromStripe,
+} from './webhooks.js';
+
+export {
+  eventAlreadyProcessed,
+  markEventProcessed,
+  readEventReceipt,
+  billingEventsDir,
+} from './events.js';
