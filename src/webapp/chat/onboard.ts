@@ -18,6 +18,7 @@ import {
   createSession,
   resolveByToken,
   authenticateUser,
+  authenticateAdmin,
   requireAuth,
   type AuthUser,
 } from '../auth.js';
@@ -77,8 +78,11 @@ onboardRedeemRouter.get('/demo', (_req, res) => {
  *
  * Sets bindrive_session cookie, returns { type, slug, displayName }. JSON in,
  * JSON out — distinct from BinDrive's form-based /login which the SPA cannot
- * consume. Admin username/password login is intentionally NOT supported here
- * (admins use WEBAPP_ADMIN_CREDENTIALS) — surface a clear 400 instead.
+ * consume.
+ *
+ * Identifier + password tries (in order):
+ *   1. WEBAPP_ADMIN_CREDENTIALS via authenticateAdmin
+ *   2. Domain user slug/email + bcrypt via authenticateUser
  */
 onboardRedeemRouter.post('/login', async (req, res) => {
   const body = req.body as LoginBody;
@@ -103,13 +107,13 @@ onboardRedeemRouter.post('/login', async (req, res) => {
       return;
     }
   } else {
-    // identifier + password path. authenticateUser scans user files matching
-    // slug OR contact_email and verifies bcrypt hash. Returns null on no-match
-    // / wrong-password / legacy-user-without-hash — surface 401 either way.
-    user = await authenticateUser(
-      (body.identifier as string).trim(),
-      body.password as string,
-    );
+    const identifier = (body.identifier as string).trim();
+    const password = body.password as string;
+    // Env-driven admins first (SPA previously could not use these).
+    user = authenticateAdmin(identifier, password);
+    if (!user) {
+      user = await authenticateUser(identifier, password);
+    }
     if (!user) {
       res.status(401).json({
         error: 'invalid_credentials',

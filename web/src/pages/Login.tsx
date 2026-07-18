@@ -11,9 +11,8 @@
  * collapses to "Try the demo" (display name only, code=null). The demo flow
  * also surfaces the preset password on success.
  *
- * Admin username/password login is not yet wired (utarus admin auth is
- * env-driven only, not exported). The token-tab admin checkbox surfaces a
- * clear error.
+ * Admin username/password works via WEBAPP_ADMIN_CREDENTIALS on the same
+ * password form (server tries authenticateAdmin before domain users).
  *
  * Spec: docs/webui-chat-design.md §10.
  */

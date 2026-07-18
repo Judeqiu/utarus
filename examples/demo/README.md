@@ -56,9 +56,21 @@ You should see:
 ```text
 [Demo] WebUI + billing on http://localhost:3010
 [Demo] billing: ON
+[Demo] login as normal user: demo / demo1234
 ```
 
 If billing is ON but secrets/plans are incomplete, **the process exits** (fail-fast). That is intentional.
+
+### Sign-in (no invite needed for the seeded user)
+
+| Role | Username | Password |
+| --- | --- | --- |
+| **Normal user** (paywall demo) | `demo` | `demo1234` |
+| **Admin** (invites / billing ops) | `admin` | `demo-admin-pass` |
+
+Use the **password** tab on http://localhost:3010/login.  
+Admin uses `WEBAPP_ADMIN_CREDENTIALS` (SPA now accepts env admins).  
+To re-seed the normal user: `DEMO_RESET_USER=1 npm run dev`.
 
 ### Webhook for local Stripe
 
@@ -106,12 +118,12 @@ User chats  →  checkTurnAllowed (tokens) + tool caps
 
 ## Walkthrough: hit the wall and upgrade
 
-### 1. Create a free user
+### 1. Sign in as the free user
 
 1. Open `http://localhost:3010/login`
-2. Sign in as admin (`WEBAPP_ADMIN_CREDENTIALS`, default in `.env.example` is `admin` / `demo-admin-pass`)
-3. **Admin → New invite** → copy `INV-…`
-4. Log out → redeem invite as a new user (display name + email + password)
+2. Password tab: **`demo` / `demo1234`** (seeded on boot)
+
+(Optional) Admin `admin` / `demo-admin-pass` for invites and Admin → Billing.
 
 ### 2. See free plan status
 

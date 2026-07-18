@@ -56,6 +56,9 @@ if (!process.env.UTARUS_AGENT_PURPOSE) {
 
 const { createFramework } = await import('utarus');
 const { demoExtension } = await import('./extension.js');
+const { ensureDemoUser, DEMO_USER } = await import('./seed-user.js');
+
+await ensureDemoUser();
 
 const framework = createFramework({ extension: demoExtension });
 
@@ -71,6 +74,12 @@ console.log(`[Demo] WebUI + billing on http://localhost:${webPort}`);
 console.log(`[Demo] data root: ${process.env.UTARUS_DATA_ROOT}`);
 console.log(
   `[Demo] billing: ${process.env.UTARUS_BILLING_ENABLED === 'true' ? 'ON' : 'off'}`,
+);
+console.log(
+  `[Demo] login as normal user: ${DEMO_USER.slug} / ${DEMO_USER.password}`,
+);
+console.log(
+  `[Demo] login as admin: keys from WEBAPP_ADMIN_CREDENTIALS (default admin / demo-admin-pass)`,
 );
 
 if (process.env.TELEGRAM_BOT_TOKEN) {
