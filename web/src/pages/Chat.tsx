@@ -100,6 +100,8 @@ export function ChatPage({ session }: ChatPageProps) {
   const activeMessageId = useRef<string | null>(null);
   const toolMap = useRef<Map<string, ToolChip>>(new Map());
   const activeConvRef = useRef<string | null>(activeConversationId);
+  /** Monotonic load generation — drop stale async loadConversation results. */
+  const loadGenRef = useRef(0);
 
   useEffect(() => {
     activeConvRef.current = activeConversationId;
@@ -132,61 +134,25 @@ export function ChatPage({ session }: ChatPageProps) {
     return list;
   }, []);
 
-  const loadConversation = useCallback(async (id: string) => {
-    const conv = await getConversation(id);
-    setActiveConversationId(conv.id);
-    const ui = storedMessagesToUi(conv.messages);
-    setMessages(ui);
-    setServerKnownMessageIds(new Set(ui.map((m) => m.id)));
-    setPendingQuote(null);
+  /**
+   * Drop the client SSE subscription without aborting the agent run.
+   * Used when switching chats mid-stream so we can reattach later via replay.
+   */
+  function detachStreamUi() {
+    const prev = currentRunController.current;
+    // Clear refs before abort so onClose treats this as intentional.
+    currentRunController.current = null;
+    activeMessageId.current = null;
     toolMap.current.clear();
-  }, []);
+    prev?.abort();
+  }
 
-  // Boot: agent status + conversation list + restore active chat
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const status: AgentStatus = await fetchAgentStatus();
-        if (cancelled) return;
-        if (status.agentName) setAgentName(status.agentName);
-        if (status.version) setVersion(status.version);
-        setImageInputEnabled(status.capabilities?.imageInput === true);
-        if (status.isStreaming) {
-          setBanner(
-            `An agent run is already in progress. Wait for it to finish, then continue.`,
-          );
-        }
-
-        const list = await listConversations();
-        if (cancelled) return;
-        setConversations(list);
-
-        const preferred = activeConversationId;
-        if (preferred && list.some((c) => c.id === preferred)) {
-          await loadConversation(preferred);
-        } else if (list.length > 0) {
-          await loadConversation(list[0].id);
-        } else {
-          setActiveConversationId(null);
-          setMessages([]);
-          setServerKnownMessageIds(new Set());
-        }
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.toLowerCase().includes('unauthorized')) {
-          setBanner(`Failed to load chats: ${msg}`);
-        }
-      } finally {
-        if (!cancelled) setBootLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
-  }, []);
+  function finalize() {
+    setIsStreaming(false);
+    currentRunController.current = null;
+    activeMessageId.current = null;
+    toolMap.current.clear();
+  }
 
   const handleEvent = useCallback((assistantId: string, ev: ChatEvent) => {
     switch (ev.type) {
@@ -321,12 +287,143 @@ export function ChatPage({ session }: ChatPageProps) {
     }
   }, [refreshList]);
 
-  function finalize() {
-    setIsStreaming(false);
-    currentRunController.current = null;
-    activeMessageId.current = null;
+  const handleEventRef = useRef(handleEvent);
+  handleEventRef.current = handleEvent;
+
+  /**
+   * Subscribe to a run's SSE stream (fresh send or reattach after switch-back).
+   * Replay from the registry restores tool chips, text, and work elapsed.
+   */
+  function attachToRun(messageId: string, assistantServerId: string) {
+    activeMessageId.current = messageId;
+    setIsStreaming(true);
     toolMap.current.clear();
+    const controller = subscribeStream(messageId, undefined, {
+      onEvent: (ev) => handleEventRef.current(assistantServerId, ev),
+      onError: (err) => {
+        // Ignore errors from a subscription we already replaced/detached.
+        if (currentRunController.current !== controller) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantServerId
+              ? {
+                  ...m,
+                  error: `Connection error: ${err.message}`,
+                  pending: false,
+                  streaming: false,
+                }
+              : m,
+          ),
+        );
+        finalize();
+      },
+      onClose: () => {
+        // Intentional detach (switch chat) clears activeMessageId first.
+        if (activeMessageId.current !== messageId) return;
+        if (currentRunController.current !== controller) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantServerId && (m.pending || m.streaming)
+              ? {
+                  ...m,
+                  error:
+                    m.error ??
+                    'Stream closed before completion. Your last message may have been interrupted — please resend.',
+                  pending: false,
+                  streaming: false,
+                }
+              : m,
+          ),
+        );
+        finalize();
+      },
+    });
+    currentRunController.current = controller;
   }
+
+  const loadConversation = useCallback(async (id: string) => {
+    const gen = ++loadGenRef.current;
+    // Leaving a streaming chat: keep the agent run; reattach if we return.
+    detachStreamUi();
+    setIsStreaming(false);
+
+    const conv = await getConversation(id);
+    if (gen !== loadGenRef.current) return;
+
+    setActiveConversationId(conv.id);
+    const ui = storedMessagesToUi(conv.messages);
+    setServerKnownMessageIds(new Set(ui.map((m) => m.id)));
+    setPendingQuote(null);
+    toolMap.current.clear();
+
+    const run = conv.activeRun;
+    if (run) {
+      // In-flight assistant is not on disk yet — synthesise the bubble and
+      // reattach SSE (buffer replay restores deltas / tools / heartbeats).
+      const streamingMsg: ChatMessage = {
+        id: run.assistantMessageId,
+        role: 'assistant',
+        text: '',
+        messageId: run.messageId,
+        pending: true,
+        streaming: true,
+        startedAt: run.startedAt,
+        tools: [],
+      };
+      setMessages([...ui, streamingMsg]);
+      setServerKnownMessageIds((prev) => {
+        const next = new Set(prev);
+        next.add(run.assistantMessageId);
+        return next;
+      });
+      attachToRun(run.messageId, run.assistantMessageId);
+    } else {
+      setMessages(ui);
+    }
+  }, []);
+
+  // Boot: agent status + conversation list + restore active chat
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const status: AgentStatus = await fetchAgentStatus();
+        if (cancelled) return;
+        if (status.agentName) setAgentName(status.agentName);
+        if (status.version) setVersion(status.version);
+        setImageInputEnabled(status.capabilities?.imageInput === true);
+
+        const list = await listConversations();
+        if (cancelled) return;
+        setConversations(list);
+
+        const preferred = activeConversationId;
+        if (preferred && list.some((c) => c.id === preferred)) {
+          await loadConversation(preferred);
+        } else if (list.length > 0) {
+          await loadConversation(list[0].id);
+        } else {
+          setActiveConversationId(null);
+          setMessages([]);
+          setServerKnownMessageIds(new Set());
+        }
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.toLowerCase().includes('unauthorized')) {
+          setBanner(`Failed to load chats: ${msg}`);
+        }
+      } finally {
+        if (!cancelled) setBootLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      // Detach SSE on unmount (agent keeps running; reattach on remount).
+      detachStreamUi();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
+  }, []);
 
   async function handleSend(
     text: string,
@@ -357,6 +454,8 @@ export function ChatPage({ session }: ChatPageProps) {
       startedAt: Date.now(),
       tools: [],
     };
+    // Mark busy immediately so sidebar/composer stay consistent during POST.
+    setIsStreaming(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
     try {
@@ -374,6 +473,7 @@ export function ChatPage({ session }: ChatPageProps) {
               : m,
           ),
         );
+        setIsStreaming(false);
         return;
       }
       if (outcome.kind === 'queued') {
@@ -392,10 +492,12 @@ export function ChatPage({ session }: ChatPageProps) {
               : m,
           ),
         );
+        setIsStreaming(false);
         void refreshList();
         return;
       }
       // kind === 'run'
+      const convId = outcome.conversationId ?? activeConversationId;
       if (outcome.conversationId) {
         setActiveConversationId(outcome.conversationId);
       }
@@ -407,8 +509,6 @@ export function ChatPage({ session }: ChatPageProps) {
         );
       }
       const serverMessageId = outcome.messageId;
-      activeMessageId.current = serverMessageId;
-      setIsStreaming(true);
       const assistantServerId = outcome.assistantMessageId ?? assistantMsg.id;
       setMessages((prev) =>
         prev.map((m) =>
@@ -429,38 +529,10 @@ export function ChatPage({ session }: ChatPageProps) {
         return next;
       });
       void refreshList();
-      const controller = subscribeStream(serverMessageId, undefined, {
-        onEvent: (ev) => handleEvent(assistantServerId, ev),
-        onError: (err) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantServerId
-                ? { ...m, error: `Connection error: ${err.message}`, pending: false, streaming: false }
-                : m,
-            ),
-          );
-          finalize();
-        },
-        onClose: () => {
-          if (activeMessageId.current === serverMessageId) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantServerId && m.pending
-                  ? {
-                      ...m,
-                      error:
-                        'Stream closed before completion. Your last message may have been interrupted — please resend.',
-                      pending: false,
-                      streaming: false,
-                    }
-                  : m,
-              ),
-            );
-            finalize();
-          }
-        },
-      });
-      currentRunController.current = controller;
+      if (!convId) {
+        throw new Error('Missing conversationId for agent run.');
+      }
+      attachToRun(serverMessageId, assistantServerId);
     } catch (err: unknown) {
       setPendingQuote(quoteForSend); // restore chip for retry
       const msg = err instanceof Error ? err.message : String(err);
@@ -508,8 +580,10 @@ export function ChatPage({ session }: ChatPageProps) {
   }
 
   async function handleNewChat() {
-    if (isStreaming) return;
     try {
+      // Detach UI stream only — other chats may still be running on the server.
+      detachStreamUi();
+      setIsStreaming(false);
       const conv = await createConversation();
       setActiveConversationId(conv.id);
       setMessages([]);
@@ -524,15 +598,13 @@ export function ChatPage({ session }: ChatPageProps) {
   }
 
   async function handleSelectChat(id: string) {
-    if (isStreaming) {
-      setBanner('Wait for the current reply to finish before switching chats.');
-      return;
-    }
     if (id === activeConversationId) {
       setSidebarMobileOpen(false);
       return;
     }
     try {
+      // loadConversation detaches the current SSE UI and reattaches if the
+      // target chat has an in-flight run (working section restored via replay).
       await loadConversation(id);
       setSidebarMobileOpen(false);
     } catch (err: unknown) {
@@ -541,7 +613,8 @@ export function ChatPage({ session }: ChatPageProps) {
   }
 
   async function handleDeleteChat(id: string) {
-    if (isStreaming) return;
+    // Don't delete the chat that currently has a live stream in this tab.
+    if (isStreaming && id === activeConversationId) return;
     if (!window.confirm('Delete this chat permanently?')) return;
     try {
       await deleteConversation(id);

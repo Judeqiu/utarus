@@ -111,6 +111,7 @@ SSE event types: `ack`, `tool_start`, `tool_end`, `delta`, `heartbeat`, `done`, 
 - Composer stays focused after send (not `disabled` during stream).
 - **Quote selection (desktop):** select text in a finished message → floating Quote → chip above composer; persisted as `quotes` on the user turn (see [webui-chat-quote-design.md](webui-chat-quote-design.md)).
 - While a run streams, a status row pinned to the bottom of the assistant message shows `Thinking…`/`Working…` + elapsed seconds (from `heartbeat.elapsedMs`) + running tool names.
+- Switching chats mid-run detaches the SSE UI only (agent keeps running). `GET /conversations/:id` returns `activeRun`; re-selecting reattaches via stream replay and restores the working section.
 - BinDrive html/pdf links, public `/reports/*.html` links, and attachment cards open the file in a right-hand side panel (sandboxed iframe) instead of an inline embed or new tab; csv/json keep their inline viewers.
 - Login: password, auth token, invite redeem; demo mode optional.
 

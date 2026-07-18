@@ -76,6 +76,10 @@ export type ChatEvent =
  */
 export interface RunState {
   messageId: string;
+  /** Conversation this run belongs to (for reattach after chat switch). */
+  conversationId: string;
+  /** Server UUID of the in-flight assistant message (not yet on disk until done). */
+  assistantMessageId: string;
   userSlug: string;
   isAdmin: boolean;
   agent: WebAgent;
@@ -88,6 +92,13 @@ export interface RunState {
   ended: boolean;
   /** Eviction timer set when the run terminates. */
   evictionTimeout?: NodeJS.Timeout;
+}
+
+/** Live run metadata returned with GET /conversations/:id for SSE reattach. */
+export interface ActiveRunInfo {
+  messageId: string;
+  assistantMessageId: string;
+  startedAt: number;
 }
 
 export type SendMessageResponse =

@@ -43,6 +43,26 @@ export function get(messageId: string): RunState | null {
   return runs.get(messageId) ?? null;
 }
 
+/**
+ * Find a non-ended run for a user's conversation. Used when the client
+ * reloads or switches back mid-stream so it can reattach to SSE + replay.
+ */
+export function findActiveRunForConversation(
+  userSlug: string,
+  conversationId: string,
+): RunState | null {
+  for (const r of runs.values()) {
+    if (
+      !r.ended &&
+      r.userSlug === userSlug &&
+      r.conversationId === conversationId
+    ) {
+      return r;
+    }
+  }
+  return null;
+}
+
 export function attachSubscriber(
   messageId: string,
   sub: (event: ChatEvent) => void,

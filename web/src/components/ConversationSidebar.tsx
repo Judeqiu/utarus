@@ -131,8 +131,7 @@ export function ConversationSidebar({
         <button
           type="button"
           onClick={onNew}
-          disabled={busy}
-          className="rounded-lg p-2 text-stone-600 hover:bg-stone-200 disabled:opacity-40"
+          className="rounded-lg p-2 text-stone-600 hover:bg-stone-200"
           title="New chat"
           aria-label="New chat"
         >
@@ -209,8 +208,7 @@ function SidebarBody({
         <button
           type="button"
           onClick={onNew}
-          disabled={busy}
-          className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-stone-800 hover:bg-stone-200/70 disabled:opacity-50"
+          className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm text-stone-800 hover:bg-stone-200/70"
         >
           <CirclePlus className="h-4 w-4 shrink-0 text-stone-600" />
           New chat
@@ -260,8 +258,7 @@ function SidebarBody({
                     <button
                       type="button"
                       onClick={() => onSelect(c.id)}
-                      disabled={busy && !active}
-                      className="min-w-0 flex-1 text-left disabled:opacity-50"
+                      className="min-w-0 flex-1 text-left"
                     >
                       <div className="truncate text-sm text-stone-800">
                         {c.title || 'New chat'}
@@ -276,7 +273,7 @@ function SidebarBody({
                         e.stopPropagation();
                         onDelete(c.id);
                       }}
-                      disabled={busy}
+                      disabled={busy && active}
                       className={
                         'shrink-0 rounded p-1.5 text-stone-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 ' +
                         (forceDeleteVisible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')

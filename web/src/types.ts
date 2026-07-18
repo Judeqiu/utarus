@@ -117,6 +117,13 @@ export interface ConversationSummary {
   preview: string;
 }
 
+/** Live agent run for a conversation (not yet persisted assistant turn). */
+export interface ActiveRunInfo {
+  messageId: string;
+  assistantMessageId: string;
+  startedAt: number;
+}
+
 export interface ConversationDetail {
   id: string;
   slug: string;
@@ -133,6 +140,11 @@ export interface ConversationDetail {
     attachments?: ChatAttachmentRef[];
     quotes?: ChatQuoteRef[];
   }>;
+  /**
+   * Present when an agent run is in flight for this conversation. Client
+   * reattaches SSE and shows the working section after switch-back / remount.
+   */
+  activeRun?: ActiveRunInfo | null;
 }
 
 export interface SessionUser {

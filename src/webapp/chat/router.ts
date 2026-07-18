@@ -47,8 +47,9 @@ import {
   detachSubscriber,
   emit,
   replay,
+  findActiveRunForConversation,
 } from './stream-registry.js';
-import type { ChatEvent, RunState, WebImageContent } from './types.js';
+import type { ActiveRunInfo, ChatEvent, RunState, WebImageContent } from './types.js';
 import {
   listConversations,
   createConversation,
@@ -171,8 +172,18 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       if (!agent.state.messages?.length && raw.messages.length > 0) {
         hydrateAgentFromStoredMessages(agent, raw.messages);
       }
-      // Client gets cleaned user-visible text only.
-      res.json(getConversationForClient(slug, id));
+      // Client gets cleaned user-visible text only, plus activeRun so the SPA
+      // can reattach SSE after switching chats or remounting mid-stream.
+      const client = getConversationForClient(slug, id);
+      const active = findActiveRunForConversation(slug, id);
+      const activeRun: ActiveRunInfo | null = active
+        ? {
+            messageId: active.messageId,
+            assistantMessageId: active.assistantMessageId,
+            startedAt: active.startedAt,
+          }
+        : null;
+      res.json({ ...client, activeRun });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       res.status(msg.includes('not found') ? 404 : 400).json({ error: msg });
@@ -524,6 +535,8 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const assistantMsgId = randomUUID();
     const runState: RunState = {
       messageId,
+      conversationId,
+      assistantMessageId: assistantMsgId,
       userSlug: effectiveSlug,
       isAdmin,
       agent,
