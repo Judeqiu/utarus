@@ -12,6 +12,8 @@ export type {
   Entitlement,
   EntitlementSource,
   PastDuePolicy,
+  PaywallBlock,
+  PaywallChannel,
   PlanCaps,
   PlanDefinition,
   PlansCatalog,
@@ -52,3 +54,12 @@ export {
   assertCapsYamlCompatibleWithBilling,
   isBillingEnabled,
 } from './validate.js';
+
+export {
+  billingStateErrorMessage,
+  buildUpgradeUrl,
+  formatPaywallMessage,
+  publicBillingBaseUrl,
+} from './messages.js';
+
+export { checkLlmCap, checkTurnAllowed } from './gate.js';

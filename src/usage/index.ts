@@ -12,8 +12,13 @@ export {
   getCap,
   getCapOverride,
   capsYamlHasDefault,
-  checkLlmCap,
   capsFilePath,
   type CapKind,
 } from './caps.js';
+export {
+  checkLlmCap,
+  checkTurnAllowed,
+  type PaywallBlock,
+  type PaywallChannel,
+} from '../billing/gate.js';
 export { attachUsageTracking, wrapToolWithCap, wrapToolsWithCaps } from './agent-tracking.js';

@@ -905,7 +905,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const capMsg = checkLlmCap(userSlug, admin);
+      const capMsg = checkLlmCap(userSlug, admin, { channel: 'slack' });
       if (capMsg) {
         console.log(`[Run] user=${userSlug} surface=dm phase=cap_hit`);
         await safeSay(say, capMsg, threadTs);
@@ -1049,7 +1049,7 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
 
     try {
-      const capMsg = checkLlmCap(userSlug, admin);
+      const capMsg = checkLlmCap(userSlug, admin, { channel: 'slack' });
       if (capMsg) {
         console.log(`[Run] user=${userSlug} surface=mention phase=cap_hit`);
         await safeSay(say, capMsg, threadTs);

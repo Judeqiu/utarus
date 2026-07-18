@@ -5,12 +5,16 @@
 
 import type { Agent, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import {
+  getEffectiveCap,
+  isBillingEnabled,
+  formatPaywallMessage,
+  billingStateErrorMessage,
+} from '../billing/index.js';
+import {
   recordLlm,
   recordToolCall,
   loadUsage,
-  type UsageState,
 } from './usage-file.js';
-import { getCap } from './caps.js';
 
 /**
  * Subscribe an agent to emit usage + tool-count events to the per-user
@@ -42,22 +46,51 @@ export function attachUsageTracking(agent: Agent, userSlug: string): void {
 /**
  * Wrap a tool's execute() with a per-period cap check. Returns an error
  * ToolResult (without calling the tool) when the cap is already hit.
+ *
+ * Billing on: uses getEffectiveCap; fail-closed on state errors (no throw).
+ * Billing off: same effective path (getCap); corrupt usage still throws
+ * (legacy tool-path behavior).
  */
 export function wrapToolWithCap(tool: AgentTool, userSlug: string): AgentTool {
   const original = tool.execute.bind(tool);
   return {
     ...tool,
     execute: async (id: string, params: unknown): Promise<AgentToolResult<unknown>> => {
-      const cap = getCap(userSlug, `tools.${tool.name}`);
-      if (cap !== undefined) {
-        const usage = loadUsage(userSlug);
-        const current = usage.period_tools[tool.name] ?? 0;
-        if (current >= cap) {
+      try {
+        const cap = getEffectiveCap(userSlug, `tools.${tool.name}`);
+        if (cap !== undefined) {
+          const usage = loadUsage(userSlug);
+          const current = usage.period_tools[tool.name] ?? 0;
+          if (current >= cap) {
+            const upgradeUrl = isBillingEnabled()
+              ? undefined // tool path has no channel; message points at WebUI
+              : undefined;
+            const text = formatPaywallMessage({
+              current,
+              cap,
+              upgradeUrl,
+              channel: 'cli',
+              toolName: tool.name,
+            });
+            return {
+              content: [{ type: 'text', text }],
+              details: { capHit: true, tool: tool.name, current, cap } as any,
+            };
+          }
+        }
+      } catch (err) {
+        if (isBillingEnabled()) {
           return {
-            content: [{ type: 'text', text: `🚫 Monthly cap reached for \`${tool.name}\` (${current}/${cap}). Contact an admin to raise it.` }],
-            details: { capHit: true, tool: tool.name, current, cap } as any,
+            content: [
+              {
+                type: 'text',
+                text: `🚫 ${billingStateErrorMessage()}`,
+              },
+            ],
+            details: { billingError: true, tool: tool.name } as any,
           };
         }
+        throw err;
       }
       return original(id, params);
     },

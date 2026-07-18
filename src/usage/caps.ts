@@ -22,7 +22,6 @@ import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from 'yaml';
 import { resolveDataRoot } from '../config.js';
-import { loadUsage } from './usage-file.js';
 
 export type CapKind = 'llm_total_tokens' | 'llm_cost_usd' | `tools.${string}`;
 
@@ -99,26 +98,5 @@ export function capsYamlHasDefault(): boolean {
   return cachedConfig.default !== undefined && cachedConfig.default !== null;
 }
 
-/**
- * Pre-turn LLM cap check shared by all chat interfaces. Returns a user-facing
- * rejection message when the user is at/over their monthly token cap, or null
- * when the turn may proceed. Fails open (logs + null) so a broken usage file
- * never blocks chat.
- */
-export function checkLlmCap(userSlug: string, isAdmin: boolean): string | null {
-  try {
-    if (!userSlug || isAdmin) return null;
-    const cap = getCap(userSlug, 'llm_total_tokens');
-    if (cap === undefined) return null;
-    const current = loadUsage(userSlug).period_llm.total_tokens;
-    if (current >= cap) {
-      return `🚫 You've hit your monthly LLM token cap (${current.toLocaleString('en-US')}/${cap.toLocaleString('en-US')} tokens). Contact an admin to raise it.`;
-    }
-    return null;
-  } catch (err) {
-    console.warn(
-      `[usage/caps] LLM cap check failed for slug=${userSlug}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
-}
+// checkLlmCap / checkTurnAllowed live in src/billing/gate.ts and are re-exported
+// from usage/index.ts so call sites keep importing from usage.

@@ -131,3 +131,22 @@ export interface DomainBillingConfig {
 }
 
 export type { CapKind };
+
+/** Channel used to shape upgrade URLs and paywall copy. */
+export type PaywallChannel = 'web' | 'telegram' | 'slack' | 'cli';
+
+/**
+ * Structured paywall / billing gate result for HTTP, SSE, and tools.
+ * `cap_exceeded` → HTTP 429; `billing_state_error` → HTTP 503 (no upgrade CTA).
+ */
+export interface PaywallBlock {
+  code: 'cap_exceeded' | 'billing_state_error';
+  /** User-facing message (may embed absolute upgrade URL for bot channels). */
+  message: string;
+  /** Channel-aware; omit on billing_state_error. */
+  upgradeUrl?: string;
+  planId?: string;
+  kind?: CapKind;
+  current?: number;
+  cap?: number;
+}

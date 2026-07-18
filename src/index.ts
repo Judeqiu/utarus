@@ -134,11 +134,19 @@ export {
   getCap,
   getCapOverride,
   checkLlmCap,
+  checkTurnAllowed,
   attachUsageTracking,
   wrapToolWithCap,
   wrapToolsWithCaps,
 } from './usage/index.js';
-export type { LlmCounters, LlmUsageDelta, UsageState, CapKind } from './usage/index.js';
+export type {
+  LlmCounters,
+  LlmUsageDelta,
+  UsageState,
+  CapKind,
+  PaywallBlock,
+  PaywallChannel,
+} from './usage/index.js';
 export {
   TRIAL_PERIOD_DAYS,
   isBillingEnabled,
@@ -155,6 +163,8 @@ export {
   entitlementFromBillingState,
   getEffectiveCap,
   hasFeature,
+  buildUpgradeUrl,
+  formatPaywallMessage,
 } from './billing/index.js';
 export type {
   BillingState,

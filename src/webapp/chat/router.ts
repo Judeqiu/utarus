@@ -28,7 +28,7 @@ import { UTARUS_VERSION } from '../../version.js';
 import { requireAuth, type AuthUser } from '../auth.js';
 import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
-import { checkLlmCap } from '../../usage/index.js';
+import { checkTurnAllowed } from '../../usage/index.js';
 import type { Framework } from '../../framework.js';
 import { getAgentLlmCapabilities } from '../../llm/index.js';
 import { runAgent } from './run-agent.js';
@@ -369,9 +369,23 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
-    const capMsg = checkLlmCap(user.slug || '', isAdmin);
-    if (capMsg) {
-      res.status(429).json({ error: 'cap_exceeded', message: capMsg });
+    const capBlock = checkTurnAllowed(user.slug || '', isAdmin, { channel: 'web' });
+    if (capBlock) {
+      if (capBlock.code === 'billing_state_error') {
+        res.status(503).json({
+          error: 'billing_state_error',
+          message: capBlock.message,
+        });
+        return;
+      }
+      res.status(429).json({
+        error: 'cap_exceeded',
+        message: capBlock.message,
+        upgrade_url: capBlock.upgradeUrl,
+        plan_id: capBlock.planId,
+        current: capBlock.current,
+        cap: capBlock.cap,
+      });
       return;
     }
 

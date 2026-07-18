@@ -521,7 +521,7 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
 
       const enrichedText = inbound.text;
 
-      const capMsg = checkLlmCap(userSlug, admin);
+      const capMsg = checkLlmCap(userSlug, admin, { channel: 'telegram' });
       if (capMsg) {
         await replyFormatted(ctx, capMsg);
         return;

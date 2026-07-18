@@ -10,21 +10,66 @@ import {
   formatUsageReport,
   getCap,
   checkLlmCap,
+  checkTurnAllowed,
   wrapToolWithCap,
 } from '../src/usage/index.js';
+import {
+  setBillingExtension,
+  resetPlansCacheForTests,
+  saveBillingState,
+  type PlansCatalogInput,
+} from '../src/billing/index.js';
 
 let tmp: string;
-let prevDataRoot: string | undefined;
+let prevEnv: Record<string, string | undefined>;
+
+const BILLING_ENV_KEYS = [
+  'UTARUS_DATA_ROOT',
+  'UTARUS_BILLING_ENABLED',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'UTARUS_PUBLIC_BASE_URL',
+] as const;
+
+const SAMPLE_PLANS: PlansCatalogInput = {
+  version: 1,
+  past_due_policy: 'retain_until_period_end',
+  trial_period_days: 7,
+  default_paid_plan_id: 'pro',
+  plans: {
+    free: {
+      display_name: 'Free',
+      stripe_price_id: null,
+      caps: { llm_total_tokens: 1000, tools: { firecrawl: 1 } },
+      features: [],
+    },
+    pro: {
+      display_name: 'Pro',
+      stripe_price_id: 'price_pro',
+      caps: { llm_total_tokens: 100_000, tools: { firecrawl: 50 } },
+      features: [],
+    },
+  },
+};
 
 beforeEach(() => {
-  prevDataRoot = process.env.UTARUS_DATA_ROOT;
+  prevEnv = {};
+  for (const k of BILLING_ENV_KEYS) prevEnv[k] = process.env[k];
   tmp = mkdtempSync(join(tmpdir(), 'utarus-usage-test-'));
   process.env.UTARUS_DATA_ROOT = tmp;
+  delete process.env.UTARUS_BILLING_ENABLED;
+  delete process.env.STRIPE_SECRET_KEY;
+  delete process.env.STRIPE_WEBHOOK_SECRET;
+  delete process.env.UTARUS_PUBLIC_BASE_URL;
+  resetPlansCacheForTests();
 });
 
 afterEach(() => {
-  if (prevDataRoot === undefined) delete process.env.UTARUS_DATA_ROOT;
-  else process.env.UTARUS_DATA_ROOT = prevDataRoot;
+  for (const k of BILLING_ENV_KEYS) {
+    if (prevEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = prevEnv[k];
+  }
+  resetPlansCacheForTests();
   rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -186,12 +231,63 @@ describe('checkLlmCap', () => {
 
     recordLlm('alice', { total_tokens: 500 });
     expect(checkLlmCap('alice', false)).toMatch(/monthly LLM token cap/);
+    expect(checkLlmCap('alice', false)).toMatch(/Contact an admin/);
   });
 
   it('never blocks admins', () => {
     writeDataFile('config/caps.yaml', { default: { llm_total_tokens: 1 } });
     recordLlm('alice', { total_tokens: 100 });
     expect(checkLlmCap('alice', true)).toBeNull();
+  });
+});
+
+describe('checkTurnAllowed (billing on)', () => {
+  beforeEach(() => {
+    process.env.UTARUS_BILLING_ENABLED = 'true';
+    process.env.STRIPE_SECRET_KEY = 'sk_test';
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+    process.env.UTARUS_PUBLIC_BASE_URL = 'https://agent.example.com';
+    setBillingExtension({ plans: SAMPLE_PLANS });
+  });
+
+  it('returns structured cap_exceeded with web relative upgrade_url', () => {
+    recordLlm('alice', { total_tokens: 1000 });
+    const block = checkTurnAllowed('alice', false, { channel: 'web' });
+    expect(block).not.toBeNull();
+    expect(block!.code).toBe('cap_exceeded');
+    expect(block!.upgradeUrl).toBe('/billing');
+    expect(block!.current).toBe(1000);
+    expect(block!.cap).toBe(1000);
+    expect(block!.planId).toBe('free');
+  });
+
+  it('mints enter URL for telegram when public base is set', () => {
+    recordLlm('alice', { total_tokens: 1000 });
+    const block = checkTurnAllowed('alice', false, { channel: 'telegram' });
+    expect(block?.upgradeUrl).toMatch(
+      /^https:\/\/agent\.example\.com\/api\/billing\/enter\?return=%2Fbilling&t=/,
+    );
+    expect(block?.message).toContain(block!.upgradeUrl!);
+  });
+
+  it('uses paid plan caps when active', () => {
+    saveBillingState({
+      version: 1,
+      user_slug: 'alice',
+      plan_id: 'pro',
+      status: 'active',
+      current_period_end: '2099-01-01T00:00:00.000Z',
+      updated_at: '2026-07-01T00:00:00.000Z',
+    });
+    recordLlm('alice', { total_tokens: 1000 });
+    expect(checkTurnAllowed('alice', false, { channel: 'web' })).toBeNull();
+  });
+
+  it('fails closed with billing_state_error on corrupt billing file', () => {
+    writeDataFile('billing/alice.yaml', { version: 1, broken: true });
+    const block = checkTurnAllowed('alice', false, { channel: 'web' });
+    expect(block?.code).toBe('billing_state_error');
+    expect(block?.upgradeUrl).toBeUndefined();
   });
 });
 
