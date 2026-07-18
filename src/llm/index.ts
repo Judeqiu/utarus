@@ -63,8 +63,12 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     apiKeyEnv: 'KIMI_API_KEY',
     defaultModel: 'k3',
     defaultBaseUrl: 'https://api.kimi.com/coding/v1',
-    // Maps to pi-ai's `kimi-coding` entry so DEEPSEEK-style env lookup also works.
-    piAiProvider: 'kimi-coding',
+    // Pi-ai recognises `moonshotai` and formats requests accordingly (drops
+    // `max_completion_tokens` / `prompt_cache_key` etc. that the Kimi endpoint
+    // rejects with "tokenization failed"). Same company, same wire format.
+    // Auth is handled centrally via Agent.getApiKey, so pi-ai's per-provider
+    // env-var lookup (which would expect MOONSHOT_API_KEY) is bypassed.
+    piAiProvider: 'moonshotai',
     thinkingLevelMap: { minimal: null, low: 'low', medium: null, high: 'high', xhigh: 'max' },
     contextWindow: 256_000,
     maxTokens: 8_192,
