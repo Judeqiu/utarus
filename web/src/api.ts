@@ -143,7 +143,11 @@ export async function listChatCommands(): Promise<WebCommandInfo[]> {
 
 export async function sendMessage(
   text: string,
-  opts?: { queue?: boolean; conversationId?: string },
+  opts?: {
+    queue?: boolean;
+    conversationId?: string;
+    attachments?: Array<{ id: string; name?: string }>;
+  },
 ): Promise<SendOutcome> {
   const res = await fetchWithRetry(
     '/api/chat/messages',
@@ -154,6 +158,14 @@ export async function sendMessage(
         text,
         queue: opts?.queue === true,
         conversationId: opts?.conversationId,
+        ...(opts?.attachments?.length
+          ? {
+              attachments: opts.attachments.map((a) => ({
+                id: a.id,
+                name: a.name,
+              })),
+            }
+          : {}),
       }),
     },
     // Retry POST: message create is safe enough if server never accepted (connection drop).
@@ -163,6 +175,44 @@ export async function sendMessage(
     throw friendlyHttpError(res.status, await readErrorBody(res));
   }
   return (await res.json()) as SendOutcome;
+}
+
+// ── Chat attachments (user-uploaded photos) ───────────────────────────
+
+export interface ChatAttachmentUpload {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  url: string;
+}
+
+export async function uploadChatAttachment(input: {
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+}): Promise<ChatAttachmentUpload> {
+  const res = await fetchWithRetry(
+    '/api/chat/attachments',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: input.name,
+        mimeType: input.mimeType,
+        data: input.dataBase64,
+      }),
+    },
+    { retryOnPost: true },
+  );
+  if (!res.ok) {
+    throw friendlyHttpError(res.status, await readErrorBody(res));
+  }
+  return (await res.json()) as ChatAttachmentUpload;
+}
+
+export function attachmentUrl(id: string): string {
+  return `/api/chat/attachments/${encodeURIComponent(id)}`;
 }
 
 export async function clearContext(conversationId: string): Promise<void> {

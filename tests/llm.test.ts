@@ -17,6 +17,7 @@ const ENV_KEYS = [
   'UTARUS_LLM_BASE_URL',
   'UTARUS_LLM_API_KEY',
   'UTARUS_LLM_API_KEY_ENV',
+  'UTARUS_LLM_IMAGE_INPUT',
   'MY_CUSTOM_LLM_KEY',
 ];
 
@@ -51,6 +52,7 @@ describe('getAgentLLM — deepseek (default)', () => {
     expect(model.provider).toBe('deepseek');
     expect(model.baseUrl).toBe('https://api.deepseek.com');
     expect(model.api).toBe('openai-completions');
+    expect(model.input).toEqual(['text']);
   });
 
   it('throws naming DEEPSEEK_API_KEY when the key is missing', async () => {
@@ -76,6 +78,9 @@ describe('getAgentLLM — kimi', () => {
     // rejects with "400 Invalid request: tokenization failed". Regression guard.
     expect(model.provider).toBe('moonshotai');
     expect(model.reasoning).toBe(true);
+    // k3 is vision-capable — required for chat photo attachments; without
+    // 'image' here pi-ai silently replaces uploads with placeholder text.
+    expect(model.input).toContain('image');
   });
 
   it('honours UTARUS_LLM_MODEL / UTARUS_LLM_BASE_URL overrides', async () => {
@@ -163,5 +168,39 @@ describe('getAgentLLM — misc', () => {
     expect(getDeepSeekModel).toBe(getAgentModel);
     expect(getDeepSeekModel().id).toBe('deepseek-v4-pro');
     expect(getAgentApiKey()).toBe('sk-ds-test');
+  });
+});
+
+describe('getAgentLLM — image input (UTARUS_LLM_IMAGE_INPUT)', () => {
+  it('generic provider stays text-only by default', async () => {
+    process.env.UTARUS_LLM_PROVIDER = 'generic';
+    process.env.UTARUS_LLM_MODEL = 'llama-3.3-70b-instruct';
+    process.env.UTARUS_LLM_BASE_URL = 'http://localhost:11434/v1';
+    process.env.UTARUS_LLM_API_KEY = 'sk-generic-test';
+    const { getAgentLLM } = await freshLLM();
+    expect(getAgentLLM().model.input).toEqual(['text']);
+  });
+
+  it('env override enables image input for a text-only provider', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.UTARUS_LLM_IMAGE_INPUT = 'true';
+    const { getAgentLLM } = await freshLLM();
+    expect(getAgentLLM().model.input).toEqual(['text', 'image']);
+  });
+
+  it('env override disables image input for a vision provider', async () => {
+    process.env.UTARUS_LLM_PROVIDER = 'kimi';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    process.env.UTARUS_LLM_IMAGE_INPUT = 'false';
+    const { getAgentLLM } = await freshLLM();
+    expect(getAgentLLM().model.input).toEqual(['text']);
+  });
+
+  it('unrecognised override values fall back to the provider default', async () => {
+    process.env.UTARUS_LLM_PROVIDER = 'kimi';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    process.env.UTARUS_LLM_IMAGE_INPUT = 'yes';
+    const { getAgentLLM } = await freshLLM();
+    expect(getAgentLLM().model.input).toEqual(['text', 'image']);
   });
 });

@@ -14,7 +14,7 @@
 
 import { emit, markEnded } from './stream-registry.js';
 import { extractAssets } from './extract-assets.js';
-import type { WebAgent } from './types.js';
+import type { WebAgent, WebImageContent } from './types.js';
 
 export const AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 3000;
@@ -24,6 +24,8 @@ interface RunAgentParams {
   userSlug: string;
   agent: WebAgent;
   message: string;
+  /** Photos attached to this turn — forwarded to the agent as image parts. */
+  images?: WebImageContent[];
   /**
    * Called after the agent finishes and before the terminal SSE `end` event.
    * May be async (e.g. AI title generation) — awaited so late events still ship.
@@ -46,7 +48,7 @@ interface ActiveTool {
  * terminal `error` event.
  */
 export async function runAgent(params: RunAgentParams): Promise<void> {
-  const { messageId, userSlug, agent, message, onComplete } = params;
+  const { messageId, userSlug, agent, message, images, onComplete } = params;
   const startedAt = Date.now();
 
   let cumulative = '';
@@ -147,7 +149,7 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   console.log(`[Agent/web] user=${userSlug} start messageId=${messageId} msgLen=${message.length}`);
 
   try {
-    agent.prompt(message);
+    agent.prompt(message, images && images.length > 0 ? images : undefined);
     await agent.waitForIdle();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

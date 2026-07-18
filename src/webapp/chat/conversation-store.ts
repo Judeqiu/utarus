@@ -299,6 +299,7 @@ export function appendMessage(
     created_at: message.created_at ?? new Date().toISOString(),
     stopReason: message.stopReason,
     error: message.error,
+    attachments: message.attachments,
     tools: message.tools,
   };
   if (msg.role !== 'user' && msg.role !== 'assistant') {
@@ -306,6 +307,21 @@ export function appendMessage(
   }
   if (typeof msg.text !== 'string') {
     throw new Error('message.text must be a string');
+  }
+  if (msg.attachments !== undefined) {
+    if (
+      !Array.isArray(msg.attachments) ||
+      msg.attachments.some(
+        a =>
+          !a ||
+          typeof a.id !== 'string' ||
+          typeof a.name !== 'string' ||
+          typeof a.mimeType !== 'string',
+      )
+    ) {
+      throw new Error('message.attachments must be an array of {id, name, mimeType}');
+    }
+    if (msg.attachments.length === 0) delete msg.attachments;
   }
 
   // Temporary title from first user message (AI summary replaces it after first reply)

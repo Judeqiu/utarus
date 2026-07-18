@@ -43,6 +43,12 @@ interface ProviderDefaults {
   thinkingFormat?: 'deepseek';
   /** Optional reasoning-effort map. Presence implies `reasoning: true`. */
   thinkingLevelMap?: Record<string, string | null>;
+  /**
+   * Whether models of this provider accept image input (vision). Drives
+   * `model.input`; pi-ai silently downgrades images to placeholder text when
+   * `input` lacks 'image'. Overridable via UTARUS_LLM_IMAGE_INPUT=true|false.
+   */
+  imageInput: boolean;
   contextWindow: number;
   maxTokens: number;
 }
@@ -55,6 +61,7 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     defaultBaseUrl: 'https://api.deepseek.com',
     piAiProvider: 'deepseek',
     thinkingFormat: 'deepseek',
+    imageInput: false,
     contextWindow: 1_000_000,
     maxTokens: 384_000,
   },
@@ -70,6 +77,8 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     // env-var lookup (which would expect MOONSHOT_API_KEY) is bypassed.
     piAiProvider: 'moonshotai',
     thinkingLevelMap: { minimal: null, low: 'low', medium: null, high: 'high', xhigh: 'max' },
+    // Verified: k3 on the coding endpoint accepts image_url data URLs.
+    imageInput: true,
     contextWindow: 256_000,
     maxTokens: 8_192,
   },
@@ -78,6 +87,7 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     apiKeyEnv: 'UTARUS_LLM_API_KEY',
     // No defaults — host must supply UTARUS_LLM_MODEL + UTARUS_LLM_BASE_URL.
     piAiProvider: 'openai',
+    imageInput: false,
     contextWindow: 128_000,
     maxTokens: 8_192,
   },
@@ -126,6 +136,10 @@ export function getAgentLLM(): ResolvedLLM {
     );
   }
 
+  const imageInputEnv = process.env.UTARUS_LLM_IMAGE_INPUT;
+  const imageInput =
+    imageInputEnv === 'true' ? true : imageInputEnv === 'false' ? false : defaults.imageInput;
+
   const model: Model<'openai-completions'> = {
     id: modelId,
     name: `${defaults.label} ${modelId}`,
@@ -135,7 +149,7 @@ export function getAgentLLM(): ResolvedLLM {
     compat: defaults.thinkingFormat ? { thinkingFormat: defaults.thinkingFormat } : {},
     reasoning: !!(defaults.thinkingLevelMap ?? defaults.thinkingFormat),
     thinkingLevelMap: defaults.thinkingLevelMap,
-    input: ['text'],
+    input: imageInput ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: defaults.contextWindow,
     maxTokens: defaults.maxTokens,

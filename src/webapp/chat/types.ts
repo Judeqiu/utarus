@@ -16,9 +16,17 @@ export interface WebAgentState {
   messages?: unknown[];
 }
 
+/** Mirror of pi-ai's ImageContent (structural — see header note). */
+export interface WebImageContent {
+  type: 'image';
+  /** base64-encoded image bytes. */
+  data: string;
+  mimeType: string;
+}
+
 export interface WebAgent {
   subscribe(handler: (event: any) => void): () => void;
-  prompt(message: string): void;
+  prompt(message: string, images?: WebImageContent[]): void;
   /** Steer signature is intentionally permissive — the canonical AgentMessage
    *  type carries extra optional fields (customType, display) we don't set. */
   steer(input: unknown): void;

@@ -91,6 +91,14 @@ DeepSeek is the default. Switch providers via env — no code changes, no fork:
 
 `UTARUS_LLM_MODEL` / `UTARUS_LLM_BASE_URL` override the defaults of the well-known providers; `UTARUS_LLM_API_KEY_ENV` renames the api-key env var. Missing values fail fast at boot with the exact variable named. Domain code can read the resolved model/key via `getAgentModel()` / `getAgentApiKey()` / `getAgentLLM()`, exported from the package root.
 
+## Chat photo attachments
+
+WebUI chat users can attach up to **4 photos per message** (JPEG/PNG/WebP/GIF, ≤5MB each after the SPA downscales them client-side). Uploads are validated server-side (mime allowlist + magic-byte sniff), stored at `data/chats/<slug>/attachments/`, forwarded to the agent as image parts, and re-hydrated into agent context after restarts. Deleting or clearing a conversation removes its attachment files.
+
+Attachments are gated on the resolved model's vision capability — `deepseek`: off, `kimi`: **on** (k3 verified), `generic`: off. Override with `UTARUS_LLM_IMAGE_INPUT=true|false`. When off, `POST /api/chat/attachments` and photo-bearing `/api/chat/messages` fail with a clear `vision_disabled` error instead of silently dropping the images.
+
+Endpoints (session-auth, slug-scoped): `POST /api/chat/attachments` (`{name, mimeType, data(base64)}` → `{id, url, …}`), `GET /api/chat/attachments/:id`, and `attachments: [{id, name?}]` on `POST /api/chat/messages`.
+
 ## Run
 
 ```bash

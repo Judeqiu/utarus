@@ -21,6 +21,13 @@ export interface AssetRef {
   ownerSlug: string;
 }
 
+/** User-uploaded photo attached to a chat message (POST /api/chat/attachments). */
+export interface ChatAttachmentRef {
+  id: string;
+  name: string;
+  mimeType: string;
+}
+
 export type ChatEvent =
   | { type: 'ack'; messageId: string; slug: string; agentName: string }
   | { type: 'tool_start'; toolCallId: string; name: string; startedAt: number }
@@ -55,6 +62,8 @@ export interface ChatMessage {
   messageId?: string;
   tools?: ToolChip[];
   assets?: AssetRef[];
+  /** Photos attached by the user (optimistic + server-persisted). */
+  attachments?: ChatAttachmentRef[];
   stopReason?: string;
   error?: string;
   pending?: boolean;
@@ -102,6 +111,7 @@ export interface ConversationDetail {
     created_at: string;
     stopReason?: string;
     error?: string;
+    attachments?: ChatAttachmentRef[];
   }>;
 }
 

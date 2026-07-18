@@ -20,6 +20,13 @@ export interface ConversationSummary {
 
 export type StoredMessageRole = 'user' | 'assistant';
 
+/** Photo attached to a user message (file lives in data/chats/<slug>/attachments/). */
+export interface StoredAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+}
+
 export interface StoredChatMessage {
   id: string;
   role: StoredMessageRole;
@@ -27,6 +34,7 @@ export interface StoredChatMessage {
   created_at: string; // ISO-8601
   stopReason?: string;
   error?: string;
+  attachments?: StoredAttachment[];
   tools?: Array<{
     toolCallId: string;
     name: string;

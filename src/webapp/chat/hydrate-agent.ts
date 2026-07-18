@@ -6,6 +6,7 @@
 import type { Agent } from '@earendil-works/pi-agent-core';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { getAgentModel } from '../../llm/index.js';
+import { loadAttachment } from './attachments.js';
 import type { StoredChatMessage } from './conversation-types.js';
 
 const emptyUsage = {
@@ -20,10 +21,14 @@ const emptyUsage = {
 /**
  * Convert stored chat turns into AgentMessages and assign to agent.state.messages.
  * Overwrites any existing transcript for this agent instance.
+ *
+ * `slug` is the conversation owner — needed to reload photo attachments from
+ * data/chats/<slug>/attachments/ so image context survives restarts too.
  */
 export function hydrateAgentFromStoredMessages(
   agent: Agent,
   messages: StoredChatMessage[],
+  slug?: string,
 ): void {
   const model = getAgentModel();
   const out: AgentMessage[] = [];
@@ -33,6 +38,22 @@ export function hydrateAgentFromStoredMessages(
     const timestamp = Number.isFinite(ts) ? ts : Date.now();
 
     if (m.role === 'user') {
+      if (slug && m.attachments?.length) {
+        const parts: Array<
+          { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+        > = [{ type: 'text', text: m.text }];
+        for (const a of m.attachments) {
+          try {
+            const f = loadAttachment(slug, a.id);
+            parts.push({ type: 'image', data: f.bytes.toString('base64'), mimeType: f.mimeType });
+          } catch {
+            // Attachment file gone — hydrate that turn text-only rather than
+            // failing the whole conversation.
+          }
+        }
+        out.push({ role: 'user', content: parts, timestamp });
+        continue;
+      }
       out.push({
         role: 'user',
         content: m.text,

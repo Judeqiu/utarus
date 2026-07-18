@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ChatMessage } from '../types.js';
+import { attachmentUrl } from '../api.js';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 import { ToolChipView } from './ToolChip.js';
 import { AttachmentStrip } from './AttachmentStrip.js';
@@ -28,6 +29,19 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[#f0eeea] px-4 py-2.5 text-sm text-stone-900 sm:max-w-[80%]">
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-1.5">
+              {message.attachments.map((a) => (
+                <img
+                  key={a.id}
+                  src={attachmentUrl(a.id)}
+                  alt={a.name}
+                  loading="lazy"
+                  className="h-20 w-20 rounded-lg object-cover"
+                />
+              ))}
+            </div>
+          )}
           {message.text}
         </div>
       </div>

@@ -15,6 +15,10 @@
  *   POST   /abort                body: { conversationId? }
  *   GET    /agent                → status + version
  *   GET    /commands             → framework + domain slash commands for /help
+ *
+ * Photo attachments (vision-capable models only):
+ *   POST   /attachments          body: { name, mimeType, data(base64) } → ref + url
+ *   GET    /attachments/:id      → image bytes (session-auth, slug-scoped)
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -26,8 +30,16 @@ import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
 import { checkLlmCap } from '../../usage/index.js';
 import type { Framework } from '../../framework.js';
+import { getAgentModel } from '../../llm/index.js';
 import { runAgent } from './run-agent.js';
 import { sendSSEEvent, sendSSEComment, setSSEHeaders } from './sse.js';
+import {
+  saveAttachment,
+  loadAttachment,
+  deleteAttachments,
+  sanitizeAttachmentName,
+  ATTACHMENTS_PER_MESSAGE_MAX,
+} from './attachments.js';
 import {
   register,
   get as getRun,
@@ -36,7 +48,7 @@ import {
   emit,
   replay,
 } from './stream-registry.js';
-import type { ChatEvent, RunState } from './types.js';
+import type { ChatEvent, RunState, WebImageContent } from './types.js';
 import {
   listConversations,
   createConversation,
@@ -80,6 +92,24 @@ function parseConversationId(raw: unknown): string | null {
   if (typeof raw !== 'string' || !UUID_RE.test(raw)) return null;
   return raw;
 }
+
+/**
+ * Photo uploads make sense only when the resolved model actually accepts
+ * image input — pi-ai otherwise rewrites images to "(image omitted …)"
+ * placeholder text, which is a silent failure we refuse to allow.
+ * Evaluated lazily so router construction never throws on LLM misconfig.
+ */
+function visionEnabled(): boolean {
+  try {
+    return getAgentModel().input.includes('image');
+  } catch {
+    return false;
+  }
+}
+
+const VISION_DISABLED_MESSAGE =
+  'The configured LLM does not accept image input, so photo uploads are disabled. ' +
+  'Use a vision-capable provider/model, or set UTARUS_LLM_IMAGE_INPUT=true to override.';
 
 export function createChatRouter(deps: CreateChatRouterDeps): Router {
   const router = Router();
@@ -177,6 +207,11 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
     try {
+      const conv = getConversation(slug, id);
+      deleteAttachments(
+        slug,
+        conv.messages.flatMap(m => (m.attachments ?? []).map(a => a.id)),
+      );
       deleteConversation(slug, id);
       deps.framework.clearAgentContext(slug, 'web', id);
       res.json({ ok: true });
@@ -196,6 +231,48 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     });
   });
 
+  // ── POST /attachments ───────────────────────────────────────────────
+  // Upload a photo for a later /messages turn. base64-in-JSON, matching the
+  // codebase's no-multipart convention; the SPA downscales before upload.
+  router.post('/attachments', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    if (!visionEnabled()) {
+      res.status(400).json({ error: 'vision_disabled', message: VISION_DISABLED_MESSAGE });
+      return;
+    }
+    try {
+      const ref = saveAttachment(slug, {
+        name: req.body?.name,
+        mimeType: req.body?.mimeType,
+        data: req.body?.data,
+      });
+      res.status(201).json({ ...ref, url: `/api/chat/attachments/${ref.id}` });
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // ── GET /attachments/:id ────────────────────────────────────────────
+  router.get('/attachments/:id', (req: Request, res: Response) => {
+    const user = (req as any).user as AuthUser;
+    const slug = requireSlug(user, res);
+    if (!slug) return;
+    try {
+      const file = loadAttachment(slug, String(req.params.id));
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+      res.send(file.bytes);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(msg.includes('not found') || msg.includes('Invalid') ? 404 : 500).json({
+        error: msg,
+      });
+    }
+  });
+
   // ── POST /messages ──────────────────────────────────────────────────
   router.post('/messages', async (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
@@ -203,6 +280,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       text?: unknown;
       queue?: unknown;
       conversationId?: unknown;
+      attachments?: unknown;
     };
     if (typeof body.text !== 'string' || body.text.trim().length === 0) {
       res.status(400).json({ error: 'text required' });
@@ -288,6 +366,53 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
+    // Resolve photo attachments: ids → stored files (agent image parts) +
+    // display refs (persisted on the user message for reload rendering).
+    let storedAttachments: Array<{ id: string; name: string; mimeType: string }> | undefined;
+    let images: WebImageContent[] | undefined;
+    if (body.attachments !== undefined) {
+      if (
+        !Array.isArray(body.attachments) ||
+        body.attachments.length === 0 ||
+        body.attachments.length > ATTACHMENTS_PER_MESSAGE_MAX ||
+        body.attachments.some(
+          (a: { id?: unknown } | null) =>
+            !a || typeof a.id !== 'string' || !UUID_RE.test(a.id),
+        )
+      ) {
+        res.status(400).json({
+          error: 'invalid_attachments',
+          message:
+            `attachments must be an array of 1-${ATTACHMENTS_PER_MESSAGE_MAX} objects ` +
+            'each with a valid attachment id.',
+        });
+        return;
+      }
+      if (!visionEnabled()) {
+        res.status(400).json({ error: 'vision_disabled', message: VISION_DISABLED_MESSAGE });
+        return;
+      }
+      try {
+        const loaded = (body.attachments as Array<{ id: string; name?: unknown }>).map(a => ({
+          a,
+          file: loadAttachment(effectiveSlug, a.id),
+        }));
+        storedAttachments = loaded.map(({ a, file }) => ({
+          id: a.id,
+          name: sanitizeAttachmentName(a.name),
+          mimeType: file.mimeType,
+        }));
+        images = loaded.map(({ file }) => ({
+          type: 'image' as const,
+          data: file.bytes.toString('base64'),
+          mimeType: file.mimeType,
+        }));
+      } catch (e) {
+        res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+        return;
+      }
+    }
+
     // Create conversation on first message if client did not pass one.
     try {
       if (!conversationId) {
@@ -315,7 +440,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     try {
       const existing = getConversation(effectiveSlug, conversationId);
       if (!agent.state.messages?.length && existing.messages.length > 0) {
-        hydrateAgentFromStoredMessages(agent, existing.messages);
+        hydrateAgentFromStoredMessages(agent, existing.messages, effectiveSlug);
       }
     } catch (e) {
       res.status(500).json({
@@ -334,6 +459,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         id: userMsgId,
         role: 'user',
         text: userVisibleText,
+        attachments: storedAttachments,
       });
     } catch (e) {
       res.status(500).json({
@@ -351,8 +477,14 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         });
         return;
       }
-      // Agent still receives the enriched prompt text.
-      agent.steer({ role: 'user', content: inbound.text, timestamp: Date.now() });
+      // Agent still receives the enriched prompt text (+ any photo parts).
+      agent.steer({
+        role: 'user',
+        content: images?.length
+          ? [{ type: 'text', text: inbound.text }, ...images]
+          : inbound.text,
+        timestamp: Date.now(),
+      });
       res.json({ kind: 'queued', conversationId });
       return;
     }
@@ -384,6 +516,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       userSlug: effectiveSlug,
       agent,
       message: promptText,
+      images,
       onComplete: async (result) => {
         try {
           if (result.error && !result.text) {
@@ -522,6 +655,11 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
     try {
+      const conv = getConversation(slug, conversationId);
+      deleteAttachments(
+        slug,
+        conv.messages.flatMap(m => (m.attachments ?? []).map(a => a.id)),
+      );
       clearConversationMessages(slug, conversationId);
       deps.framework.clearAgentContext(slug, 'web', conversationId);
       res.json({ ok: true, conversationId });

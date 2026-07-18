@@ -24,6 +24,7 @@ import { fetchAgentStatus, logout } from '../auth.js';
 import type {
   AgentStatus,
   AssetRef,
+  ChatAttachmentRef,
   ChatEvent,
   ChatMessage,
   ConversationSummary,
@@ -54,6 +55,7 @@ function storedMessagesToUi(
     text: string;
     stopReason?: string;
     error?: string;
+    attachments?: ChatAttachmentRef[];
   }>,
 ): ChatMessage[] {
   return messages.map((m) => ({
@@ -62,6 +64,7 @@ function storedMessagesToUi(
     text: m.text,
     stopReason: m.stopReason,
     error: m.error,
+    attachments: m.attachments,
     pending: false,
   }));
 }
@@ -310,12 +313,16 @@ export function ChatPage({ session }: ChatPageProps) {
     toolMap.current.clear();
   }
 
-  async function handleSend(text: string, opts: { queue: boolean }) {
+  async function handleSend(
+    text: string,
+    opts: { queue: boolean; attachments?: ChatAttachmentRef[] },
+  ) {
     if (isStreaming) return;
     const userMsg: ChatMessage = {
       id: newLocalId(),
       role: 'user',
       text,
+      attachments: opts.attachments,
     };
     const assistantMsg: ChatMessage = {
       id: newLocalId(),
@@ -332,6 +339,7 @@ export function ChatPage({ session }: ChatPageProps) {
       const outcome = await sendMessage(text, {
         queue: opts.queue,
         conversationId: activeConversationId ?? undefined,
+        attachments: opts.attachments,
       });
       if (outcome.kind === 'reply') {
         setMessages((prev) =>
