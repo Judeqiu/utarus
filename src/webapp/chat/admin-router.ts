@@ -18,6 +18,15 @@ import {
   listReports,
 } from '../../state/index.js';
 import { getDemoModeState, setDemoMode } from '../../onboarding/demo-mode.js';
+import {
+  isBillingEnabled,
+  compUser,
+  revokeComp,
+  reconcileBilling,
+  getBillingAdminView,
+  getEntitlement,
+  BillingHttpError,
+} from '../../billing/index.js';
 
 export const adminRouter = Router();
 adminRouter.use(requireAdmin);
@@ -129,6 +138,97 @@ adminRouter.get('/users/:slug', (req: Request, res: Response) => {
     res.json(safe);
   } catch (e) {
     res.status(404).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ── Billing admin ───────────────────────────────────────────────────────
+
+adminRouter.get('/billing/:slug', (req: Request, res: Response) => {
+  if (!isBillingEnabled()) {
+    res.status(404).json({ error: 'billing_disabled' });
+    return;
+  }
+  const slug = req.params.slug as string;
+  try {
+    const file = getBillingAdminView(slug);
+    let entitlement = null;
+    try {
+      entitlement = getEntitlement(slug);
+    } catch {
+      entitlement = null;
+    }
+    res.json({ slug, billing: file, entitlement });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+adminRouter.post('/billing/comp', async (req: Request, res: Response) => {
+  if (!isBillingEnabled()) {
+    res.status(404).json({ error: 'billing_disabled' });
+    return;
+  }
+  try {
+    const username = webAdminUsername(req);
+    const slug = typeof req.body?.slug === 'string' ? req.body.slug.trim() : '';
+    const planId = typeof req.body?.plan_id === 'string' ? req.body.plan_id.trim() : '';
+    if (!slug || !planId) {
+      res.status(400).json({ error: 'slug and plan_id required' });
+      return;
+    }
+    const state = await compUser({
+      slug,
+      planId,
+      adminUsername: username,
+      acknowledgeActiveSubscription: req.body?.acknowledge_active_subscription === true,
+    });
+    res.json({ ok: true, billing: state });
+  } catch (e) {
+    if (e instanceof BillingHttpError) {
+      res.status(e.status).json({ error: e.code, message: e.message });
+      return;
+    }
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+adminRouter.post('/billing/revoke-comp', async (req: Request, res: Response) => {
+  if (!isBillingEnabled()) {
+    res.status(404).json({ error: 'billing_disabled' });
+    return;
+  }
+  try {
+    const slug = typeof req.body?.slug === 'string' ? req.body.slug.trim() : '';
+    if (!slug) {
+      res.status(400).json({ error: 'slug required' });
+      return;
+    }
+    const state = await revokeComp(slug);
+    res.json({ ok: true, billing: state });
+  } catch (e) {
+    if (e instanceof BillingHttpError) {
+      res.status(e.status).json({ error: e.code, message: e.message });
+      return;
+    }
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+adminRouter.post('/billing/reconcile', async (req: Request, res: Response) => {
+  if (!isBillingEnabled()) {
+    res.status(404).json({ error: 'billing_disabled' });
+    return;
+  }
+  try {
+    const slug = typeof req.body?.slug === 'string' ? req.body.slug.trim() : '';
+    if (!slug) {
+      res.status(400).json({ error: 'slug required' });
+      return;
+    }
+    const state = await reconcileBilling(slug);
+    res.json({ ok: true, billing: state });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 

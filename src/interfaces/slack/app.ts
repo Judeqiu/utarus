@@ -34,6 +34,11 @@ import {
 } from '../../state/index.js';
 import { checkLlmCap, loadUsage, formatUsageReport } from '../../usage/index.js';
 import {
+  isBillingEnabled,
+  buildUpgradeUrl,
+  getEntitlement,
+} from '../../billing/index.js';
+import {
   formatMarkdownForSlack,
   splitSlackText,
   SLACK_MAX_TEXT_LENGTH,
@@ -632,12 +637,62 @@ export async function startSlack(opts: SlackOptions): Promise<void> {
     const user = resolveUserBySlackUser(slackUserId);
     const slug = user ? user.user.slug : `slack-${slackUserId}`;
     try {
+      let report = formatUsageReport(loadUsage(slug));
+      if (isBillingEnabled() && user) {
+        try {
+          const ent = getEntitlement(slug);
+          report += `\n\n**Plan:** ${ent.display_name} (\`${ent.plan_id}\`, ${ent.status})`;
+        } catch {
+          /* ignore */
+        }
+      }
       await respond({
         response_type: 'ephemeral',
-        text: formatMarkdownForSlack(formatUsageReport(loadUsage(slug))),
+        text: formatMarkdownForSlack(report),
       });
     } catch (e) {
       await respond({ response_type: 'ephemeral', text: `❌ ${e instanceof Error ? e.message : e}` });
+    }
+  });
+
+  // /upgrade — magic enter link into WebUI billing
+  app.command('/upgrade', async ({ ack, command, respond }) => {
+    await ack();
+    const user = resolveUserBySlackUser(command.user_id);
+    if (!user) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Link your account first (invite code), then try /upgrade again.',
+      });
+      return;
+    }
+    if (!isBillingEnabled()) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Billing is not enabled on this agent.',
+      });
+      return;
+    }
+    try {
+      const url = buildUpgradeUrl(user.user.slug, 'slack', {
+        displayName: user.profile.display_name,
+      });
+      if (!url) {
+        await respond({
+          response_type: 'ephemeral',
+          text: 'Billing is enabled but UTARUS_PUBLIC_BASE_URL is not set. Open the WebUI Billing page to upgrade.',
+        });
+        return;
+      }
+      await respond({
+        response_type: 'ephemeral',
+        text: `Upgrade / manage billing: ${url}`,
+      });
+    } catch (e) {
+      await respond({
+        response_type: 'ephemeral',
+        text: `❌ ${e instanceof Error ? e.message : e}`,
+      });
     }
   });
 

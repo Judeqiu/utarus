@@ -93,3 +93,10 @@ export {
   readEventReceipt,
   billingEventsDir,
 } from './events.js';
+
+export {
+  compUser,
+  revokeComp,
+  reconcileBilling,
+  getBillingAdminView,
+} from './admin.js';

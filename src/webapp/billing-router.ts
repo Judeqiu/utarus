@@ -1,10 +1,17 @@
 /**
- * User-facing billing HTTP routes (status, checkout, portal, config).
+ * User-facing billing HTTP routes (status, checkout, portal, config, enter).
  * Webhook is mounted separately with express.raw on the root app.
  */
 
 import { Router, type Request, type Response } from 'express';
-import { requireAuth, type AuthUser } from './auth.js';
+import {
+  requireAuth,
+  consumeLinkToken,
+  createSession,
+  getSession,
+  SESSION_TTL_MS,
+  type AuthUser,
+} from './auth.js';
 import {
   BillingHttpError,
   createCheckoutSessionUrl,
@@ -21,6 +28,9 @@ import {
   getStripePublishableKey,
 } from '../billing/index.js';
 import { loadUsage } from '../usage/usage-file.js';
+
+const ENTER_FULL_PATH = '/api/billing/enter';
+const ALLOWED_RETURNS = new Set(['/billing']);
 
 function sessionUser(req: Request): AuthUser {
   const user = (req as Request & { user?: AuthUser }).user;
@@ -42,8 +52,60 @@ function sendBillingError(res: Response, err: unknown): void {
   });
 }
 
+function safeReturnPath(raw: unknown): string {
+  if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//')) {
+    return '/billing';
+  }
+  const pathOnly = raw.split('?')[0] || '/billing';
+  if (ALLOWED_RETURNS.has(pathOnly) || pathOnly.startsWith('/billing/')) {
+    return pathOnly;
+  }
+  return '/billing';
+}
+
 export function createBillingRouter(): Router {
   const router = Router();
+
+  /**
+   * Channel magic-link exchange: always replace session from link token.
+   * pathPrefix validation uses full path /api/billing/enter (not mount-relative).
+   */
+  router.get('/enter', (req: Request, res: Response) => {
+    if (!isBillingEnabled()) {
+      res.status(404).send('Billing is not enabled');
+      return;
+    }
+    const t = typeof req.query.t === 'string' ? req.query.t : '';
+    if (!t) {
+      res.status(400).send('Missing t link token');
+      return;
+    }
+    const returnTo = safeReturnPath(req.query.return);
+    const fullPath = ENTER_FULL_PATH;
+    const tokenUser = consumeLinkToken(t, fullPath);
+    if (!tokenUser) {
+      res.status(401).send('Invalid or expired link token');
+      return;
+    }
+
+    const prevCookie = req.cookies?.['bindrive_session'] as string | undefined;
+    if (prevCookie) {
+      const prev = getSession(prevCookie);
+      if (prev && (prev.slug !== tokenUser.slug || prev.type !== tokenUser.type)) {
+        console.log(
+          `[billing/enter] replaced session prev=${prev.slug} next=${tokenUser.slug}`,
+        );
+      }
+    }
+
+    const sessionToken = createSession(tokenUser);
+    res.cookie('bindrive_session', sessionToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: SESSION_TTL_MS,
+    });
+    res.redirect(302, returnTo);
+  });
 
   /** Public config for WebUI (no price ids). */
   router.get('/config', (_req: Request, res: Response) => {

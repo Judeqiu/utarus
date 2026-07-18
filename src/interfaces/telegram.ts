@@ -20,6 +20,11 @@ import {
 } from '../state/index.js';
 import { markdownToTelegramHtml, splitTelegramHtml } from './telegram-format.js';
 import { checkLlmCap, loadUsage, formatUsageReport } from '../usage/index.js';
+import {
+  isBillingEnabled,
+  buildUpgradeUrl,
+  getEntitlement,
+} from '../billing/index.js';
 
 export interface TelegramOptions {
   handle: FrameworkHandle;
@@ -166,6 +171,7 @@ function helpText(ext?: DomainExtension): string {
     '/get `<slug>` — show user record',
     '/clear — clear your conversation context',
     '/usage — show your LLM + tool usage',
+    '/upgrade — open billing / upgrade link',
     '/help — show this help',
     '',
     'Admin commands:',
@@ -293,7 +299,45 @@ export async function startTelegram(opts: TelegramOptions): Promise<void> {
       return;
     }
     try {
-      await replyFormatted(ctx, formatUsageReport(loadUsage(slug)));
+      let report = formatUsageReport(loadUsage(slug));
+      if (isBillingEnabled() && user) {
+        try {
+          const ent = getEntitlement(slug);
+          report += `\n\n**Plan:** ${ent.display_name} (\`${ent.plan_id}\`, ${ent.status})`;
+        } catch {
+          /* ignore entitlement errors in usage display */
+        }
+      }
+      await replyFormatted(ctx, report);
+    } catch (e) {
+      await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
+    }
+  });
+
+  telegramBotCommands.push({ command: 'upgrade', description: 'open billing / upgrade link' });
+  bot.command('upgrade', async (ctx) => {
+    const telegramUserId = ctx.from?.id;
+    const user = telegramUserId ? resolveUserByTelegramUser(telegramUserId) : null;
+    if (!user) {
+      await ctx.reply('Link your account first (invite code), then try /upgrade again.');
+      return;
+    }
+    if (!isBillingEnabled()) {
+      await ctx.reply('Billing is not enabled on this agent.');
+      return;
+    }
+    try {
+      const url = buildUpgradeUrl(user.user.slug, 'telegram', {
+        displayName: user.profile.display_name,
+      });
+      if (!url) {
+        await replyFormatted(
+          ctx,
+          'Billing is enabled but UTARUS_PUBLIC_BASE_URL is not set. Open the WebUI Billing page to upgrade.',
+        );
+        return;
+      }
+      await replyFormatted(ctx, `Upgrade / manage billing:\n${url}`);
     } catch (e) {
       await replyFormatted(ctx, `❌ ${e instanceof Error ? e.message : e}`);
     }

@@ -50,6 +50,12 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
   const [adminCodes, setAdminCodes] = useState<AdminCode[]>([]);
   const [reports, setReports] = useState<UserReportRow[]>([]);
   const [demo, setDemo] = useState<DemoState | null>(null);
+  const [billingSlug, setBillingSlug] = useState('');
+  const [billingView, setBillingView] = useState<{
+    billing: Record<string, unknown> | null;
+    entitlement: Record<string, unknown> | null;
+  } | null>(null);
+  const [billingEnabled, setBillingEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,12 +65,15 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
       setLoading(true);
       setError(null);
       try {
-        const [iv, us, ac, dm, rp] = await Promise.all([
+        const [iv, us, ac, dm, rp, billingCfg] = await Promise.all([
           listInvites('all'),
           listUsers(),
           listAdminCodes(),
           getDemoState(),
           listUserReports(),
+          fetch('/api/billing/config', { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : { enabled: false }))
+            .catch(() => ({ enabled: false })),
         ]);
         if (cancelled) return;
         setInvites(iv);
@@ -72,6 +81,7 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
         setAdminCodes(ac);
         setDemo(dm);
         setReports(rp);
+        setBillingEnabled(Boolean(billingCfg?.enabled));
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -121,6 +131,86 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
     try {
       const updated = await setDemoMode(next);
       setDemo(updated);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleLoadBilling() {
+    const slug = billingSlug.trim();
+    if (!slug) return;
+    try {
+      setError(null);
+      const res = await fetch(`/api/admin/billing/${encodeURIComponent(slug)}`, {
+        credentials: 'include',
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || body.error || `HTTP ${res.status}`);
+      setBillingView({ billing: body.billing ?? null, entitlement: body.entitlement ?? null });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleComp() {
+    const slug = billingSlug.trim();
+    const planId = window.prompt('Plan id to comp (e.g. pro):', 'pro');
+    if (!planId) return;
+    const ack = window.confirm(
+      'If this user has an active Stripe subscription, they may still be charged until you cancel it in Stripe. Continue?',
+    );
+    try {
+      setError(null);
+      const res = await fetch('/api/admin/billing/comp', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          plan_id: planId,
+          acknowledge_active_subscription: ack,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || body.error || `HTTP ${res.status}`);
+      await handleLoadBilling();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleRevokeComp() {
+    const slug = billingSlug.trim();
+    if (!window.confirm(`Revoke comp for ${slug}?`)) return;
+    try {
+      setError(null);
+      const res = await fetch('/api/admin/billing/revoke-comp', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || body.error || `HTTP ${res.status}`);
+      await handleLoadBilling();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function handleReconcile() {
+    const slug = billingSlug.trim();
+    try {
+      setError(null);
+      const res = await fetch('/api/admin/billing/reconcile', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || body.error || `HTTP ${res.status}`);
+      await handleLoadBilling();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -229,6 +319,56 @@ export function AdminPage({ session, onBack }: AdminPageProps) {
               <p className="text-sm text-slate-500">No demo state available.</p>
             )}
           </section>
+
+          {billingEnabled && (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-slate-900">Billing</h2>
+              <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    value={billingSlug}
+                    onChange={(e) => setBillingSlug(e.target.value)}
+                    placeholder="user slug"
+                    className="rounded border border-slate-200 px-2 py-1 font-mono text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleLoadBilling()}
+                    className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-medium text-white"
+                  >
+                    Load
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleComp()}
+                    className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-medium text-white"
+                  >
+                    Comp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRevokeComp()}
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                  >
+                    Revoke comp
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleReconcile()}
+                    className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                  >
+                    Reconcile
+                  </button>
+                </div>
+                {billingView && (
+                  <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-2 text-[11px] text-slate-700">
+                    {JSON.stringify(billingView, null, 2)}
+                  </pre>
+                )}
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="mb-2 text-sm font-semibold text-slate-900">
