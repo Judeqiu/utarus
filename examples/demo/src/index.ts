@@ -1,0 +1,93 @@
+/**
+ * Demo agent entry — boots WebUI (+ optional Telegram/Slack) on Utarus.
+ *
+ * Run from examples/demo:
+ *   cp .env.example .env   # fill keys
+ *   npm install
+ *   npm run dev
+ */
+
+import { config as dotenvConfig } from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { mkdirSync, existsSync, writeFileSync } from 'fs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const demoRoot = resolve(__dirname, '..');
+
+// Host owns dotenv; tell Utarus not to load the framework package's .env
+dotenvConfig({ path: resolve(demoRoot, '.env') });
+process.env.UTARUS_LOADED_BY_HOST = '1';
+
+// Prefer demo-local data root unless the user set one
+if (!process.env.UTARUS_DATA_ROOT) {
+  process.env.UTARUS_DATA_ROOT = resolve(demoRoot, 'data');
+}
+
+// Seed minimal data files if missing (fail-fast agent still needs them later)
+function seedDataRoot(root: string): void {
+  mkdirSync(resolve(root, 'users'), { recursive: true });
+  mkdirSync(resolve(root, 'config'), { recursive: true });
+  for (const f of ['invites.yaml', 'admin_codes.yaml', 'admin_ids.yaml', 'reporting.yaml']) {
+    const p = resolve(root, f);
+    if (!existsSync(p)) writeFileSync(p, '[]\n', 'utf-8');
+  }
+  // When billing is on, caps.yaml must not define default — seed overrides-only
+  const caps = resolve(root, 'config', 'caps.yaml');
+  if (!existsSync(caps)) {
+    writeFileSync(
+      caps,
+      `# Per-slug admin overrides only (no default when billing is on)\noverrides: {}\n`,
+      'utf-8',
+    );
+  }
+}
+
+seedDataRoot(process.env.UTARUS_DATA_ROOT);
+
+// Fail fast on required identity before createFramework
+if (!process.env.UTARUS_AGENT_NAME) {
+  process.env.UTARUS_AGENT_NAME = 'Demo';
+}
+if (!process.env.UTARUS_AGENT_PURPOSE) {
+  process.env.UTARUS_AGENT_PURPOSE =
+    'Sample Utarus agent for Stripe paywall walkthrough (free → Pro).';
+}
+
+const { createFramework } = await import('utarus');
+const { demoExtension } = await import('./extension.js');
+
+const framework = createFramework({ extension: demoExtension });
+
+const webPort = process.env.WEBAPP_PORT
+  ? parseInt(process.env.WEBAPP_PORT, 10)
+  : 3010;
+if (!Number.isFinite(webPort) || webPort <= 0) {
+  throw new Error(`WEBAPP_PORT must be a positive integer, got "${process.env.WEBAPP_PORT}"`);
+}
+
+framework.startWebApp({ port: webPort });
+console.log(`[Demo] WebUI + billing on http://localhost:${webPort}`);
+console.log(`[Demo] data root: ${process.env.UTARUS_DATA_ROOT}`);
+console.log(
+  `[Demo] billing: ${process.env.UTARUS_BILLING_ENABLED === 'true' ? 'ON' : 'off'}`,
+);
+
+if (process.env.TELEGRAM_BOT_TOKEN) {
+  void framework.startTelegram().catch((err) => {
+    console.error('[Demo] Telegram failed:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
+
+if (process.env.SLACK_BOT_TOKEN) {
+  void framework.startSlack().catch((err) => {
+    console.error('[Demo] Slack failed:', err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}
+
+// Optional CLI REPL when DEMO_CLI=1
+if (process.env.DEMO_CLI === '1') {
+  void framework.startCli();
+}

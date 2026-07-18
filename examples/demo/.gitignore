@@ -1,0 +1,10 @@
+node_modules/
+.env
+data/users/
+data/usage/
+data/billing/
+data/chats/
+data/drive/
+data/.sessions.json
+data/.link-tokens.json
+*.log

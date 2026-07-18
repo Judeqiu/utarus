@@ -1,6 +1,7 @@
 # Billing & paywall (Stripe)
 
-Design source: [paywall-stripe-design.md](./paywall-stripe-design.md).
+Design source: [paywall-stripe-design.md](./paywall-stripe-design.md).  
+**Hands-on sample agent:** [examples/demo](../examples/demo) (free → Pro walkthrough).
 
 ## Overview
 

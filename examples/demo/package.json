@@ -1,0 +1,21 @@
+{
+  "name": "utarus-demo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sample domain agent that pioneers Utarus Stripe paywall (free → Pro).",
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
+    "start": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "utarus": "file:../.."
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
