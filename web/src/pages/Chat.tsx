@@ -18,6 +18,7 @@ import {
   listChatCommands,
   sendMessage,
   subscribeStream,
+  CapExceededError,
   type WebCommandInfo,
 } from '../api.js';
 import { fetchAgentStatus, logout } from '../auth.js';
@@ -538,6 +539,28 @@ export function ChatPage({ session }: ChatPageProps) {
       const msg = err instanceof Error ? err.message : String(err);
       const sessionLost =
         /session expired|unauthorized|log in again|401/i.test(msg);
+      if (err instanceof CapExceededError) {
+        const upgrade = err.upgradeUrl || '/billing';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsg.id
+              ? {
+                  ...m,
+                  error: msg,
+                  pending: false,
+                  streaming: false,
+                }
+              : m,
+          ),
+        );
+        setBanner(
+          err.upgradeUrl
+            ? `${msg} Open Billing (${upgrade}) to upgrade.`
+            : msg,
+        );
+        finalize();
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsg.id

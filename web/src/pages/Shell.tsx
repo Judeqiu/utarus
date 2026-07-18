@@ -7,10 +7,12 @@ import type { SessionUser } from '../types.js';
 import { logout } from '../auth.js';
 import { ChatPage } from './Chat.js';
 import { AdminPage } from './Admin.js';
+import { BillingPage } from './Billing.js';
 import { NotificationsPage } from './NotificationsPage.js';
 import { TasksPage } from './TasksPage.js';
 import {
   Bell,
+  CreditCard,
   LayoutDashboard,
   List,
   Loader2,
@@ -62,6 +64,8 @@ function iconFor(name?: string) {
       return List;
     case 'shield':
       return Shield;
+    case 'credit-card':
+      return CreditCard;
     case 'message-square':
     default:
       return MessageSquare;
@@ -174,6 +178,10 @@ export function Shell({ session, path, navigate }: ShellProps) {
       );
     }
     return <AdminPage session={session} onBack={() => navigate('/')} />;
+  }
+
+  if (path === '/billing' || path.startsWith('/billing/')) {
+    return <BillingPage session={session} onBack={() => navigate('/')} />;
   }
 
   const route = matchRoute(path, manifest.routes);

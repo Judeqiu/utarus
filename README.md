@@ -19,6 +19,7 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 - **Admin onboard codes** (`ADM-XXXXXXXX`) — admins can grant admin rights to other Telegram/Slack users at runtime.
 - **Skill framework** — markdown knowledge docs the agent loads on demand via `use_skill`.
 - **Usage tracking + caps** — every agent turn records LLM tokens/cost and tool calls per user (monthly + lifetime) at `data/usage/<slug>.yaml`; optional per-user caps via `data/config/caps.yaml` are enforced on all chat interfaces.
+- **Stripe billing / paywall (optional)** — free tier + subscription unlocks higher plan caps; enable with `UTARUS_BILLING_ENABLED=true`. See [docs/billing.md](docs/billing.md).
 - **WebUI domain slash commands** — type `/` for a Slack-style menu; register `webCommands` on `DomainExtension`; `/name args` is handled without the LLM.
 - **TypeBox-schematized tools** — every tool parameter is validated by the runtime before your code runs.
 - **Dynamic admin list** — file-backed, no restart needed when new admins are granted.

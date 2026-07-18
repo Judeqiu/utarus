@@ -4,6 +4,7 @@
 
 import type { DomainExtension, DomainWebNavItem, DomainWebRoute } from '../extension.js';
 import { config } from '../config.js';
+import { isBillingEnabled } from '../billing/index.js';
 
 export interface WebUiManifest {
   agentKey: string | null;
@@ -27,6 +28,17 @@ export function buildWebUiManifest(ext: DomainExtension): WebUiManifest {
       framework: true,
     },
   ];
+
+  if (isBillingEnabled()) {
+    frameworkNav.push({
+      id: 'billing',
+      label: 'Billing',
+      path: '/billing',
+      icon: 'credit-card',
+      order: 50,
+      framework: true,
+    });
+  }
 
   const domainNav = (webUi?.nav ?? []).map((n) => ({ ...n, framework: false as const }));
   const adminNav: Array<DomainWebNavItem & { framework?: boolean }> = [

@@ -6,6 +6,8 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 **Companion docs:**
 - [`webui-integration.md`](webui-integration.md) — **start here for browser chat** (SPA, conversations, env, enrich rules)
 - [`onboarding-integration.md`](onboarding-integration.md) — access gate, invite codes, demo mode
+- [`billing.md`](billing.md) — Stripe paywall (plans, webhooks, enablement checklist)
+- [`paywall-stripe-design.md`](paywall-stripe-design.md) — full paywall design
 - [`webui-chat-design.md`](webui-chat-design.md) — deeper WebUI architecture / history
 - [README](../README.md) — install + first-run
 - `src/extension.ts` — TypeScript source of truth for `DomainExtension`
@@ -37,7 +39,7 @@ This document is the canonical reference for **wiring a domain agent into Utarus
 │  • Skills framework + use_skill tool                     │
 │  • Telegram / Slack / CLI / Web interfaces               │
 │  • BinDrive file portal + post_html_report               │
-│  • Usage caps                                            │
+│  • Usage caps + optional Stripe billing / paywall        │
 └──────────────────────────────────────────────────────────┘
 ```
 

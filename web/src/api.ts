@@ -40,15 +40,58 @@ function isTransientNetworkError(err: unknown): boolean {
   );
 }
 
+export class CapExceededError extends Error {
+  readonly code = 'cap_exceeded' as const;
+  constructor(
+    message: string,
+    readonly upgradeUrl?: string,
+    readonly planId?: string,
+    readonly current?: number,
+    readonly cap?: number,
+  ) {
+    super(message);
+    this.name = 'CapExceededError';
+  }
+}
+
+export class BillingStateError extends Error {
+  readonly code = 'billing_state_error' as const;
+  constructor(message: string) {
+    super(message);
+    this.name = 'BillingStateError';
+  }
+}
+
 function friendlyHttpError(
   status: number,
-  body: { error?: string; message?: string },
+  body: {
+    error?: string;
+    message?: string;
+    upgrade_url?: string;
+    plan_id?: string;
+    current?: number;
+    cap?: number;
+  },
 ): Error {
   if (status === 401) {
     return new Error(
       body.message ||
         body.error ||
         'Session expired or server restarted — please log in again.',
+    );
+  }
+  if (status === 429 && body.error === 'cap_exceeded') {
+    return new CapExceededError(
+      body.message || 'Monthly usage cap reached.',
+      body.upgrade_url,
+      body.plan_id,
+      body.current,
+      body.cap,
+    );
+  }
+  if (status === 503 && body.error === 'billing_state_error') {
+    return new BillingStateError(
+      body.message || 'Billing/usage state is temporarily unavailable.',
     );
   }
   if (status === 502 || status === 503 || status === 504) {
@@ -79,10 +122,17 @@ export async function fetchWithRetry(
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       const res = await fetch(input, { credentials: 'include', ...init });
-      if (
+      // Never retry 429 on chat POST (cap_exceeded is not transient).
+  // Still allow optional 429 retry for other methods if caller opts in.
+  const isChatPost =
+    method === 'POST' &&
+    String(input).includes('/api/chat/messages');
+  if (
         allowRetry &&
         attempt < retries - 1 &&
-        (res.status >= 500 || res.status === 408 || res.status === 429)
+        (res.status >= 500 ||
+          res.status === 408 ||
+          (res.status === 429 && !isChatPost))
       ) {
         await sleep(BASE_DELAY_MS * 2 ** attempt);
         continue;
@@ -107,10 +157,24 @@ export async function fetchWithRetry(
   throw new Error('Request failed after retries');
 }
 
-async function readErrorBody(res: Response): Promise<{ error?: string; message?: string }> {
+async function readErrorBody(res: Response): Promise<{
+  error?: string;
+  message?: string;
+  upgrade_url?: string;
+  plan_id?: string;
+  current?: number;
+  cap?: number;
+}> {
   return (await res.json().catch(() => ({
     error: res.statusText,
-  }))) as { error?: string; message?: string };
+  }))) as {
+    error?: string;
+    message?: string;
+    upgrade_url?: string;
+    plan_id?: string;
+    current?: number;
+    cap?: number;
+  };
 }
 
 export type SendOutcome =
