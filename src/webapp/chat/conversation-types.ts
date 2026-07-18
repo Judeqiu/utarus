@@ -27,6 +27,13 @@ export interface StoredAttachment {
   mimeType: string;
 }
 
+/** Quote reference attached to a user message (ChatGPT-style selection). */
+export interface StoredQuote {
+  messageId: string;
+  role: StoredMessageRole;
+  text: string;
+}
+
 export interface StoredChatMessage {
   id: string;
   role: StoredMessageRole;
@@ -35,6 +42,8 @@ export interface StoredChatMessage {
   stopReason?: string;
   error?: string;
   attachments?: StoredAttachment[];
+  /** Present on user turns when the client quoted a prior message span. */
+  quotes?: StoredQuote[];
   tools?: Array<{
     toolCallId: string;
     name: string;

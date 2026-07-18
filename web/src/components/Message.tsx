@@ -6,7 +6,10 @@
  * status row below while streaming, copy action when finished, then
  * attachments.
  *
- * Spec: docs/webui-chat-design.md §9.
+ * Quote selection: only primary content roots carry [data-quote-source]
+ * (tools/assets/copy chrome are excluded).
+ *
+ * Spec: docs/webui-chat-design.md §9, docs/webui-chat-quote-design.md
  */
 
 import { useEffect, useState } from 'react';
@@ -15,6 +18,7 @@ import { attachmentUrl } from '../api.js';
 import { MarkdownRenderer } from './MarkdownRenderer.js';
 import { ToolChipView } from './ToolChip.js';
 import { AttachmentStrip } from './AttachmentStrip.js';
+import { QuoteChip } from './QuoteChip.js';
 import { Check, Copy, Loader2 } from 'lucide-react';
 
 interface MessageViewProps {
@@ -28,7 +32,18 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-[#f0eeea] px-4 py-2.5 text-sm text-stone-900 sm:max-w-[80%]">
+        <div className="max-w-[85%] rounded-2xl bg-[#f0eeea] px-4 py-2.5 text-sm text-stone-900 sm:max-w-[80%]">
+          {message.quotes && message.quotes.length > 0 && (
+            <div className="mb-2 flex flex-col gap-1.5">
+              {message.quotes.map((q, i) => (
+                <QuoteChip
+                  key={`${q.messageId}-${i}`}
+                  quote={q}
+                  className="border-stone-300 bg-white/70"
+                />
+              ))}
+            </div>
+          )}
           {message.attachments && message.attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap justify-end gap-1.5">
               {message.attachments.map((a) => (
@@ -42,7 +57,14 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
               ))}
             </div>
           )}
-          {message.text}
+          <div
+            className="whitespace-pre-wrap"
+            data-quote-source
+            data-message-id={message.id}
+            data-message-role="user"
+          >
+            {message.text}
+          </div>
         </div>
       </div>
     );
@@ -60,11 +82,22 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
         )}
 
         {message.error ? (
-          <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+          <div
+            className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+            data-quote-source
+            data-message-id={message.id}
+            data-message-role="assistant"
+          >
             {message.error}
           </div>
         ) : message.text ? (
-          <MarkdownRenderer text={message.text} viewerSlug={viewerSlug} />
+          <div
+            data-quote-source
+            data-message-id={message.id}
+            data-message-role="assistant"
+          >
+            <MarkdownRenderer text={message.text} viewerSlug={viewerSlug} />
+          </div>
         ) : null}
 
         {message.assets && message.assets.length > 0 && (

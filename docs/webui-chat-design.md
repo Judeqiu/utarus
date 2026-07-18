@@ -71,14 +71,15 @@ Browser Composer
     │  type `/` → slash menu (GET /api/chat/commands)
     │  client intercept: /clear, /help
     ▼
-POST /api/chat/messages  { text, conversationId? }
+POST /api/chat/messages  { text, conversationId?, attachments?, quotes? }
     │
     ├─ Domain webCommands match (/name args)?
-    │     yes → { kind: 'reply', text }  (no LLM)
+    │     yes → { kind: 'reply', text }  (no LLM; quotes ignored)
     │
     ├─ resolveInboundMessage + domain enrichMessage  → agentPrompt
-    ├─ appendMessage(…, text)                        → disk (clean)
-    └─ agent.prompt(channelHint + agentPrompt)
+    ├─ validate quotes (membership + role + length)
+    ├─ appendMessage(…, text, quotes?)               → disk (clean text + quote metadata)
+    └─ agent.prompt(channelHint + userTurnTextForAgent(agentPrompt, quotes))
            │
            ▼
        SSE /stream/:messageId
@@ -108,6 +109,7 @@ SSE event types: `ack`, `tool_start`, `tool_end`, `delta`, `heartbeat`, `done`, 
 - Active conversation id in `localStorage` (`utarus_active_conversation`).
 - Tab title: `{chatTitle} · {agentName}` after AI title; else `{agentName} · Chat`.
 - Composer stays focused after send (not `disabled` during stream).
+- **Quote selection (desktop):** select text in a finished message → floating Quote → chip above composer; persisted as `quotes` on the user turn (see [webui-chat-quote-design.md](webui-chat-quote-design.md)).
 - While a run streams, a status row pinned to the bottom of the assistant message shows `Thinking…`/`Working…` + elapsed seconds (from `heartbeat.elapsedMs`) + running tool names.
 - BinDrive html/pdf links, public `/reports/*.html` links, and attachment cards open the file in a right-hand side panel (sandboxed iframe) instead of an inline embed or new tab; csv/json keep their inline viewers.
 - Login: password, auth token, invite redeem; demo mode optional.

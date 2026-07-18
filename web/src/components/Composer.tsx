@@ -30,7 +30,8 @@ import {
 } from 'react';
 import { AlertCircle, ArrowUp, ImagePlus, Loader2, Plus, Square, X } from 'lucide-react';
 import { listChatCommands, uploadChatAttachment, type WebCommandInfo } from '../api.js';
-import type { ChatAttachmentRef } from '../types.js';
+import type { ChatAttachmentRef, ChatQuoteRef } from '../types.js';
+import { QuoteChip } from './QuoteChip.js';
 
 interface ComposerProps {
   isStreaming: boolean;
@@ -38,9 +39,16 @@ interface ComposerProps {
   /** Show the photo attach button — bound to the LLM's imageInput capability
    *  reported by the server (false for text-only models, e.g. DeepSeek). */
   imageInputEnabled?: boolean;
+  /** Controlled pending quote (lifted in Chat.tsx). */
+  pendingQuote?: ChatQuoteRef | null;
+  onClearQuote?: () => void;
   onSend: (
     text: string,
-    opts: { queue: boolean; attachments?: ChatAttachmentRef[] },
+    opts: {
+      queue: boolean;
+      attachments?: ChatAttachmentRef[];
+      quotes?: ChatQuoteRef[];
+    },
   ) => void;
   onAbort: () => void;
   onClear: () => void;
@@ -121,6 +129,8 @@ export function Composer({
   isStreaming,
   agentName,
   imageInputEnabled = false,
+  pendingQuote = null,
+  onClearQuote,
   onSend,
   onAbort,
   onClear,
@@ -321,6 +331,7 @@ export function Composer({
     const trimmed = text.trim();
     if (!trimmed || isStreaming || anyUploading) return;
     if (trimmed === '/clear') {
+      onClearQuote?.();
       onClear();
       setText('');
       setMenuOpen(false);
@@ -328,6 +339,7 @@ export function Composer({
       return;
     }
     if (trimmed === '/help') {
+      onClearQuote?.();
       onHelp();
       setText('');
       setMenuOpen(false);
@@ -340,6 +352,7 @@ export function Composer({
     onSend(trimmed, {
       queue: false,
       attachments: ready.length > 0 ? ready : undefined,
+      quotes: pendingQuote ? [pendingQuote] : undefined,
     });
     setText('');
     clearAttachments();
@@ -474,6 +487,11 @@ export function Composer({
         )}
 
         <div className="rounded-[28px] border border-stone-200 bg-white shadow-sm transition focus-within:border-stone-400">
+          {pendingQuote && (
+            <div className="px-3 pt-3">
+              <QuoteChip quote={pendingQuote} onRemove={onClearQuote} />
+            </div>
+          )}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-3 pt-3">
               {attachments.map((a) => (

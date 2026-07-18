@@ -8,6 +8,7 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { getAgentModel } from '../../llm/index.js';
 import { loadAttachment } from './attachments.js';
 import type { StoredChatMessage } from './conversation-types.js';
+import { userTurnTextForAgent } from './quotes.js';
 
 const emptyUsage = {
   input: 0,
@@ -38,10 +39,12 @@ export function hydrateAgentFromStoredMessages(
     const timestamp = Number.isFinite(ts) ? ts : Date.now();
 
     if (m.role === 'user') {
+      // Rebuild agent-facing quote prefix from stored quotes (no channel hint / enrich).
+      const bodyText = userTurnTextForAgent(m.text, m.quotes);
       if (slug && m.attachments?.length) {
         const parts: Array<
           { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
-        > = [{ type: 'text', text: m.text }];
+        > = [{ type: 'text', text: bodyText }];
         for (const a of m.attachments) {
           try {
             const f = loadAttachment(slug, a.id);
@@ -56,7 +59,7 @@ export function hydrateAgentFromStoredMessages(
       }
       out.push({
         role: 'user',
-        content: m.text,
+        content: bodyText,
         timestamp,
       });
       continue;

@@ -11,6 +11,7 @@
 import type {
   AssetRef,
   ChatEvent,
+  ChatQuoteRef,
   InviteCode,
   AdminUserSummary,
   ConversationSummary,
@@ -147,6 +148,7 @@ export async function sendMessage(
     queue?: boolean;
     conversationId?: string;
     attachments?: Array<{ id: string; name?: string }>;
+    quotes?: ChatQuoteRef[];
   },
 ): Promise<SendOutcome> {
   const res = await fetchWithRetry(
@@ -163,6 +165,15 @@ export async function sendMessage(
               attachments: opts.attachments.map((a) => ({
                 id: a.id,
                 name: a.name,
+              })),
+            }
+          : {}),
+        ...(opts?.quotes?.length
+          ? {
+              quotes: opts.quotes.map((q) => ({
+                messageId: q.messageId,
+                role: q.role,
+                text: q.text,
               })),
             }
           : {}),

@@ -67,6 +67,12 @@ import {
   dispatchWebCommand,
   listWebCommandCatalog,
 } from './web-commands.js';
+import {
+  QuoteValidationError,
+  userTurnTextForAgent,
+  validateQuotesForConversation,
+} from './quotes.js';
+import type { StoredQuote } from './conversation-types.js';
 
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
@@ -281,6 +287,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       queue?: unknown;
       conversationId?: unknown;
       attachments?: unknown;
+      quotes?: unknown;
     };
     if (typeof body.text !== 'string' || body.text.trim().length === 0) {
       res.status(400).json({ error: 'text required' });
@@ -428,6 +435,25 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
+    // Validate quotes after conversation is resolved (membership checks need history).
+    // Slash-command short-circuit above ignores quotes. Omit field = no quotes.
+    let storedQuotes: StoredQuote[] | undefined;
+    if (body.quotes !== undefined) {
+      try {
+        const convForQuotes = getConversation(effectiveSlug, conversationId);
+        storedQuotes = validateQuotesForConversation(body.quotes, convForQuotes);
+      } catch (e) {
+        if (e instanceof QuoteValidationError) {
+          res.status(400).json({ error: e.code, message: e.message });
+          return;
+        }
+        res.status(500).json({
+          error: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      }
+    }
+
     const agent = deps.framework.getOrCreateAgent(
       effectiveSlug,
       isAdmin,
@@ -451,7 +477,8 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
 
     // Persist the *user-visible* text only. inbound.text may include
     // domain enrichMessage context (playbook, portfolio) for the agent —
-    // that must never appear in the chat bubble on reload.
+    // that must never appear in the chat bubble on reload. Quotes are
+    // stored as structured metadata (not inlined into text).
     const userVisibleText = text.trim();
     const userMsgId = randomUUID();
     try {
@@ -460,6 +487,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         role: 'user',
         text: userVisibleText,
         attachments: storedAttachments,
+        quotes: storedQuotes,
       });
     } catch (e) {
       res.status(500).json({
@@ -467,6 +495,8 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       });
       return;
     }
+
+    const userTurn = userTurnTextForAgent(inbound.text, storedQuotes);
 
     if (agent.state.isStreaming) {
       if (!queueFlag) {
@@ -477,12 +507,13 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         });
         return;
       }
-      // Agent still receives the enriched prompt text (+ any photo parts).
+      // Steer uses the same user-turn body as live (quote prefix + enriched text).
+      // Pre-existing: no WEB_CHANNEL_HINT on steer.
       agent.steer({
         role: 'user',
         content: images?.length
-          ? [{ type: 'text', text: inbound.text }, ...images]
-          : inbound.text,
+          ? [{ type: 'text', text: userTurn }, ...images]
+          : userTurn,
         timestamp: Date.now(),
       });
       res.json({ kind: 'queued', conversationId });
@@ -510,7 +541,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     });
 
     const convId = conversationId;
-    const promptText = `${WEB_CHANNEL_HINT}\n\n${inbound.text}`;
+    const promptText = `${WEB_CHANNEL_HINT}\n\n${userTurn}`;
     runAgent({
       messageId,
       userSlug: effectiveSlug,

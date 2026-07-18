@@ -300,6 +300,7 @@ export function appendMessage(
     stopReason: message.stopReason,
     error: message.error,
     attachments: message.attachments,
+    quotes: message.quotes,
     tools: message.tools,
   };
   if (msg.role !== 'user' && msg.role !== 'assistant') {
@@ -322,6 +323,23 @@ export function appendMessage(
       throw new Error('message.attachments must be an array of {id, name, mimeType}');
     }
     if (msg.attachments.length === 0) delete msg.attachments;
+  }
+  if (msg.quotes !== undefined) {
+    if (
+      !Array.isArray(msg.quotes) ||
+      msg.quotes.some(
+        q =>
+          !q ||
+          typeof q.messageId !== 'string' ||
+          (q.role !== 'user' && q.role !== 'assistant') ||
+          typeof q.text !== 'string',
+      )
+    ) {
+      throw new Error(
+        'message.quotes must be an array of {messageId, role, text}',
+      );
+    }
+    if (msg.quotes.length === 0) delete msg.quotes;
   }
 
   // Temporary title from first user message (AI summary replaces it after first reply)

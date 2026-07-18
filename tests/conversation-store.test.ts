@@ -111,4 +111,44 @@ describe('conversation-store', () => {
       'Investor context',
     );
   });
+
+  it('round-trips quotes on user messages and omits empty arrays', () => {
+    const c = createConversation('gina');
+    const sourceId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+    appendMessage('gina', c.id, {
+      id: sourceId,
+      role: 'assistant',
+      text: 'Prior answer',
+    });
+    appendMessage('gina', c.id, {
+      role: 'user',
+      text: 'What about that?',
+      quotes: [
+        {
+          messageId: sourceId,
+          role: 'assistant',
+          text: 'Prior answer',
+        },
+      ],
+    });
+    const loaded = getConversation('gina', c.id);
+    expect(loaded.messages[1].quotes).toEqual([
+      {
+        messageId: sourceId,
+        role: 'assistant',
+        text: 'Prior answer',
+      },
+    ]);
+    const client = getConversationForClient('gina', c.id);
+    expect(client.messages[1].quotes?.[0]?.text).toBe('Prior answer');
+    expect(client.messages[1].text).toBe('What about that?');
+
+    appendMessage('gina', c.id, {
+      role: 'user',
+      text: 'no quotes field',
+      quotes: [],
+    });
+    const afterEmpty = getConversation('gina', c.id);
+    expect(afterEmpty.messages[2].quotes).toBeUndefined();
+  });
 });

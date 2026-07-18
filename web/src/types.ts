@@ -28,6 +28,18 @@ export interface ChatAttachmentRef {
   mimeType: string;
 }
 
+/** Quote reference attached to the next user turn (ChatGPT-style selection). */
+export interface ChatQuoteRef {
+  /** Server UUID of the source message. */
+  messageId: string;
+  role: 'user' | 'assistant';
+  /** Selected excerpt (plain text from Selection.toString()). */
+  text: string;
+}
+
+/** Client-side max for quote selection (mirrors server QUOTE_TEXT_MAX). */
+export const QUOTE_TEXT_MAX = 2000;
+
 export type ChatEvent =
   | { type: 'ack'; messageId: string; slug: string; agentName: string }
   | { type: 'tool_start'; toolCallId: string; name: string; startedAt: number }
@@ -64,6 +76,8 @@ export interface ChatMessage {
   assets?: AssetRef[];
   /** Photos attached by the user (optimistic + server-persisted). */
   attachments?: ChatAttachmentRef[];
+  /** Quotes on user turns (optimistic + server-persisted). */
+  quotes?: ChatQuoteRef[];
   stopReason?: string;
   error?: string;
   pending?: boolean;
@@ -117,6 +131,7 @@ export interface ConversationDetail {
     stopReason?: string;
     error?: string;
     attachments?: ChatAttachmentRef[];
+    quotes?: ChatQuoteRef[];
   }>;
 }
 

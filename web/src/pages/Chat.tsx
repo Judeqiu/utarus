@@ -27,6 +27,7 @@ import type {
   ChatAttachmentRef,
   ChatEvent,
   ChatMessage,
+  ChatQuoteRef,
   ConversationSummary,
   SessionUser,
   ToolChip,
@@ -56,6 +57,7 @@ function storedMessagesToUi(
     stopReason?: string;
     error?: string;
     attachments?: ChatAttachmentRef[];
+    quotes?: ChatQuoteRef[];
   }>,
 ): ChatMessage[] {
   return messages.map((m) => ({
@@ -65,6 +67,7 @@ function storedMessagesToUi(
     stopReason: m.stopReason,
     error: m.error,
     attachments: m.attachments,
+    quotes: m.quotes,
     pending: false,
   }));
 }
@@ -88,6 +91,11 @@ export function ChatPage({ session }: ChatPageProps) {
   const [imageInputEnabled, setImageInputEnabled] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [panelAsset, setPanelAsset] = useState<PanelAsset | null>(null);
+  const [pendingQuote, setPendingQuote] = useState<ChatQuoteRef | null>(null);
+  /** Message ids known to exist on the server (conversation load + run ack swaps). */
+  const [serverKnownMessageIds, setServerKnownMessageIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const currentRunController = useRef<AbortController | null>(null);
   const activeMessageId = useRef<string | null>(null);
   const toolMap = useRef<Map<string, ToolChip>>(new Map());
@@ -127,7 +135,10 @@ export function ChatPage({ session }: ChatPageProps) {
   const loadConversation = useCallback(async (id: string) => {
     const conv = await getConversation(id);
     setActiveConversationId(conv.id);
-    setMessages(storedMessagesToUi(conv.messages));
+    const ui = storedMessagesToUi(conv.messages);
+    setMessages(ui);
+    setServerKnownMessageIds(new Set(ui.map((m) => m.id)));
+    setPendingQuote(null);
     toolMap.current.clear();
   }, []);
 
@@ -159,6 +170,7 @@ export function ChatPage({ session }: ChatPageProps) {
         } else {
           setActiveConversationId(null);
           setMessages([]);
+          setServerKnownMessageIds(new Set());
         }
       } catch (err: unknown) {
         if (cancelled) return;
@@ -318,14 +330,23 @@ export function ChatPage({ session }: ChatPageProps) {
 
   async function handleSend(
     text: string,
-    opts: { queue: boolean; attachments?: ChatAttachmentRef[] },
+    opts: {
+      queue: boolean;
+      attachments?: ChatAttachmentRef[];
+      quotes?: ChatQuoteRef[];
+    },
   ) {
     if (isStreaming) return;
+    // Capture → clear immediately → restore only on throw (quote lifecycle).
+    const quoteForSend = opts.quotes?.[0] ?? pendingQuote;
+    setPendingQuote(null);
+
     const userMsg: ChatMessage = {
       id: newLocalId(),
       role: 'user',
       text,
       attachments: opts.attachments,
+      quotes: quoteForSend ? [quoteForSend] : undefined,
     };
     const assistantMsg: ChatMessage = {
       id: newLocalId(),
@@ -343,6 +364,7 @@ export function ChatPage({ session }: ChatPageProps) {
         queue: opts.queue,
         conversationId: activeConversationId ?? undefined,
         attachments: opts.attachments,
+        quotes: quoteForSend ? [quoteForSend] : undefined,
       });
       if (outcome.kind === 'reply') {
         setMessages((prev) =>
@@ -387,25 +409,32 @@ export function ChatPage({ session }: ChatPageProps) {
       const serverMessageId = outcome.messageId;
       activeMessageId.current = serverMessageId;
       setIsStreaming(true);
+      const assistantServerId = outcome.assistantMessageId ?? assistantMsg.id;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantMsg.id
             ? {
                 ...m,
-                id: outcome.assistantMessageId ?? m.id,
+                id: assistantServerId,
                 messageId: serverMessageId,
               }
             : m,
         ),
       );
+      // Mark server-acked message ids as quotable (not optimistic UUIDs).
+      setServerKnownMessageIds((prev) => {
+        const next = new Set(prev);
+        if (outcome.userMessageId) next.add(outcome.userMessageId);
+        if (outcome.assistantMessageId) next.add(outcome.assistantMessageId);
+        return next;
+      });
       void refreshList();
       const controller = subscribeStream(serverMessageId, undefined, {
-        onEvent: (ev) =>
-          handleEvent(outcome.assistantMessageId ?? assistantMsg.id, ev),
+        onEvent: (ev) => handleEvent(assistantServerId, ev),
         onError: (err) => {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === (outcome.assistantMessageId ?? assistantMsg.id)
+              m.id === assistantServerId
                 ? { ...m, error: `Connection error: ${err.message}`, pending: false, streaming: false }
                 : m,
             ),
@@ -416,7 +445,7 @@ export function ChatPage({ session }: ChatPageProps) {
           if (activeMessageId.current === serverMessageId) {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === (outcome.assistantMessageId ?? assistantMsg.id) && m.pending
+                m.id === assistantServerId && m.pending
                   ? {
                       ...m,
                       error:
@@ -433,6 +462,7 @@ export function ChatPage({ session }: ChatPageProps) {
       });
       currentRunController.current = controller;
     } catch (err: unknown) {
+      setPendingQuote(quoteForSend); // restore chip for retry
       const msg = err instanceof Error ? err.message : String(err);
       const sessionLost =
         /session expired|unauthorized|log in again|401/i.test(msg);
@@ -460,13 +490,16 @@ export function ChatPage({ session }: ChatPageProps) {
   }
 
   async function handleClear() {
+    setPendingQuote(null);
     if (!activeConversationId) {
       setMessages([]);
+      setServerKnownMessageIds(new Set());
       return;
     }
     try {
       await clearContext(activeConversationId);
       setMessages([]);
+      setServerKnownMessageIds(new Set());
       toolMap.current.clear();
       void refreshList();
     } catch (err: unknown) {
@@ -480,6 +513,8 @@ export function ChatPage({ session }: ChatPageProps) {
       const conv = await createConversation();
       setActiveConversationId(conv.id);
       setMessages([]);
+      setServerKnownMessageIds(new Set());
+      setPendingQuote(null);
       toolMap.current.clear();
       await refreshList();
       setSidebarMobileOpen(false);
@@ -512,16 +547,27 @@ export function ChatPage({ session }: ChatPageProps) {
       await deleteConversation(id);
       const list = await refreshList();
       if (activeConversationId === id) {
+        setPendingQuote(null);
         if (list.length > 0) {
           await loadConversation(list[0].id);
         } else {
           setActiveConversationId(null);
           setMessages([]);
+          setServerKnownMessageIds(new Set());
         }
       }
     } catch (err: unknown) {
       setBanner(`Delete failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  function handleQuote(quote: ChatQuoteRef) {
+    setPendingQuote(quote);
+    setBanner(null);
+  }
+
+  function handleQuoteError(message: string) {
+    setBanner(message);
   }
 
   if (bootLoading) {
@@ -592,7 +638,10 @@ export function ChatPage({ session }: ChatPageProps) {
             onCloseMobile={() => setSidebarMobileOpen(false)}
             onLogout={() => void logout()}
             onChangePassword={() => setShowChangePassword(true)}
-            onHelp={() => setShowHelp(true)}
+            onHelp={() => {
+              setPendingQuote(null);
+              setShowHelp(true);
+            }}
           />
 
           {sidebarMobileOpen && (
@@ -610,16 +659,24 @@ export function ChatPage({ session }: ChatPageProps) {
               viewerSlug={session.slug}
               now={now}
               agentName={agentName}
+              serverKnownMessageIds={serverKnownMessageIds}
+              onQuote={handleQuote}
+              onQuoteError={handleQuoteError}
             />
 
             <Composer
               isStreaming={isStreaming}
               agentName={agentName}
               imageInputEnabled={imageInputEnabled}
+              pendingQuote={pendingQuote}
+              onClearQuote={() => setPendingQuote(null)}
               onSend={handleSend}
               onAbort={handleAbort}
               onClear={handleClear}
-              onHelp={() => setShowHelp(true)}
+              onHelp={() => {
+                setPendingQuote(null);
+                setShowHelp(true);
+              }}
             />
           </div>
 
