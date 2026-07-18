@@ -28,7 +28,10 @@ export const config = {
    * `provider` is `'deepseek'` or absent, the agent uses DeepSeek V4 Pro.
    */
   llm: {
-    provider: (process.env.UTARUS_LLM_PROVIDER ?? 'deepseek') as 'deepseek' | 'kimi',
+    provider: (process.env.UTARUS_LLM_PROVIDER ?? 'deepseek') as
+      | 'deepseek'
+      | 'kimi'
+      | 'generic',
     /** Override the default model id for the chosen provider. */
     model: process.env.UTARUS_LLM_MODEL,
     /** Override the default OpenAI-compatible base URL for the chosen provider. */

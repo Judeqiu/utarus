@@ -4,7 +4,7 @@
  */
 
 import { completeSimple } from '@earendil-works/pi-ai';
-import { getAgentModel } from '../../llm/index.js';
+import { getAgentModel, getAgentApiKey } from '../../llm/index.js';
 import { recordLlm } from '../../usage/index.js';
 
 const TITLE_MAX = 60;
@@ -49,6 +49,7 @@ export async function summarizeChatTitle(
   }
 
   const model = getAgentModel();
+  const apiKey = getAgentApiKey();
   const assistantClip = (assistantText ?? '').trim().slice(0, 400);
   const prompt =
     `User message:\n${user.slice(0, 600)}\n\n` +
@@ -56,19 +57,23 @@ export async function summarizeChatTitle(
     `Write a short chat title (3–7 words) that captures the user's intent. ` +
     `Output ONLY the title — no quotes, no trailing period, no labels.`;
 
-  const response = await completeSimple(model, {
-    systemPrompt:
-      'You name chat conversations for a browser tab and sidebar. ' +
-      'Be specific and concise (e.g. "Undervalued high-tech report", "AAPL valuation check"). ' +
-      'Never invent tickers the user did not mention. Never refuse — always return a title.',
-    messages: [
-      {
-        role: 'user',
-        content: prompt,
-        timestamp: Date.now(),
-      },
-    ],
-  });
+  const response = await completeSimple(
+    model,
+    {
+      systemPrompt:
+        'You name chat conversations for a browser tab and sidebar. ' +
+        'Be specific and concise (e.g. "Undervalued high-tech report", "AAPL valuation check"). ' +
+        'Never invent tickers the user did not mention. Never refuse — always return a title.',
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+          timestamp: Date.now(),
+        },
+      ],
+    },
+    { apiKey },
+  );
 
   if (response.stopReason === 'error' || response.stopReason === 'aborted') {
     throw new Error(

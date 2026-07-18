@@ -159,12 +159,25 @@ process.on('unhandledRejection', (reason) => {
  */
 function validateConfig(): void {
   const missing: string[] = [];
-  // Provider-specific API key — only require the one the host actually selected.
-  if (config.llm.provider === 'kimi') {
+  // Provider-specific requirements. The LLM factory does its own fail-fast
+  // check at first call; this front-loads the same checks at boot so missing
+  // config crashes loudly before any interface starts rather than on the
+  // first user message.
+  const provider = config.llm.provider;
+  if (provider === 'kimi') {
     if (!process.env.KIMI_API_KEY) missing.push('KIMI_API_KEY');
-  } else {
-    // 'deepseek' is the default; require its key unless the host opted into Kimi.
+  } else if (provider === 'generic') {
+    if (!process.env.UTARUS_LLM_MODEL) missing.push('UTARUS_LLM_MODEL');
+    if (!process.env.UTARUS_LLM_BASE_URL) missing.push('UTARUS_LLM_BASE_URL');
+    const keyEnv = process.env.UTARUS_LLM_API_KEY_ENV ?? 'UTARUS_LLM_API_KEY';
+    if (!process.env[keyEnv]) missing.push(keyEnv);
+  } else if (provider === 'deepseek') {
     if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+  } else {
+    console.error(
+      `Unknown UTARUS_LLM_PROVIDER="${provider}". Supported: deepseek (default), kimi, generic.`,
+    );
+    process.exit(1);
   }
   if (!config.agent.name) missing.push('UTARUS_AGENT_NAME');
   if (!config.agent.purpose) missing.push('UTARUS_AGENT_PURPOSE');
