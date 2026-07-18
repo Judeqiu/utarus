@@ -159,7 +159,13 @@ process.on('unhandledRejection', (reason) => {
  */
 function validateConfig(): void {
   const missing: string[] = [];
-  if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+  // Provider-specific API key — only require the one the host actually selected.
+  if (config.llm.provider === 'kimi') {
+    if (!process.env.KIMI_API_KEY) missing.push('KIMI_API_KEY');
+  } else {
+    // 'deepseek' is the default; require its key unless the host opted into Kimi.
+    if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+  }
   if (!config.agent.name) missing.push('UTARUS_AGENT_NAME');
   if (!config.agent.purpose) missing.push('UTARUS_AGENT_PURPOSE');
   if (missing.length > 0) {
@@ -175,10 +181,10 @@ async function main(): Promise<void> {
 
   validateConfig();
 
-  console.log('Initializing DeepSeek model...');
-  const { getDeepSeekModel } = await import('./llm/index.js');
-  const model = getDeepSeekModel();
-  console.log(`DeepSeek model: ${model.id}`);
+  console.log(`Initializing LLM (provider=${config.llm.provider})...`);
+  const { getAgentModel } = await import('./llm/index.js');
+  const model = getAgentModel();
+  console.log(`LLM ready: provider=${model.provider} model=${model.id} baseUrl=${model.baseUrl}`);
 
   // Start Telegram if configured
   if (!config.telegram.botToken) {

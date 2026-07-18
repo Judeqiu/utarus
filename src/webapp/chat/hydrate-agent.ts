@@ -5,7 +5,7 @@
 
 import type { Agent } from '@earendil-works/pi-agent-core';
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import { getDeepSeekModel } from '../../llm/index.js';
+import { getAgentModel } from '../../llm/index.js';
 import type { StoredChatMessage } from './conversation-types.js';
 
 const emptyUsage = {
@@ -25,7 +25,7 @@ export function hydrateAgentFromStoredMessages(
   agent: Agent,
   messages: StoredChatMessage[],
 ): void {
-  const model = getDeepSeekModel();
+  const model = getAgentModel();
   const out: AgentMessage[] = [];
 
   for (const m of messages) {

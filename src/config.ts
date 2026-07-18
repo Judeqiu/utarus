@@ -21,6 +21,19 @@ export const config = {
   deepseek: {
     apiKey: process.env.DEEPSEEK_API_KEY,
   },
+  /**
+   * LLM provider override. Domains used to be locked to DeepSeek; this block
+   * lets a host switch to another OpenAI-compatible provider (currently Kimi)
+   * without forking the framework. Default behaviour is unchanged: when
+   * `provider` is `'deepseek'` or absent, the agent uses DeepSeek V4 Pro.
+   */
+  llm: {
+    provider: (process.env.UTARUS_LLM_PROVIDER ?? 'deepseek') as 'deepseek' | 'kimi',
+    /** Override the default model id for the chosen provider. */
+    model: process.env.UTARUS_LLM_MODEL,
+    /** Override the default OpenAI-compatible base URL for the chosen provider. */
+    baseUrl: process.env.UTARUS_LLM_BASE_URL,
+  },
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
     adminIds: process.env.TELEGRAM_ADMIN_IDS

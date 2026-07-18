@@ -4,7 +4,7 @@
  */
 
 import { completeSimple } from '@earendil-works/pi-ai';
-import { getDeepSeekModel } from '../../llm/index.js';
+import { getAgentModel } from '../../llm/index.js';
 import { recordLlm } from '../../usage/index.js';
 
 const TITLE_MAX = 60;
@@ -48,7 +48,7 @@ export async function summarizeChatTitle(
     throw new Error('summarizeChatTitle: userText is empty');
   }
 
-  const model = getDeepSeekModel();
+  const model = getAgentModel();
   const assistantClip = (assistantText ?? '').trim().slice(0, 400);
   const prompt =
     `User message:\n${user.slice(0, 600)}\n\n` +

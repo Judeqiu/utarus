@@ -6,7 +6,7 @@
  */
 
 import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
-import { getDeepSeekModel } from './llm/index.js';
+import { getAgentModel } from './llm/index.js';
 import { attachUsageTracking, wrapToolsWithCaps } from './usage/agent-tracking.js';
 
 const MAX_AGENTS = 100;
@@ -75,7 +75,7 @@ export function getOrCreateAgent(
     return existing.agent;
   }
 
-  const model = getDeepSeekModel();
+  const model = getAgentModel();
   let tools = opts.tools(userSlug, isAdmin);
   if (opts.enforceCaps) {
     tools = wrapToolsWithCaps(tools, userSlug);
