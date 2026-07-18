@@ -19,8 +19,8 @@ export type {
 } from './extension.js';
 export { config } from './config.js';
 export type { AppConfig } from './config.js';
-export { getAgentLLM, getAgentModel, getAgentApiKey, getDeepSeekModel } from './llm/index.js';
-export type { ResolvedLLM } from './llm/index.js';
+export { getAgentLLM, getAgentModel, getAgentApiKey, getAgentLlmCapabilities, getDeepSeekModel } from './llm/index.js';
+export type { ResolvedLLM, LlmCapabilities } from './llm/index.js';
 export { UTARUS_VERSION } from './version.js';
 export type {
   Conversation,

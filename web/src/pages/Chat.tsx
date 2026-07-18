@@ -84,6 +84,8 @@ export function ChatPage({ session }: ChatPageProps) {
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [agentName, setAgentName] = useState('Agent');
   const [version, setVersion] = useState<string | null>(null);
+  // Photo attach button is hidden until the server reports the LLM can see.
+  const [imageInputEnabled, setImageInputEnabled] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [panelAsset, setPanelAsset] = useState<PanelAsset | null>(null);
   const currentRunController = useRef<AbortController | null>(null);
@@ -138,6 +140,7 @@ export function ChatPage({ session }: ChatPageProps) {
         if (cancelled) return;
         if (status.agentName) setAgentName(status.agentName);
         if (status.version) setVersion(status.version);
+        setImageInputEnabled(status.capabilities?.imageInput === true);
         if (status.isStreaming) {
           setBanner(
             `An agent run is already in progress. Wait for it to finish, then continue.`,
@@ -612,6 +615,7 @@ export function ChatPage({ session }: ChatPageProps) {
             <Composer
               isStreaming={isStreaming}
               agentName={agentName}
+              imageInputEnabled={imageInputEnabled}
               onSend={handleSend}
               onAbort={handleAbort}
               onClear={handleClear}

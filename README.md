@@ -83,19 +83,29 @@ The `.env` file is gitignored. **Never commit it.**
 
 DeepSeek is the default. Switch providers via env — no code changes, no fork:
 
-| `UTARUS_LLM_PROVIDER` | Required env | Default model / base URL |
-|---|---|---|
-| `deepseek` (default) | `DEEPSEEK_API_KEY` | `deepseek-v4-pro` @ `https://api.deepseek.com` |
-| `kimi` | `KIMI_API_KEY` | `k3` @ `https://api.kimi.com/coding/v1` |
-| `generic` | `UTARUS_LLM_MODEL` + `UTARUS_LLM_BASE_URL` + `UTARUS_LLM_API_KEY` | none — all three required |
+| `UTARUS_LLM_PROVIDER` | Required env | Default model / base URL | Capabilities |
+|---|---|---|---|
+| `deepseek` (default) | `DEEPSEEK_API_KEY` | `deepseek-v4-pro` @ `https://api.deepseek.com` | text only |
+| `kimi` | `KIMI_API_KEY` | `k3` @ `https://api.kimi.com/coding/v1` | text + **image** |
+| `generic` | `UTARUS_LLM_MODEL` + `UTARUS_LLM_BASE_URL` + `UTARUS_LLM_API_KEY` | none — all three required | text only |
 
 `UTARUS_LLM_MODEL` / `UTARUS_LLM_BASE_URL` override the defaults of the well-known providers; `UTARUS_LLM_API_KEY_ENV` renames the api-key env var. Missing values fail fast at boot with the exact variable named. Domain code can read the resolved model/key via `getAgentModel()` / `getAgentApiKey()` / `getAgentLLM()`, exported from the package root.
+
+### Capability model (`LlmCapabilities`)
+
+Features bind to the **nature of the resolved model**, never to provider/model ids. The single source of truth is `LlmCapabilities` (today: `imageInput`), resolved in `src/llm/index.ts` in this order:
+
+1. the provider's family default (`PROVIDER_DEFAULTS.<provider>.capabilities`),
+2. a per-model delta (`PROVIDER_DEFAULTS.<provider>.modelCapabilities["<model-id>"]`) for models that differ from their family,
+3. the env override (`UTARUS_LLM_IMAGE_INPUT=true|false`).
+
+Read it via `getAgentLlmCapabilities()` (package root). Adding a provider or model with a different nature = declare its capabilities in `PROVIDER_DEFAULTS` (only values verified against the live endpoint) — no feature code changes needed.
 
 ## Chat photo attachments
 
 WebUI chat users can attach up to **4 photos per message** (JPEG/PNG/WebP/GIF, ≤5MB each after the SPA downscales them client-side). Uploads are validated server-side (mime allowlist + magic-byte sniff), stored at `data/chats/<slug>/attachments/`, forwarded to the agent as image parts, and re-hydrated into agent context after restarts. Deleting or clearing a conversation removes its attachment files.
 
-Attachments are gated on the resolved model's vision capability — `deepseek`: off, `kimi`: **on** (k3 verified), `generic`: off. Override with `UTARUS_LLM_IMAGE_INPUT=true|false`. When off, `POST /api/chat/attachments` and photo-bearing `/api/chat/messages` fail with a clear `vision_disabled` error instead of silently dropping the images.
+The whole feature is bound to `LlmCapabilities.imageInput`: the SPA hides the attach button unless `GET /api/chat/agent` reports `capabilities.imageInput: true`, and `POST /api/chat/attachments` / photo-bearing `/api/chat/messages` fail with a clear `vision_disabled` error otherwise (e.g. the text-only DeepSeek default) — never a silent image drop.
 
 Endpoints (session-auth, slug-scoped): `POST /api/chat/attachments` (`{name, mimeType, data(base64)}` → `{id, url, …}`), `GET /api/chat/attachments/:id`, and `attachments: [{id, name?}]` on `POST /api/chat/messages`.
 

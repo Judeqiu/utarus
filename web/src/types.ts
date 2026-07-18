@@ -86,6 +86,11 @@ export interface AgentStatus {
   isStreaming: boolean;
   hasContext: boolean;
   conversationId?: string | null;
+  /**
+   * Capabilities of the resolved LLM — capability-gated UI binds to this.
+   * `imageInput` true ⇒ the photo attach button is shown and uploads accepted.
+   */
+  capabilities?: { imageInput: boolean };
 }
 
 /** Sidebar list item (server ConversationSummary). */

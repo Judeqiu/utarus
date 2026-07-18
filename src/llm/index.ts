@@ -23,6 +23,30 @@ import { config } from '../config.js';
  * with a clear message naming the missing var. No silent defaulting.
  */
 
+/**
+ * Native capabilities of an LLM — what the *model itself* can do, independent
+ * of how any agent uses it. Feature gates across the framework bind to these
+ * (e.g. WebUI photo attachments are enabled only when `imageInput` is true).
+ *
+ * Resolution order in getAgentLLM():
+ *   1. provider default (`ProviderDefaults.capabilities`)
+ *   2. per-model delta (`ProviderDefaults.modelCapabilities[modelId]`) — for
+ *      models that differ from the provider's family default
+ *   3. env override (`UTARUS_LLM_IMAGE_INPUT=true|false`)
+ *
+ * When utarus gains support for a new provider or model, declare its nature
+ * here — do not gate features on provider/model ids elsewhere.
+ * Future modalities (audioInput, fileInput, …) extend this interface.
+ */
+export interface LlmCapabilities {
+  /**
+   * The model accepts image input (vision). Drives `model.input`; pi-ai
+   * silently downgrades images to placeholder text when `input` lacks
+   * 'image'. Overridable via UTARUS_LLM_IMAGE_INPUT=true|false.
+   */
+  imageInput: boolean;
+}
+
 interface ProviderDefaults {
   /** Display label for logs and model.name. */
   label: string;
@@ -43,12 +67,14 @@ interface ProviderDefaults {
   thinkingFormat?: 'deepseek';
   /** Optional reasoning-effort map. Presence implies `reasoning: true`. */
   thinkingLevelMap?: Record<string, string | null>;
+  /** Capability default for this provider's model family. */
+  capabilities: LlmCapabilities;
   /**
-   * Whether models of this provider accept image input (vision). Drives
-   * `model.input`; pi-ai silently downgrades images to placeholder text when
-   * `input` lacks 'image'. Overridable via UTARUS_LLM_IMAGE_INPUT=true|false.
+   * Per-model capability deltas, keyed by exact model id, for models whose
+   * nature differs from the provider family default. Only declare entries
+   * verified against the live endpoint.
    */
-  imageInput: boolean;
+  modelCapabilities?: Record<string, Partial<LlmCapabilities>>;
   contextWindow: number;
   maxTokens: number;
 }
@@ -61,7 +87,8 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     defaultBaseUrl: 'https://api.deepseek.com',
     piAiProvider: 'deepseek',
     thinkingFormat: 'deepseek',
-    imageInput: false,
+    // deepseek-v4-pro on api.deepseek.com is text-only.
+    capabilities: { imageInput: false },
     contextWindow: 1_000_000,
     maxTokens: 384_000,
   },
@@ -77,8 +104,9 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     // env-var lookup (which would expect MOONSHOT_API_KEY) is bypassed.
     piAiProvider: 'moonshotai',
     thinkingLevelMap: { minimal: null, low: 'low', medium: null, high: 'high', xhigh: 'max' },
-    // Verified: k3 on the coding endpoint accepts image_url data URLs.
-    imageInput: true,
+    // Verified on the coding endpoint: k3, kimi-for-coding and
+    // kimi-for-coding-highspeed all accept image_url data URLs.
+    capabilities: { imageInput: true },
     contextWindow: 256_000,
     maxTokens: 8_192,
   },
@@ -87,15 +115,40 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
     apiKeyEnv: 'UTARUS_LLM_API_KEY',
     // No defaults — host must supply UTARUS_LLM_MODEL + UTARUS_LLM_BASE_URL.
     piAiProvider: 'openai',
-    imageInput: false,
+    // Unknown endpoint — assumed text-only unless opted in via
+    // UTARUS_LLM_IMAGE_INPUT=true.
+    capabilities: { imageInput: false },
     contextWindow: 128_000,
     maxTokens: 8_192,
   },
 };
 
+/**
+ * Resolve the effective capabilities for a model: provider family default,
+ * refined by any per-model delta, finally overridden by the
+ * UTARUS_LLM_IMAGE_INPUT env var (strict 'true'/'false'; anything else is
+ * ignored so a typo can't silently flip a feature gate).
+ * Exported for unit tests — callers should use getAgentLlmCapabilities().
+ */
+export function resolveCapabilities(
+  defaults: Pick<ProviderDefaults, 'capabilities' | 'modelCapabilities'>,
+  modelId: string,
+  imageInputEnv?: string,
+): LlmCapabilities {
+  const resolved: LlmCapabilities = {
+    ...defaults.capabilities,
+    ...(defaults.modelCapabilities?.[modelId] ?? {}),
+  };
+  if (imageInputEnv === 'true') resolved.imageInput = true;
+  else if (imageInputEnv === 'false') resolved.imageInput = false;
+  return resolved;
+}
+
 export interface ResolvedLLM {
   model: Model<'openai-completions'>;
   apiKey: string;
+  /** Effective capabilities of the resolved model — feature gates read this. */
+  capabilities: LlmCapabilities;
 }
 
 let cached: ResolvedLLM | null = null;
@@ -136,9 +189,7 @@ export function getAgentLLM(): ResolvedLLM {
     );
   }
 
-  const imageInputEnv = process.env.UTARUS_LLM_IMAGE_INPUT;
-  const imageInput =
-    imageInputEnv === 'true' ? true : imageInputEnv === 'false' ? false : defaults.imageInput;
+  const capabilities = resolveCapabilities(defaults, modelId, process.env.UTARUS_LLM_IMAGE_INPUT);
 
   const model: Model<'openai-completions'> = {
     id: modelId,
@@ -149,13 +200,13 @@ export function getAgentLLM(): ResolvedLLM {
     compat: defaults.thinkingFormat ? { thinkingFormat: defaults.thinkingFormat } : {},
     reasoning: !!(defaults.thinkingLevelMap ?? defaults.thinkingFormat),
     thinkingLevelMap: defaults.thinkingLevelMap,
-    input: imageInput ? ['text', 'image'] : ['text'],
+    input: capabilities.imageInput ? ['text', 'image'] : ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: defaults.contextWindow,
     maxTokens: defaults.maxTokens,
   } as unknown as Model<'openai-completions'>;
 
-  cached = { model, apiKey };
+  cached = { model, apiKey, capabilities };
   return cached;
 }
 
@@ -167,6 +218,15 @@ export function getAgentModel(): Model<'openai-completions'> {
 /** Convenience accessor for callers that only need the resolved API key. */
 export function getAgentApiKey(): string {
   return getAgentLLM().apiKey;
+}
+
+/**
+ * Effective capabilities of the resolved model — the single source of truth
+ * for capability-gated features (e.g. WebUI photo attachments bind to
+ * `imageInput`). Never gate a feature on provider/model ids directly.
+ */
+export function getAgentLlmCapabilities(): LlmCapabilities {
+  return getAgentLLM().capabilities;
 }
 
 /**

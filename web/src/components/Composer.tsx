@@ -35,6 +35,9 @@ import type { ChatAttachmentRef } from '../types.js';
 interface ComposerProps {
   isStreaming: boolean;
   agentName: string;
+  /** Show the photo attach button — bound to the LLM's imageInput capability
+   *  reported by the server (false for text-only models, e.g. DeepSeek). */
+  imageInputEnabled?: boolean;
   onSend: (
     text: string,
     opts: { queue: boolean; attachments?: ChatAttachmentRef[] },
@@ -117,6 +120,7 @@ function slashQuery(text: string): string | null {
 export function Composer({
   isStreaming,
   agentName,
+  imageInputEnabled = false,
   onSend,
   onAbort,
   onClear,
@@ -527,25 +531,29 @@ export function Composer({
               >
                 <Plus className="h-4 w-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="Attach images"
-                aria-label="Attach images"
-                className="rounded-full p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
-              >
-                <ImagePlus className="h-4 w-4" />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                multiple
-                onChange={(e) => void handleFiles(e)}
-                className="hidden"
-                tabIndex={-1}
-                aria-hidden="true"
-              />
+              {imageInputEnabled && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach images"
+                    aria-label="Attach images"
+                    className="rounded-full p-2 text-stone-500 hover:bg-stone-100 hover:text-stone-800"
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    onChange={(e) => void handleFiles(e)}
+                    className="hidden"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                </>
+              )}
             </div>
             {isStreaming ? (
               <button

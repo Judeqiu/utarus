@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { resolveCapabilities } from '../src/llm/index.js';
 
 /**
  * LLM provider factory tests (src/llm/index.ts).
@@ -202,5 +203,59 @@ describe('getAgentLLM — image input (UTARUS_LLM_IMAGE_INPUT)', () => {
     process.env.UTARUS_LLM_IMAGE_INPUT = 'yes';
     const { getAgentLLM } = await freshLLM();
     expect(getAgentLLM().model.input).toEqual(['text', 'image']);
+  });
+});
+
+describe('resolveCapabilities — provider → model → env resolution', () => {
+  it('applies the provider family default', () => {
+    expect(resolveCapabilities({ capabilities: { imageInput: true } }, 'k3')).toEqual({
+      imageInput: true,
+    });
+    expect(resolveCapabilities({ capabilities: { imageInput: false } }, 'deepseek-v4-pro')).toEqual(
+      { imageInput: false },
+    );
+  });
+
+  it('applies a per-model delta over the provider default', () => {
+    const defaults = {
+      capabilities: { imageInput: true },
+      modelCapabilities: { 'text-only-variant': { imageInput: false } },
+    };
+    expect(resolveCapabilities(defaults, 'text-only-variant')).toEqual({ imageInput: false });
+    expect(resolveCapabilities(defaults, 'vision-variant')).toEqual({ imageInput: true });
+  });
+
+  it('env override beats both provider default and per-model delta', () => {
+    const defaults = {
+      capabilities: { imageInput: true },
+      modelCapabilities: { m: { imageInput: false } },
+    };
+    expect(resolveCapabilities(defaults, 'm', 'true')).toEqual({ imageInput: true });
+    expect(resolveCapabilities({ capabilities: { imageInput: true } }, 'k3', 'false')).toEqual({
+      imageInput: false,
+    });
+  });
+
+  it('ignores unrecognised env values rather than flipping the gate', () => {
+    expect(resolveCapabilities({ capabilities: { imageInput: false } }, 'm', 'yes')).toEqual({
+      imageInput: false,
+    });
+  });
+});
+
+describe('getAgentLlmCapabilities', () => {
+  it('exposes resolved capabilities bound to the model, and model.input agrees', async () => {
+    process.env.UTARUS_LLM_PROVIDER = 'kimi';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    const { getAgentLLM, getAgentLlmCapabilities } = await freshLLM();
+    expect(getAgentLlmCapabilities()).toEqual({ imageInput: true });
+    expect(getAgentLLM().capabilities).toEqual({ imageInput: true });
+    expect(getAgentLLM().model.input).toContain('image');
+  });
+
+  it('text-only default (deepseek) reports imageInput false', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    const { getAgentLlmCapabilities } = await freshLLM();
+    expect(getAgentLlmCapabilities()).toEqual({ imageInput: false });
   });
 });

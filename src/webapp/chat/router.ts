@@ -30,7 +30,7 @@ import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
 import { checkLlmCap } from '../../usage/index.js';
 import type { Framework } from '../../framework.js';
-import { getAgentModel } from '../../llm/index.js';
+import { getAgentLlmCapabilities } from '../../llm/index.js';
 import { runAgent } from './run-agent.js';
 import { sendSSEEvent, sendSSEComment, setSSEHeaders } from './sse.js';
 import {
@@ -101,7 +101,7 @@ function parseConversationId(raw: unknown): string | null {
  */
 function visionEnabled(): boolean {
   try {
-    return getAgentModel().input.includes('image');
+    return getAgentLlmCapabilities().imageInput;
   } catch {
     return false;
   }
@@ -672,6 +672,9 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
   // ── GET /agent ──────────────────────────────────────────────────────
   router.get('/agent', (req: Request, res: Response) => {
     const user = (req as any).user as AuthUser;
+    // LLM capabilities — clients bind capability-gated UI (e.g. the photo
+    // attach button) to this, never to provider/model ids.
+    const capabilities = { imageInput: visionEnabled() };
     if (!user.slug) {
       res.json({
         slug: '',
@@ -680,6 +683,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         version: UTARUS_VERSION,
         isStreaming: false,
         hasContext: false,
+        capabilities,
       });
       return;
     }
@@ -698,6 +702,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       isStreaming: !!agent.state.isStreaming,
       hasContext: !!agent.state.messages?.length,
       conversationId: conversationId ?? null,
+      capabilities,
     });
   });
 
