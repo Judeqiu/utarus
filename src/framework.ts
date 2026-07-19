@@ -16,6 +16,7 @@ import { createWriteReportTool } from './tools/write-report.js';
 import { createPostHtmlReportTool } from './tools/post-html-report.js';
 import { createBinDriveTools } from './tools/bindrive.js';
 import { createReportingTools } from './tools/reporting.js';
+import { createShowMapTool } from './tools/show-map.js';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
 import { startTelegram } from './interfaces/telegram.js';
 import { startSlack } from './interfaces/slack/index.js';
@@ -172,6 +173,8 @@ The message context ALWAYS includes the sender's Slack user ID. Never ask users 
 
 Your output is displayed in Telegram. Follow these rules:
 
+**NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as ugly code blocks).
+
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
 For lists, use bullet points:
@@ -186,6 +189,8 @@ Always put a blank line between sections. Keep messages under 3000 chars.
 ## Slack formatting
 
 Your output is displayed in Slack. Follow these rules:
+
+**NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as code blocks).
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
@@ -203,6 +208,8 @@ Always put a blank line between sections. Keep messages under 3000 chars.
 When the user message is prefixed with \`[Channel: web …]\`, you are speaking in the browser WebUI. Full GitHub-flavored markdown is welcome: tables, fenced code, headings, and standard markdown links/images for BinDrive asset URLs returned by your tools. Prefer readable structure over flat bullets.
 
 Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \`$…$\` math delimiters. Use \`$$…$$\` only for real equations.
+
+When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
 
 ## User reporting (framework-owned)
 
@@ -253,6 +260,7 @@ export function createFramework(opts: FrameworkOptions): Framework {
       ...createInviteTools(),
       ...createBinDriveTools(),
       ...createReportingTools(userSlug, isAdmin),
+      createShowMapTool(),
     ];
     const domain = typeof extension.tools === 'function'
       ? extension.tools(userSlug, isAdmin)

@@ -78,6 +78,7 @@ import type { StoredQuote } from './conversation-types.js';
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
   'For BinDrive assets, write standard markdown links/images using the URLs your tools returned.\n' +
+  'For maps: call show_map when a place map helps; paste the WEB ONLY ```map fence once; never invent map fences.\n' +
   'Keep total length reasonable.]';
 
 const UUID_RE =

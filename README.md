@@ -11,6 +11,7 @@ Built on [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earend
 ## What you get out of the box
 
 - **CLI + Telegram + Slack + WebUI chat** interfaces that share a per-user agent pool (24h TTL eviction, 100-agent cap). WebUI: Claude-style multi-chat (server-persisted), SSE streaming, GFM, AI chat titles; currency `$` is not KaTeX.
+- **Maps in WebUI chat** (optional) — framework tool `show_map` + ` ```map ` fences render as Google Maps Embed. Enable with `UTARUS_MAPS_ENABLED=true` and `GOOGLE_MAPS_EMBED_API_KEY`. See [docs/webui-chat-maps-design.md](docs/webui-chat-maps-design.md).
 - **BinDrive** file portal + signed view URLs, shared with chat.
 - **Per-user YAML state** at `data/users/<slug>.yaml`. Chat history at `data/chats/<slug>/`.
 - **Instant invite onboarding** (`INV-XXXXXXXX`) — admins issue codes; recipients paste the code and get a profile immediately. See [docs/onboarding-integration.md](docs/onboarding-integration.md).

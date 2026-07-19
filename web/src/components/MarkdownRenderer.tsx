@@ -20,7 +20,7 @@
  * components map uses those tags to decide embed-vs-link.
  */
 
-import { memo, useMemo } from 'react';
+import { Children, isValidElement, memo, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -31,10 +31,13 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Root } from 'hast';
 
 import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
+import { remarkMapFence } from '../remark/map-fence.js';
 import { AssetLink } from './assets/AssetLink.js';
 import { AssetImage } from './assets/AssetImage.js';
 import { SandboxedIframe } from './assets/SandboxedIframe.js';
 import { CodeBlock } from './assets/CodeBlock.js';
+import { MapEmbed } from './assets/MapEmbed.js';
+import { MapError } from './assets/MapError.js';
 
 interface MarkdownRendererProps {
   text: string;
@@ -78,7 +81,18 @@ function buildSchema(): typeof defaultSchema {
         'data-asset-url',
         'data-asset-filename',
       ],
-      code: [...(base.attributes?.code ?? []), 'className'],
+      code: [
+        ...(base.attributes?.code ?? []),
+        'className',
+        'data-map',
+        'data-map-error',
+        'data-map-mode',
+        'data-map-query',
+        'data-map-lat',
+        'data-map-lng',
+        'data-map-zoom',
+        'data-map-label',
+      ],
       pre: [...(base.attributes?.pre ?? []), 'className'],
       span: [...(base.attributes?.span ?? []), 'className'],
     },
@@ -111,6 +125,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         // Currency $ amounts must not open inline math (see file header).
         [remarkMath, { singleDollarTextMath: false }],
         [remarkBinDriveAssets, { viewerSlug }],
+        remarkMapFence,
       ] as never,
     [viewerSlug],
   );
@@ -133,7 +148,58 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         components={{
           a: (props) => <AssetLink {...props} viewerSlug={viewerSlug} />,
           img: (props) => <AssetImage {...props} />,
-          code: (props) => <CodeBlock {...props} />,
+          code: (props) => {
+            const rec = props as Record<string, unknown>;
+            const mapFlag = pickDataProp(rec, 'data-map');
+            if (mapFlag === 'error') {
+              return (
+                <MapError
+                  message={pickDataProp(rec, 'data-map-error') ?? 'Invalid map block'}
+                />
+              );
+            }
+            if (mapFlag === '1') {
+              const mode = pickDataProp(rec, 'data-map-mode');
+              if (mode !== 'place' && mode !== 'view') {
+                return <MapError message="map mode missing or invalid after sanitize" />;
+              }
+              const latStr = pickDataProp(rec, 'data-map-lat');
+              const lngStr = pickDataProp(rec, 'data-map-lng');
+              const zoomStr = pickDataProp(rec, 'data-map-zoom');
+              let lat: number | undefined;
+              let lng: number | undefined;
+              let zoom: number | undefined;
+              if (latStr !== undefined) {
+                lat = Number(latStr);
+                if (!Number.isFinite(lat)) {
+                  return <MapError message="map lat is not a number after sanitize" />;
+                }
+              }
+              if (lngStr !== undefined) {
+                lng = Number(lngStr);
+                if (!Number.isFinite(lng)) {
+                  return <MapError message="map lng is not a number after sanitize" />;
+                }
+              }
+              if (zoomStr !== undefined) {
+                zoom = Number(zoomStr);
+                if (!Number.isInteger(zoom)) {
+                  return <MapError message="map zoom is not an integer after sanitize" />;
+                }
+              }
+              return (
+                <MapEmbed
+                  mode={mode}
+                  query={pickDataProp(rec, 'data-map-query')}
+                  lat={lat}
+                  lng={lng}
+                  zoom={zoom}
+                  label={pickDataProp(rec, 'data-map-label')}
+                />
+              );
+            }
+            return <CodeBlock {...props} />;
+          },
           iframe: (props) => {
             const src = typeof props.src === 'string' ? props.src : '';
             const filename =
@@ -156,6 +222,17 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               <table {...props} />
             </div>
           ),
+          // Fenced blocks are pre>code; MapEmbed/MapError replace code — unwrap pre.
+          pre: ({ children }) => {
+            const list = Children.toArray(children);
+            if (list.length === 1 && isValidElement(list[0])) {
+              const t = list[0].type;
+              if (t === MapEmbed || t === MapError) {
+                return <>{children}</>;
+              }
+            }
+            return <pre>{children}</pre>;
+          },
         }}
       >
         {text}

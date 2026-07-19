@@ -1,6 +1,6 @@
 {
   "name": "utarus",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Generic pi-agent-core based agent framework — CLI + Telegram, per-user YAML state, invite/onboard flow, skill-driven knowledge, tool-enforced rules.",
   "type": "module",
   "main": "dist/index.js",
