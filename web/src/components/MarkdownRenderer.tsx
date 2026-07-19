@@ -52,47 +52,55 @@ interface MarkdownRendererProps {
  * We build it on top of `defaultSchema` from rehype-sanitize. The type is
  * not exported in this version, so we use a structural cast.
  */
+/**
+ * rehype-raw camelCases data-* into dataFoo. Allow both forms so sanitize
+ * does not strip map/asset tags after the raw pass.
+ */
+const DATA_ASSET_ATTRS = [
+  'data-asset-kind',
+  'data-asset-url',
+  'data-asset-filename',
+  'dataAssetKind',
+  'dataAssetUrl',
+  'dataAssetFilename',
+] as const;
+
+const DATA_MAP_ATTRS = [
+  'data-map',
+  'data-map-error',
+  'data-map-mode',
+  'data-map-query',
+  'data-map-lat',
+  'data-map-lng',
+  'data-map-zoom',
+  'data-map-label',
+  'dataMap',
+  'dataMapError',
+  'dataMapMode',
+  'dataMapQuery',
+  'dataMapLat',
+  'dataMapLng',
+  'dataMapZoom',
+  'dataMapLabel',
+] as const;
+
 function buildSchema(): typeof defaultSchema {
   const base = defaultSchema;
   return {
     ...base,
     attributes: {
       ...base.attributes,
-      a: [
-        ...(base.attributes?.a ?? []),
-        'data-asset-kind',
-        'data-asset-url',
-        'data-asset-filename',
-      ],
-      img: [
-        ...(base.attributes?.img ?? []),
-        'data-asset-kind',
-        'data-asset-url',
-        'data-asset-filename',
-        'loading',
-      ],
+      a: [...(base.attributes?.a ?? []), ...DATA_ASSET_ATTRS],
+      img: [...(base.attributes?.img ?? []), ...DATA_ASSET_ATTRS, 'loading'],
       iframe: [
         'src',
         'sandbox',
         'width',
         'height',
         'title',
-        'data-asset-kind',
-        'data-asset-url',
-        'data-asset-filename',
+        ...DATA_ASSET_ATTRS,
       ],
-      code: [
-        ...(base.attributes?.code ?? []),
-        'className',
-        'data-map',
-        'data-map-error',
-        'data-map-mode',
-        'data-map-query',
-        'data-map-lat',
-        'data-map-lng',
-        'data-map-zoom',
-        'data-map-label',
-      ],
+      code: [...(base.attributes?.code ?? []), 'className', ...DATA_MAP_ATTRS],
       pre: [...(base.attributes?.pre ?? []), 'className'],
       span: [...(base.attributes?.span ?? []), 'className'],
     },
@@ -105,12 +113,23 @@ function buildSchema(): typeof defaultSchema {
   };
 }
 
+/** kebab-case → camelCase for data attributes (rehype-raw renames them). */
+function kebabToCamelDataAttr(name: string): string {
+  return name.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
 function pickDataProp(
   props: Record<string, unknown>,
   name: string,
 ): string | undefined {
-  const v = props[name];
-  return typeof v === 'string' ? v : undefined;
+  const direct = props[name];
+  if (typeof direct === 'string') return direct;
+  const camel = kebabToCamelDataAttr(name);
+  if (camel !== name) {
+    const alt = props[camel];
+    if (typeof alt === 'string') return alt;
+  }
+  return undefined;
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -135,7 +154,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypeRaw,
         [rehypeSanitize, schema],
         rehypeKatex,
-        rehypeHighlight,
+        // Do not highlight ```map fences (and avoid mutating their props).
+        [rehypeHighlight, { plainText: ['map'] }],
       ] as never,
     [schema],
   );
