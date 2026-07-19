@@ -16,8 +16,36 @@ import { emit, markEnded } from './stream-registry.js';
 import { extractAssets } from './extract-assets.js';
 import type { WebAgent, WebImageContent } from './types.js';
 
-export const AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+/** Default WebUI / Slack agent run watchdog (10 minutes). */
+export const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+
 const HEARTBEAT_INTERVAL_MS = 3000;
+
+/**
+ * Effective agent run timeout in ms. `0` means no watchdog.
+ *
+ * Env `UTARUS_AGENT_RUN_TIMEOUT_MS`:
+ * - unset → default 10 minutes
+ * - `0` → **disabled** (no watchdog abort)
+ * - positive integer → timeout in milliseconds
+ */
+export function getAgentRunTimeoutMs(): number {
+  const raw = process.env.UTARUS_AGENT_RUN_TIMEOUT_MS?.trim();
+  if (raw === undefined || raw === '') return DEFAULT_AGENT_RUN_TIMEOUT_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    throw new Error(
+      `UTARUS_AGENT_RUN_TIMEOUT_MS must be a non-negative integer (ms); 0 disables the watchdog. Got "${raw}"`,
+    );
+  }
+  return n;
+}
+
+/**
+ * Load-time snapshot of {@link getAgentRunTimeoutMs} for importers that need a
+ * constant (e.g. task lease math). Prefer the getter at runtime.
+ */
+export const AGENT_RUN_TIMEOUT_MS = getAgentRunTimeoutMs();
 
 interface RunAgentParams {
   messageId: string;
@@ -127,16 +155,20 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     }
   });
 
-  const watchdog = setTimeout(() => {
-    const hung = Array.from(activeTools.values()).map(
-      (t) => `${t.name}(${Math.round((Date.now() - t.startedAt) / 1000)}s)`,
-    );
-    console.error(
-      `[Agent/web] user=${userSlug} watchdog: aborting after ${AGENT_RUN_TIMEOUT_MS}ms. ` +
-        `textLen=${cumulative.length} activeTools=[${hung.join(', ')}]`,
-    );
-    agent.abort();
-  }, AGENT_RUN_TIMEOUT_MS);
+  const timeoutMs = getAgentRunTimeoutMs();
+  const watchdog =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          const hung = Array.from(activeTools.values()).map(
+            (t) => `${t.name}(${Math.round((Date.now() - t.startedAt) / 1000)}s)`,
+          );
+          console.error(
+            `[Agent/web] user=${userSlug} watchdog: aborting after ${timeoutMs}ms. ` +
+              `textLen=${cumulative.length} activeTools=[${hung.join(', ')}]`,
+          );
+          agent.abort();
+        }, timeoutMs)
+      : null;
 
   const heartbeat = setInterval(() => {
     emit(messageId, {
@@ -146,7 +178,10 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     });
   }, HEARTBEAT_INTERVAL_MS);
 
-  console.log(`[Agent/web] user=${userSlug} start messageId=${messageId} msgLen=${message.length}`);
+  console.log(
+    `[Agent/web] user=${userSlug} start messageId=${messageId} msgLen=${message.length}` +
+      (timeoutMs > 0 ? ` timeoutMs=${timeoutMs}` : ' timeout=disabled'),
+  );
 
   try {
     agent.prompt(message, images && images.length > 0 ? images : undefined);
@@ -164,13 +199,18 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
     markEnded(messageId);
     return;
   } finally {
-    clearTimeout(watchdog);
+    if (watchdog) clearTimeout(watchdog);
     clearInterval(heartbeat);
     unsubscribe();
   }
 
   if (aborted) {
-    const msg = `Agent run timed out after ${Math.round(AGENT_RUN_TIMEOUT_MS / 1000)}s`;
+    // Only the watchdog sets aborted via agent.abort() for idle waits; still
+    // surface a clear timeout message when a timeout was configured.
+    const msg =
+      timeoutMs > 0
+        ? `Agent run timed out after ${Math.round(timeoutMs / 1000)}s`
+        : 'Agent run was aborted';
     await finish({ text: cumulative, stopReason: 'aborted', error: msg });
     emit(messageId, {
       type: 'error',

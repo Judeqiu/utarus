@@ -38,6 +38,7 @@ import {
   buildUpgradeUrl,
   getEntitlement,
 } from '../../billing/index.js';
+import { getAgentRunTimeoutMs } from '../../webapp/chat/run-agent.js';
 import {
   formatMarkdownForSlack,
   splitSlackText,
@@ -429,13 +430,9 @@ function createRunMonitor(updater: ReturnType<typeof createThrottledUpdater>) {
 }
 
 /**
- * Hard cap on a single agent run. Tools can run for several minutes, so this
- * is generous — but if a tool truly hangs we want to abort, surface an error
- * to the user, and free the agent for the next request instead of leaving the
- * gear emoji spinning forever.
+ * Hard cap on a single agent run (see getAgentRunTimeoutMs).
+ * Tools can run for several minutes — set UTARUS_AGENT_RUN_TIMEOUT_MS=0 to disable.
  */
-const AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
-
 async function getAgentResponse(
   handle: FrameworkHandle,
   userSlug: string,
@@ -452,6 +449,7 @@ async function getAgentResponse(
   let lastStopReason: string | undefined;
   const activeTools = new Map<string, { name: string; startedAt: number }>();
   const completedTools: Array<{ name: string; durMs: number; ok: boolean }> = [];
+  const timeoutMs = getAgentRunTimeoutMs();
 
   const unsubscribe = agent.subscribe((event: any) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -484,22 +482,30 @@ async function getAgentResponse(
     }
   });
 
-  const watchdog = setTimeout(() => {
-    const hungTools = Array.from(activeTools.values()).map(t => `${t.name}(${Math.round((Date.now() - t.startedAt) / 1000)}s)`);
-    console.error(
-      `[Agent] user=${userSlug} watchdog: aborting after ${AGENT_RUN_TIMEOUT_MS}ms. ` +
-        `textLen=${fullResponse.length} activeTools=[${hungTools.join(', ')}] completedTools=${completedTools.length}`,
-    );
-    agent.abort();
-  }, AGENT_RUN_TIMEOUT_MS);
+  const watchdog =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          const hungTools = Array.from(activeTools.values()).map(
+            (t) => `${t.name}(${Math.round((Date.now() - t.startedAt) / 1000)}s)`,
+          );
+          console.error(
+            `[Agent] user=${userSlug} watchdog: aborting after ${timeoutMs}ms. ` +
+              `textLen=${fullResponse.length} activeTools=[${hungTools.join(', ')}] completedTools=${completedTools.length}`,
+          );
+          agent.abort();
+        }, timeoutMs)
+      : null;
 
-  console.log(`[Agent] user=${userSlug} start msgLen=${message.length}`);
+  console.log(
+    `[Agent] user=${userSlug} start msgLen=${message.length}` +
+      (timeoutMs > 0 ? ` timeoutMs=${timeoutMs}` : ' timeout=disabled'),
+  );
 
   try {
     agent.prompt(message);
     await agent.waitForIdle();
   } finally {
-    clearTimeout(watchdog);
+    if (watchdog) clearTimeout(watchdog);
     unsubscribe();
   }
 
@@ -518,7 +524,11 @@ async function getAgentResponse(
   }
 
   if (aborted) {
-    throw new Error(`Agent run timed out after ${Math.round(AGENT_RUN_TIMEOUT_MS / 1000)}s`);
+    throw new Error(
+      timeoutMs > 0
+        ? `Agent run timed out after ${Math.round(timeoutMs / 1000)}s`
+        : 'Agent run was aborted',
+    );
   }
 
   return fullResponse || 'Sorry, I could not generate a response.';
