@@ -15,6 +15,7 @@
     "dist",
     "src",
     "web",
+    "scripts",
     "README.md"
   ],
   "scripts": {
