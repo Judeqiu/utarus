@@ -9,7 +9,7 @@
 
 import { Type } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
-import { getAgentLlmCapabilities } from '../llm/index.js';
+import { requireActiveLlmRoute } from '../llm/run-context.js';
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MiB
 const FETCH_TIMEOUT_MS = 30_000;
@@ -79,11 +79,12 @@ export function createReadImageTool(): AgentTool {
     }),
     async execute(_id, raw) {
       try {
-        const caps = getAgentLlmCapabilities();
-        if (!caps.imageInput) {
+        const route = requireActiveLlmRoute('read_image');
+        if (!route.resolved.capabilities.imageInput) {
           return fail(
-            'read_image failed: the configured LLM does not accept image input. ' +
-              'Switch to a vision model (e.g. UTARUS_LLM_PROVIDER=kimi) or set UTARUS_LLM_IMAGE_INPUT=true.',
+            'read_image failed: active model for this turn does not accept image input ' +
+              `(profile=${route.profileName}, model=${route.resolved.model.id}). ` +
+              'Image turns must use the vision route; mid-turn upgrade is not supported.',
           );
         }
 

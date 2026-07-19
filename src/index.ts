@@ -20,8 +20,36 @@ export type {
 } from './extension.js';
 export { config } from './config.js';
 export type { AppConfig } from './config.js';
-export { getAgentLLM, getAgentModel, getAgentApiKey, getAgentLlmCapabilities, getDeepSeekModel } from './llm/index.js';
-export type { ResolvedLLM, LlmCapabilities } from './llm/index.js';
+export {
+  getAgentLLM,
+  getAgentModel,
+  getAgentApiKey,
+  getAgentLlmCapabilities,
+  getDeepSeekModel,
+  assertLlmConfig,
+  isLlmRoutingEnabled,
+  getLlmProfile,
+  listLlmProfiles,
+  getLlmRouting,
+  getUiLlmCapabilities,
+  resolveAndApplyLlmForTurn,
+  resolveUtilityLlm,
+  selectLlmProfileForTurn,
+  getActiveLlmRoute,
+  requireActiveLlmRoute,
+  getCapWeight,
+} from './llm/index.js';
+export type {
+  ResolvedLLM,
+  LlmCapabilities,
+  LlmProfileConfig,
+  LlmRoutingConfig,
+  LlmTurnContext,
+  LlmRouteDecision,
+  ResolveLlmProfileContext,
+  ApplyLlmTurnParams,
+  ApplyLlmTurnResult,
+} from './llm/index.js';
 export { UTARUS_VERSION } from './version.js';
 export type {
   Conversation,
@@ -203,25 +231,33 @@ process.on('unhandledRejection', (reason) => {
  */
 function validateConfig(): void {
   const missing: string[] = [];
-  // Provider-specific requirements. The LLM factory does its own fail-fast
-  // check at first call; this front-loads the same checks at boot so missing
-  // config crashes loudly before any interface starts rather than on the
-  // first user message.
-  const provider = config.llm.provider;
-  if (provider === 'kimi') {
-    if (!process.env.KIMI_API_KEY) missing.push('KIMI_API_KEY');
-  } else if (provider === 'generic') {
-    if (!process.env.UTARUS_LLM_MODEL) missing.push('UTARUS_LLM_MODEL');
-    if (!process.env.UTARUS_LLM_BASE_URL) missing.push('UTARUS_LLM_BASE_URL');
-    const keyEnv = process.env.UTARUS_LLM_API_KEY_ENV ?? 'UTARUS_LLM_API_KEY';
-    if (!process.env[keyEnv]) missing.push(keyEnv);
-  } else if (provider === 'deepseek') {
-    if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+  // Multi-profile routing: assertLlmConfig validates every profile + keys.
+  // Legacy single-provider: front-load key checks (same as before).
+  const profilesRaw = process.env.UTARUS_LLM_PROFILES;
+  if (typeof profilesRaw === 'string' && profilesRaw.trim() !== '') {
+    try {
+      // Dynamic import avoided — assert via llm stack at main() after this.
+      // Only agent name/purpose checked here; LLM assert is next step.
+    } catch {
+      /* unreachable */
+    }
   } else {
-    console.error(
-      `Unknown UTARUS_LLM_PROVIDER="${provider}". Supported: deepseek (default), kimi, generic.`,
-    );
-    process.exit(1);
+    const provider = config.llm.provider;
+    if (provider === 'kimi') {
+      if (!process.env.KIMI_API_KEY) missing.push('KIMI_API_KEY');
+    } else if (provider === 'generic') {
+      if (!process.env.UTARUS_LLM_MODEL) missing.push('UTARUS_LLM_MODEL');
+      if (!process.env.UTARUS_LLM_BASE_URL) missing.push('UTARUS_LLM_BASE_URL');
+      const keyEnv = process.env.UTARUS_LLM_API_KEY_ENV ?? 'UTARUS_LLM_API_KEY';
+      if (!process.env[keyEnv]) missing.push(keyEnv);
+    } else if (provider === 'deepseek') {
+      if (!config.deepseek.apiKey) missing.push('DEEPSEEK_API_KEY');
+    } else {
+      console.error(
+        `Unknown UTARUS_LLM_PROVIDER="${provider}". Supported: deepseek (default), kimi, generic.`,
+      );
+      process.exit(1);
+    }
   }
   if (!config.agent.name) missing.push('UTARUS_AGENT_NAME');
   if (!config.agent.purpose) missing.push('UTARUS_AGENT_PURPOSE');
@@ -238,10 +274,31 @@ async function main(): Promise<void> {
 
   validateConfig();
 
-  console.log(`Initializing LLM (provider=${config.llm.provider})...`);
-  const { getAgentModel } = await import('./llm/index.js');
-  const model = getAgentModel();
-  console.log(`LLM ready: provider=${model.provider} model=${model.id} baseUrl=${model.baseUrl}`);
+  console.log('Initializing LLM...');
+  const {
+    assertLlmConfig,
+    getAgentModel,
+    isLlmRoutingEnabled,
+    listLlmProfiles,
+    getLlmRouting,
+  } = await import('./llm/index.js');
+  try {
+    assertLlmConfig();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
+  if (isLlmRoutingEnabled()) {
+    const routing = getLlmRouting();
+    console.log(
+      `LLM routing ready: profiles=[${listLlmProfiles().join(', ')}] ` +
+        `default=${routing.default}` +
+        (routing.has_images ? ` has_images=${routing.has_images}` : ''),
+    );
+  } else {
+    const model = getAgentModel();
+    console.log(`LLM ready: provider=${model.provider} model=${model.id} baseUrl=${model.baseUrl}`);
+  }
 
   // Start Telegram if configured
   if (!config.telegram.botToken) {

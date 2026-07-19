@@ -6,7 +6,7 @@
  */
 
 import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
-import { getAgentModel, getAgentApiKey } from './llm/index.js';
+import { getAgentModel, agentGetApiKey } from './llm/index.js';
 import { attachUsageTracking, wrapToolsWithCaps } from './usage/agent-tracking.js';
 
 const MAX_AGENTS = 100;
@@ -75,8 +75,10 @@ export function getOrCreateAgent(
     return existing.agent;
   }
 
+  // Seed with the default profile; resolveAndApplyLlmForTurn mutates
+  // agent.state.model per turn. getApiKey multi-dispatches by pi-ai provider
+  // (and prefers the active ALS route key) — must never throw.
   const model = getAgentModel();
-  const apiKey = getAgentApiKey();
   let tools = opts.tools(userSlug, isAdmin);
   if (opts.enforceCaps) {
     tools = wrapToolsWithCaps(tools, userSlug);
@@ -88,11 +90,7 @@ export function getOrCreateAgent(
       model,
       tools,
     },
-    // Resolve the API key centrally so models whose provider name doesn't
-    // match pi-ai's env-api-keys map (e.g. the `generic` provider) still
-    // get authenticated. The callback signature receives model.provider
-    // for callers that want per-provider dispatch; we ignore it.
-    getApiKey: () => apiKey,
+    getApiKey: (provider: string) => agentGetApiKey(provider),
   });
 
   // Subscribe usage + tool tracking. Admins bypass but we still record spend.

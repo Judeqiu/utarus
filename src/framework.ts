@@ -19,7 +19,14 @@ import { createReportingTools } from './tools/reporting.js';
 import { createShowMapTool } from './tools/show-map.js';
 import { createReadImageTool } from './tools/read-image.js';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
-import { getAgentLLM } from './llm/index.js';
+import {
+  assertLlmConfig,
+  getAgentLLM,
+  getLlmRouting,
+  getUiLlmCapabilities,
+  isLlmRoutingEnabled,
+  listLlmProfiles,
+} from './llm/index.js';
 import { startTelegram } from './interfaces/telegram.js';
 import { startSlack } from './interfaces/slack/index.js';
 import { startCli } from './interfaces/cli.js';
@@ -119,26 +126,44 @@ function buildSystemPrompt(ext: DomainExtension, allSkills: Skill[]): string {
   const skillCatalog = allSkills.map(s => `  - ${s.id}: ${s.description}`).join('\n');
 
   // Resolve after host dotenv; fail-fast if LLM is misconfigured (same as agent boot).
-  const llm = getAgentLLM();
-  const modelLabel = llm.model.name || llm.model.id;
-  const visionOn = llm.capabilities.imageInput;
+  const routingMode = isLlmRoutingEnabled();
+  const uiCaps = getUiLlmCapabilities();
+  const visionOn = uiCaps.imageInput;
+
+  let modelIdentity: string;
+  if (routingMode) {
+    const routing = getLlmRouting();
+    const profiles = listLlmProfiles().join(', ');
+    modelIdentity =
+      `You run on a multi-model stack (profiles: ${profiles}). ` +
+      `Default profile: \`${routing.default}\`` +
+      (routing.has_images ? `; image turns use \`${routing.has_images}\`` : '') +
+      `. Each user turn may prefix \`[Active model: …]\` — when asked which model you are, report that active line, or the default profile if none is shown. ` +
+      `Never claim to be Claude, GPT, or another vendor brand unless that is the active configured model.`;
+  } else {
+    const llm = getAgentLLM();
+    const modelLabel = llm.model.name || llm.model.id;
+    modelIdentity =
+      `You are powered by **${modelLabel}**. Never say you are Claude, GPT, or any other model unless that is the configured model. If asked what model you are, say "${modelLabel}".`;
+  }
 
   const visionSection = visionOn
     ? `## Vision (images)
 
-This model **can** read images (user photo uploads in WebUI, and images loaded via \`read_image\`).
+This deployment **can** accept images on turns routed to a vision-capable profile (user photo uploads in WebUI, and images loaded via \`read_image\` when the active turn model supports vision).
 
 - User-attached photos arrive as vision input on that turn — describe what you see; do **not** claim you cannot read images.
 - For **image URLs** from firecrawl / listing pages (site plans, floor plans, floorplate PNGs): call \`read_image\` with the direct image URL. The tool attaches the pixels; then answer from what you see.
 - Do **not** invent compass bearings, labels, or dimensions that are not visible after \`read_image\` (or on an attached photo). If the image is missing a north arrow, say so.
-- Never say "I cannot read images" when vision is available — fetch with \`read_image\` first if you only have a URL.`
+- Never say "I cannot read images" when vision is available on the active turn — fetch with \`read_image\` first if you only have a URL.
+- If \`read_image\` fails because the active model is text-only, say so briefly and continue with text sources.`
     : `## Vision (images)
 
-This model is **text-only** (no image input). If the user attaches a photo or you only have an image URL, say briefly that vision is not enabled on this deployment and continue with text sources. Do not invent details from images you cannot see.`;
+This deployment has **no vision route** (photo uploads disabled; active models are text-only for images). If the user attaches a photo or you only have an image URL, say briefly that vision is not enabled on this deployment and continue with text sources. Do not invent details from images you cannot see.`;
 
   return `You are ${name}, an agent built on the Utarus framework.
 
-You are powered by **${modelLabel}**. Never say you are Claude, GPT, or any other model unless that is the configured model. If asked what model you are, say "${modelLabel}".
+${modelIdentity}
 
 ## Voice
 
@@ -266,6 +291,9 @@ export function createFramework(opts: FrameworkOptions): Framework {
   if (isBillingEnabled()) {
     assertBillingConfig(extension);
   }
+
+  // LLM stack before system prompt (buildSystemPrompt calls getAgentLLM / routing).
+  assertLlmConfig();
 
   const allSkills = [...frameworkSkills, ...extension.skills];
 

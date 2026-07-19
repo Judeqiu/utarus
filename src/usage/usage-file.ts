@@ -17,7 +17,7 @@ import { parse, stringify } from 'yaml';
 import { resolveDataRoot } from '../config.js';
 import { assertValidSlug } from '../state/state-file.js';
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2;
 
 export interface LlmCounters {
   calls: number;
@@ -39,6 +39,9 @@ export interface UsageState {
   period_tools: Record<string, number>;
   lifetime_llm: LlmCounters;
   lifetime_tools: Record<string, number>;
+  /** Per-profile breakdown (raw, unweighted). Optional on v1 files. */
+  period_llm_by_profile?: Record<string, LlmCounters>;
+  lifetime_llm_by_profile?: Record<string, LlmCounters>;
 }
 
 function emptyLlm(): LlmCounters {
@@ -80,6 +83,16 @@ function assertCoherent(raw: unknown, path: string): UsageState {
   }
   if (typeof s.lifetime_tools !== 'object' || s.lifetime_tools === null) {
     throw new Error(`Usage file missing lifetime_tools map: ${path}`);
+  }
+  if (s.period_llm_by_profile !== undefined) {
+    if (typeof s.period_llm_by_profile !== 'object' || s.period_llm_by_profile === null) {
+      throw new Error(`Usage file has invalid period_llm_by_profile: ${path}`);
+    }
+  }
+  if (s.lifetime_llm_by_profile !== undefined) {
+    if (typeof s.lifetime_llm_by_profile !== 'object' || s.lifetime_llm_by_profile === null) {
+      throw new Error(`Usage file has invalid lifetime_llm_by_profile: ${path}`);
+    }
   }
   // Unknown top-level keys are preserved as-is (e.g. a domain agent's
   // video-generation counters living in the same file). The framework only
@@ -126,6 +139,7 @@ export function loadUsage(slug: string): UsageState {
     state.period = now;
     state.period_llm = emptyLlm();
     state.period_tools = {};
+    state.period_llm_by_profile = {};
     state.updated_at = new Date().toISOString();
     saveUsage(state);
   }
@@ -164,11 +178,60 @@ function applyLlmDelta(target: LlmCounters, delta: LlmUsageDelta): void {
   if (typeof delta.cost_usd === 'number') target.cost_usd += delta.cost_usd;
 }
 
-export function recordLlm(slug: string, delta: LlmUsageDelta): void {
+export function recordLlm(
+  slug: string,
+  delta: LlmUsageDelta,
+  opts?: { profileName?: string },
+): void {
   const state = loadUsage(slug);
   applyLlmDelta(state.period_llm, delta);
   applyLlmDelta(state.lifetime_llm, delta);
+  if (opts?.profileName) {
+    if (!state.period_llm_by_profile) state.period_llm_by_profile = {};
+    if (!state.lifetime_llm_by_profile) state.lifetime_llm_by_profile = {};
+    const p = opts.profileName;
+    if (!state.period_llm_by_profile[p]) state.period_llm_by_profile[p] = emptyLlm();
+    if (!state.lifetime_llm_by_profile[p]) state.lifetime_llm_by_profile[p] = emptyLlm();
+    applyLlmDelta(state.period_llm_by_profile[p], delta);
+    applyLlmDelta(state.lifetime_llm_by_profile[p], delta);
+  }
+  if (state.version < CURRENT_VERSION) state.version = CURRENT_VERSION;
   saveUsage(state);
+}
+
+/**
+ * Weighted period token total for unified caps.
+ * When no by-profile data, returns aggregate period_llm.total_tokens (weight 1).
+ * Weights from UTARUS_LLM_CAP_WEIGHTS via getCapWeight.
+ */
+export function weightedPeriodTokens(
+  state: UsageState,
+  getWeight: (profileName: string) => number,
+): number {
+  const by = state.period_llm_by_profile;
+  if (!by || Object.keys(by).length === 0) {
+    return state.period_llm.total_tokens;
+  }
+  let sum = 0;
+  for (const [profile, counters] of Object.entries(by)) {
+    sum += counters.total_tokens * getWeight(profile);
+  }
+  return sum;
+}
+
+export function weightedPeriodCostUsd(
+  state: UsageState,
+  getWeight: (profileName: string) => number,
+): number {
+  const by = state.period_llm_by_profile;
+  if (!by || Object.keys(by).length === 0) {
+    return state.period_llm.cost_usd;
+  }
+  let sum = 0;
+  for (const [profile, counters] of Object.entries(by)) {
+    sum += counters.cost_usd * getWeight(profile);
+  }
+  return sum;
 }
 
 export function recordToolCall(slug: string, toolName: string): void {
@@ -238,13 +301,38 @@ function renderToolsTable(period: Record<string, number>, lifetime: Record<strin
  * WebUI (react-markdown + remark-gfm); Telegram/Slack convert tables to
  * bullets / monospace blocks in their channel formatters.
  */
+function renderProfileBreakdown(state: UsageState): string {
+  const period = state.period_llm_by_profile ?? {};
+  const lifetime = state.lifetime_llm_by_profile ?? {};
+  const names = [...new Set([...Object.keys(period), ...Object.keys(lifetime)])];
+  if (names.length === 0) return '';
+  names.sort(
+    (a, b) =>
+      (period[b]?.total_tokens ?? 0) - (period[a]?.total_tokens ?? 0) ||
+      (lifetime[b]?.total_tokens ?? 0) - (lifetime[a]?.total_tokens ?? 0),
+  );
+  return [
+    '**LLM by profile** (raw tokens; cap weights apply only at gate check)',
+    '',
+    '| Profile | Month tokens | Lifetime tokens | Month cost |',
+    '| --- | ---: | ---: | ---: |',
+    ...names.map(n => {
+      const p = period[n] ?? emptyLlm();
+      const l = lifetime[n] ?? emptyLlm();
+      return `| \`${n}\` | ${fmtNum(p.total_tokens)} | ${fmtNum(l.total_tokens)} | ${fmtUsd(p.cost_usd)} |`;
+    }),
+  ].join('\n');
+}
+
 export function formatUsageReport(state: UsageState): string {
   const reset = periodEndDate(state.period);
+  const profileSection = renderProfileBreakdown(state);
   return [
     `📊 **Your Usage** — period ${state.period}`,
     '',
     renderLlmTable(state.period_llm, state.lifetime_llm),
     '',
+    ...(profileSection ? [profileSection, ''] : []),
     renderToolsTable(state.period_tools, state.lifetime_tools),
     '',
     reset ? `_Counters reset on ${reset}_` : '',

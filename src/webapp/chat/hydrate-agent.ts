@@ -66,13 +66,15 @@ export function hydrateAgentFromStoredMessages(
     }
 
     if (m.role === 'assistant') {
+      const provider = m.llm?.provider ?? model.provider;
+      const modelId = m.llm?.model ?? model.id;
       if (m.error) {
         out.push({
           role: 'assistant',
           content: [{ type: 'text', text: m.error }],
           api: 'openai-completions',
-          provider: model.provider,
-          model: model.id,
+          provider,
+          model: modelId,
           usage: emptyUsage,
           stopReason: 'error',
           errorMessage: m.error,
@@ -83,8 +85,8 @@ export function hydrateAgentFromStoredMessages(
           role: 'assistant',
           content: [{ type: 'text', text: m.text }],
           api: 'openai-completions',
-          provider: model.provider,
-          model: model.id,
+          provider,
+          model: modelId,
           usage: emptyUsage,
           stopReason: (m.stopReason as 'stop') || 'stop',
           timestamp,

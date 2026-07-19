@@ -11,8 +11,10 @@
 
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { DomainBillingConfig } from './billing/types.js';
+import type { ResolveLlmProfileContext } from './llm/types.js';
 
 export type { DomainBillingConfig };
+export type { ResolveLlmProfileContext };
 
 export interface Skill {
   id: string;
@@ -207,4 +209,15 @@ export interface DomainExtension {
    * over data/config/plans.yaml (no deep-merge). See docs/paywall-stripe-design.md.
    */
   billing?: DomainBillingConfig;
+
+  /**
+   * Optional: vote which LLM profile should handle this turn.
+   * Called only when the turn has **no** images (framework never calls this
+   * when hasImages is true — vision route is hard). Return a configured
+   * profile name, or null/undefined to leave routing to heavy heuristics + default.
+   * See docs/multi-llm-routing-design.md.
+   */
+  resolveLlmProfile?: (
+    ctx: ResolveLlmProfileContext,
+  ) => string | null | undefined | Promise<string | null | undefined>;
 }

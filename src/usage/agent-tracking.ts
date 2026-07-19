@@ -15,25 +15,49 @@ import {
   recordToolCall,
   loadUsage,
 } from './usage-file.js';
+import { getActiveLlmRoute } from '../llm/run-context.js';
 
 /**
  * Subscribe an agent to emit usage + tool-count events to the per-user
  * usage file. Admins bypass tracking overhead — but we still record so
  * operators can audit admin spend.
+ *
+ * Profile attribution uses AsyncLocalStorage (active LLM route). When ALS
+ * is missing: production logs + records aggregate only; NODE_ENV=test throws.
  */
 export function attachUsageTracking(agent: Agent, userSlug: string): void {
   agent.subscribe((event: any) => {
     try {
       if (event.type === 'message_end' && event.message?.role === 'assistant' && event.message.usage) {
         const u = event.message.usage;
-        recordLlm(userSlug, {
-          input_tokens: u.input,
-          output_tokens: u.output,
-          cache_read: u.cacheRead,
-          cache_write: u.cacheWrite,
-          total_tokens: u.totalTokens,
-          cost_usd: u.cost?.total,
-        });
+        const route = getActiveLlmRoute();
+        let profileName: string | undefined;
+        if (route) {
+          profileName = route.profileName;
+        } else if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+          // Fail tests that prompt without resolveAndApplyLlmForTurn ALS.
+          throw new Error(
+            'attachUsageTracking: message_end without active LLM route in ALS ' +
+              '(interactive runs must use resolveAndApplyLlmForTurn().runWithLlmRoute)',
+          );
+        } else {
+          console.error(
+            `[Usage Tracking] message_end without active LLM route for user=${userSlug}; ` +
+              `recording aggregate only (no profile breakdown)`,
+          );
+        }
+        recordLlm(
+          userSlug,
+          {
+            input_tokens: u.input,
+            output_tokens: u.output,
+            cache_read: u.cacheRead,
+            cache_write: u.cacheWrite,
+            total_tokens: u.totalTokens,
+            cost_usd: u.cost?.total,
+          },
+          profileName ? { profileName } : undefined,
+        );
       } else if (event.type === 'tool_execution_end' && !event.isError && typeof event.toolName === 'string') {
         recordToolCall(userSlug, event.toolName);
       }

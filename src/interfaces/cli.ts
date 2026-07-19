@@ -13,6 +13,17 @@ const CLI_USER_SLUG = 'cli-session';
 
 async function callAgent(handle: FrameworkHandle, text: string): Promise<string> {
   const agent = handle.getOrCreateAgent(CLI_USER_SLUG, true);
+  const { resolveAndApplyLlmForTurn } = await import('../llm/apply-route.js');
+  const applied = await resolveAndApplyLlmForTurn({
+    agent,
+    extension: handle.extension,
+    userSlug: CLI_USER_SLUG,
+    isAdmin: true,
+    channel: 'cli',
+    hasImages: false,
+    text,
+  });
+  const promptText = applied.activeModelPrefix + text;
   let fullResponse = '';
   const unsubscribe = agent.subscribe((event) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -22,7 +33,7 @@ async function callAgent(handle: FrameworkHandle, text: string): Promise<string>
     }
   });
   try {
-    await agent.prompt(text);
+    await applied.runWithLlmRoute(() => agent.prompt(promptText));
   } finally {
     unsubscribe();
   }

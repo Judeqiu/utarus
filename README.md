@@ -93,21 +93,41 @@ DeepSeek is the default. Switch providers via env — no code changes, no fork:
 
 `UTARUS_LLM_MODEL` / `UTARUS_LLM_BASE_URL` override the defaults of the well-known providers; `UTARUS_LLM_API_KEY_ENV` renames the api-key env var. Missing values fail fast at boot with the exact variable named. Domain code can read the resolved model/key via `getAgentModel()` / `getAgentApiKey()` / `getAgentLLM()`, exported from the package root.
 
+### Multi-LLM task routing (optional)
+
+Use **different models for different turns** without forking. When `UTARUS_LLM_PROFILES` is set, `UTARUS_LLM_ROUTING` is **required**. Each interactive turn (WebUI / Telegram / Slack / CLI / scheduled tasks) runs the same auto-router once before `prompt()`:
+
+1. images → `has_images` profile (hard)
+2. optional `DomainExtension.resolveLlmProfile`
+3. optional heavy heuristics (`UTARUS_LLM_ROUTE_HEAVY_*`)
+4. else `default`
+
+Example (DeepSeek daily + Kimi vision):
+
+```env
+DEEPSEEK_API_KEY=sk-…
+KIMI_API_KEY=sk-…
+UTARUS_LLM_PROFILES={"daily":{"provider":"deepseek"},"vision":{"provider":"kimi"}}
+UTARUS_LLM_ROUTING={"default":"daily","has_images":"vision","utility":"daily"}
+```
+
+Full design: [`docs/multi-llm-routing-design.md`](docs/multi-llm-routing-design.md). Caps stay **unified** across models; optional `UTARUS_LLM_CAP_WEIGHTS` multiplies tokens only at cap-check time.
+
 ### Capability model (`LlmCapabilities`)
 
-Features bind to the **nature of the resolved model**, never to provider/model ids. The single source of truth is `LlmCapabilities` (today: `imageInput`), resolved in `src/llm/index.ts` in this order:
+Features bind to the **nature of the resolved model**, never to provider/model ids. The single source of truth is `LlmCapabilities` (today: `imageInput`), resolved in `src/llm/profiles.ts` in this order:
 
 1. the provider's family default (`PROVIDER_DEFAULTS.<provider>.capabilities`),
 2. a per-model delta (`PROVIDER_DEFAULTS.<provider>.modelCapabilities["<model-id>"]`) for models that differ from their family,
-3. the env override (`UTARUS_LLM_IMAGE_INPUT=true|false`).
+3. the env override (`UTARUS_LLM_IMAGE_INPUT=true|false`) in **legacy single-provider mode**, or per-profile `imageInput` in routing mode.
 
-Read it via `getAgentLlmCapabilities()` (package root). Adding a provider or model with a different nature = declare its capabilities in `PROVIDER_DEFAULTS` (only values verified against the live endpoint) — no feature code changes needed.
+Read default-profile caps via `getAgentLlmCapabilities()`; WebUI photo gates use `getUiLlmCapabilities()` (true when a validated `has_images` route exists). Adding a provider or model with a different nature = declare its capabilities in `PROVIDER_DEFAULTS` (only values verified against the live endpoint) — no feature code changes needed.
 
 ## Chat photo attachments
 
 WebUI chat users can attach up to **4 photos per message** (JPEG/PNG/WebP/GIF, ≤5MB each after the SPA downscales them client-side). Uploads are validated server-side (mime allowlist + magic-byte sniff), stored at `data/chats/<slug>/attachments/`, forwarded to the agent as image parts, and re-hydrated into agent context after restarts. Deleting or clearing a conversation removes its attachment files.
 
-The whole feature is bound to `LlmCapabilities.imageInput`: the SPA hides the attach button unless `GET /api/chat/agent` reports `capabilities.imageInput: true`, and `POST /api/chat/attachments` / photo-bearing `/api/chat/messages` fail with a clear `vision_disabled` error otherwise (e.g. the text-only DeepSeek default) — never a silent image drop.
+The whole feature is bound to UI vision aggregation (`getUiLlmCapabilities().imageInput`): the SPA hides the attach button unless `GET /api/chat/agent` reports `capabilities.imageInput: true`, and `POST /api/chat/attachments` / photo-bearing `/api/chat/messages` fail with a clear `vision_disabled` error otherwise (e.g. text-only default with no `has_images` route) — never a silent image drop.
 
 Endpoints (session-auth, slug-scoped): `POST /api/chat/attachments` (`{name, mimeType, data(base64)}` → `{id, url, …}`), `GET /api/chat/attachments/:id`, and `attachments: [{id, name?}]` on `POST /api/chat/messages`.
 

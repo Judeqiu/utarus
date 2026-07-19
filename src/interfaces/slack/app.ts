@@ -502,8 +502,21 @@ async function getAgentResponse(
   );
 
   try {
-    agent.prompt(message);
-    await agent.waitForIdle();
+    const { resolveAndApplyLlmForTurn } = await import('../../llm/apply-route.js');
+    const applied = await resolveAndApplyLlmForTurn({
+      agent,
+      extension: handle.extension,
+      userSlug,
+      isAdmin,
+      channel: 'slack',
+      hasImages: false,
+      text: message,
+    });
+    const promptText = applied.activeModelPrefix + message;
+    await applied.runWithLlmRoute(async () => {
+      agent.prompt(promptText);
+      await agent.waitForIdle();
+    });
   } finally {
     if (watchdog) clearTimeout(watchdog);
     unsubscribe();

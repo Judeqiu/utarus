@@ -637,6 +637,8 @@ describe('createFramework billing boot', () => {
 
   it('boots when billing on with secrets + plans', async () => {
     enableBillingEnv();
+    // createFramework now asserts LLM config before system prompt.
+    process.env.DEEPSEEK_API_KEY = 'sk-test-billing-boot';
     const { createFramework } = await import('../src/framework.js');
     const fw = createFramework({
       extension: {

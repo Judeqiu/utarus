@@ -4,6 +4,8 @@ export {
   recordLlm,
   recordToolCall,
   formatUsageReport,
+  weightedPeriodTokens,
+  weightedPeriodCostUsd,
   type LlmCounters,
   type LlmUsageDelta,
   type UsageState,

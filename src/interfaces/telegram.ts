@@ -147,6 +147,17 @@ async function callAgent(
   text: string,
 ): Promise<string> {
   const agent = handle.getOrCreateAgent(key, isAdmin);
+  const { resolveAndApplyLlmForTurn } = await import('../llm/apply-route.js');
+  const applied = await resolveAndApplyLlmForTurn({
+    agent,
+    extension: handle.extension,
+    userSlug: key,
+    isAdmin,
+    channel: 'telegram',
+    hasImages: false,
+    text,
+  });
+  const promptText = applied.activeModelPrefix + text;
   let fullResponse = '';
   const unsubscribe = agent.subscribe((event) => {
     if (event.type === 'message_update' && event.assistantMessageEvent?.type === 'text_delta') {
@@ -154,7 +165,7 @@ async function callAgent(
     }
   });
   try {
-    await agent.prompt(text);
+    await applied.runWithLlmRoute(() => agent.prompt(promptText));
   } finally {
     unsubscribe();
   }

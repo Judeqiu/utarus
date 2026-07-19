@@ -5,7 +5,8 @@
  * Billing on: plan + overrides; fail-closed on load errors (billing_state_error).
  */
 
-import { loadUsage } from '../usage/usage-file.js';
+import { loadUsage, weightedPeriodTokens } from '../usage/usage-file.js';
+import { getCapWeight } from '../llm/profiles.js';
 import { getEffectiveCap, getEntitlement } from './entitlements.js';
 import {
   billingStateErrorMessage,
@@ -34,7 +35,9 @@ export function checkTurnAllowed(
     const cap = getEffectiveCap(userSlug, 'llm_total_tokens');
     if (cap === undefined) return null;
 
-    const current = loadUsage(userSlug).period_llm.total_tokens;
+    const usage = loadUsage(userSlug);
+    // Unified cap: weighted sum when by-profile data exists (K21).
+    const current = weightedPeriodTokens(usage, getCapWeight);
     if (current < cap) return null;
 
     const upgradeUrl = buildUpgradeUrl(userSlug, channel, {

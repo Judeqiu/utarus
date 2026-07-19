@@ -4,7 +4,7 @@
  */
 
 import { completeSimple } from '@earendil-works/pi-ai';
-import { getAgentModel, getAgentApiKey } from '../../llm/index.js';
+import { resolveUtilityLlm } from '../../llm/index.js';
 import { recordLlm } from '../../usage/index.js';
 
 const TITLE_MAX = 60;
@@ -48,8 +48,9 @@ export async function summarizeChatTitle(
     throw new Error('summarizeChatTitle: userText is empty');
   }
 
-  const model = getAgentModel();
-  const apiKey = getAgentApiKey();
+  const utility = resolveUtilityLlm();
+  const model = utility.resolved.model;
+  const apiKey = utility.resolved.apiKey;
   const assistantClip = (assistantText ?? '').trim().slice(0, 400);
   const prompt =
     `User message:\n${user.slice(0, 600)}\n\n` +
@@ -84,14 +85,18 @@ export async function summarizeChatTitle(
   if (userSlug && response.usage) {
     try {
       const u = response.usage;
-      recordLlm(userSlug, {
-        input_tokens: u.input,
-        output_tokens: u.output,
-        cache_read: u.cacheRead,
-        cache_write: u.cacheWrite,
-        total_tokens: u.totalTokens,
-        cost_usd: u.cost?.total,
-      });
+      recordLlm(
+        userSlug,
+        {
+          input_tokens: u.input,
+          output_tokens: u.output,
+          cache_read: u.cacheRead,
+          cache_write: u.cacheWrite,
+          total_tokens: u.totalTokens,
+          cost_usd: u.cost?.total,
+        },
+        { profileName: utility.profileName },
+      );
     } catch (e) {
       console.warn(
         `[chat/title] usage record failed for slug=${userSlug}: ${e instanceof Error ? e.message : String(e)}`,

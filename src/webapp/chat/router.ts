@@ -30,7 +30,12 @@ import { resolveInboundMessage } from '../../onboarding/access-gate.js';
 import { loadState } from '../../state/index.js';
 import { checkTurnAllowed } from '../../usage/index.js';
 import type { Framework } from '../../framework.js';
-import { getAgentLlmCapabilities } from '../../llm/index.js';
+import {
+  getUiLlmCapabilities,
+  getLlmRoutingDebug,
+  resolveAndApplyLlmForTurn,
+} from '../../llm/index.js';
+import type { LlmRouteDecision } from '../../llm/index.js';
 import { runAgent } from './run-agent.js';
 import { sendSSEEvent, sendSSEComment, setSSEHeaders } from './sse.js';
 import {
@@ -102,22 +107,22 @@ function parseConversationId(raw: unknown): string | null {
 }
 
 /**
- * Photo uploads make sense only when the resolved model actually accepts
- * image input — pi-ai otherwise rewrites images to "(image omitted …)"
- * placeholder text, which is a silent failure we refuse to allow.
- * Evaluated lazily so router construction never throws on LLM misconfig.
+ * Photo uploads when UI vision aggregation says a has_images route exists.
+ * Never catch-to-false — map config throws to HTTP 500 via mapLlmConfigError.
  */
 function visionEnabled(): boolean {
-  try {
-    return getAgentLlmCapabilities().imageInput;
-  } catch {
-    return false;
-  }
+  return getUiLlmCapabilities().imageInput;
+}
+
+function mapLlmConfigError(e: unknown): { status: number; body: Record<string, string> } {
+  const message = e instanceof Error ? e.message : String(e);
+  return { status: 500, body: { error: 'llm_config_error', message } };
 }
 
 const VISION_DISABLED_MESSAGE =
-  'The configured LLM does not accept image input, so photo uploads are disabled. ' +
-  'Use a vision-capable provider/model, or set UTARUS_LLM_IMAGE_INPUT=true to override.';
+  'Photo uploads are disabled: no vision-capable LLM route is configured. ' +
+  'Set UTARUS_LLM_ROUTING.has_images to a vision profile, or use a single vision provider ' +
+  '(e.g. UTARUS_LLM_PROVIDER=kimi / UTARUS_LLM_IMAGE_INPUT=true).';
 
 export function createChatRouter(deps: CreateChatRouterDeps): Router {
   const router = Router();
@@ -256,7 +261,15 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const user = (req as any).user as AuthUser;
     const slug = requireSlug(user, res);
     if (!slug) return;
-    if (!visionEnabled()) {
+    let visionOn: boolean;
+    try {
+      visionOn = visionEnabled();
+    } catch (e) {
+      const mapped = mapLlmConfigError(e);
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
+    if (!visionOn) {
       res.status(400).json({ error: 'vision_disabled', message: VISION_DISABLED_MESSAGE });
       return;
     }
@@ -421,8 +434,14 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         });
         return;
       }
-      if (!visionEnabled()) {
-        res.status(400).json({ error: 'vision_disabled', message: VISION_DISABLED_MESSAGE });
+      try {
+        if (!visionEnabled()) {
+          res.status(400).json({ error: 'vision_disabled', message: VISION_DISABLED_MESSAGE });
+          return;
+        }
+      } catch (e) {
+        const mapped = mapLlmConfigError(e);
+        res.status(mapped.status).json(mapped.body);
         return;
       }
       try {
@@ -523,6 +542,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     }
 
     const userTurn = userTurnTextForAgent(inbound.text, storedQuotes);
+    const hasImages = !!(images && images.length > 0);
 
     if (agent.state.isStreaming) {
       if (!queueFlag) {
@@ -532,6 +552,22 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
           conversationId,
         });
         return;
+      }
+      // Steer does not re-run the router. Reject image steers onto a text-only
+      // active model (would silent-downgrade in pi-ai).
+      if (hasImages) {
+        const activeInput = agent.state.model?.input;
+        const activeSupportsImage =
+          Array.isArray(activeInput) && activeInput.includes('image');
+        if (!activeSupportsImage) {
+          res.status(409).json({
+            error: 'steer_images_unsupported',
+            message:
+              'Cannot queue photo messages while the agent is busy on a text-only model. ' +
+              'Wait for the current turn to finish, then send the photo.',
+          });
+          return;
+        }
       }
       // Steer uses the same user-turn body as live (quote prefix + enriched text).
       // Pre-existing: no WEB_CHANNEL_HINT on steer.
@@ -545,6 +581,33 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       res.json({ kind: 'queued', conversationId });
       return;
     }
+
+    // Route LLM for this turn (domain hook + hasImages + heavy heuristics).
+    // Heuristic text = user-visible bubble + enrich already applied in inbound.text.
+    let applied: Awaited<ReturnType<typeof resolveAndApplyLlmForTurn>>;
+    try {
+      applied = await resolveAndApplyLlmForTurn({
+        agent,
+        extension: deps.framework.extension,
+        userSlug: effectiveSlug,
+        isAdmin,
+        channel: 'web',
+        conversationId: conversationId ?? undefined,
+        hasImages,
+        text: inbound.text,
+      });
+    } catch (e) {
+      const mapped = mapLlmConfigError(e);
+      // Domain unknown profile → llm_route_error
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('resolveLlmProfile') || msg.includes('from domain')) {
+        res.status(500).json({ error: 'llm_route_error', message: msg });
+        return;
+      }
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
+    const routeDecision: LlmRouteDecision = applied.decision;
 
     const messageId = randomUUID();
     const assistantMsgId = randomUUID();
@@ -569,55 +632,70 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     });
 
     const convId = conversationId;
-    const promptText = `${WEB_CHANNEL_HINT}\n\n${userTurn}`;
-    runAgent({
-      messageId,
-      userSlug: effectiveSlug,
-      agent,
-      message: promptText,
-      images,
-      onComplete: async (result) => {
-        try {
-          if (result.error && !result.text) {
-            appendMessage(effectiveSlug, convId, {
-              id: assistantMsgId,
-              role: 'assistant',
-              text: '',
-              error: result.error,
-              stopReason: result.stopReason,
-            });
-          } else {
-            appendMessage(effectiveSlug, convId, {
-              id: assistantMsgId,
-              role: 'assistant',
-              text: result.text,
-              error: result.error,
-              stopReason: result.stopReason,
-            });
-          }
-        } catch (e) {
-          console.error(
-            `[chat/persist] conversation=${convId} failed: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
+    const promptText =
+      applied.activeModelPrefix + `${WEB_CHANNEL_HINT}\n\n${userTurn}`;
+    const llmMeta = {
+      profile: routeDecision.profileName,
+      provider: routeDecision.resolved.model.provider,
+      model: routeDecision.resolved.model.id,
+      reason: routeDecision.reason,
+    };
 
-        // After first successful reply, AI-summarize sidebar + browser tab title.
-        if (result.text && !result.error) {
-          await maybeEmitAiTitle(
-            messageId,
-            effectiveSlug,
-            convId,
-            userVisibleText,
-            result.text,
-          );
-        }
-      },
-    }).catch((e) => {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error(`[chat/run] messageId=${messageId} threw post-respond: ${msg}`);
-      emit(messageId, { type: 'error', message: `Agent error: ${msg}`, phase: 'during_run' });
-      emit(messageId, { type: 'end' });
-    });
+    // ALS lifetime = agent promise (not HTTP request). Fire-and-forget correctly.
+    void applied
+      .runWithLlmRoute(() =>
+        runAgent({
+          messageId,
+          userSlug: effectiveSlug,
+          agent,
+          message: promptText,
+          images,
+          onComplete: async (result) => {
+            try {
+              if (result.error && !result.text) {
+                appendMessage(effectiveSlug, convId, {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  text: '',
+                  error: result.error,
+                  stopReason: result.stopReason,
+                  llm: llmMeta,
+                });
+              } else {
+                appendMessage(effectiveSlug, convId, {
+                  id: assistantMsgId,
+                  role: 'assistant',
+                  text: result.text,
+                  error: result.error,
+                  stopReason: result.stopReason,
+                  llm: llmMeta,
+                });
+              }
+            } catch (e) {
+              console.error(
+                `[chat/persist] conversation=${convId} failed: ${e instanceof Error ? e.message : String(e)}`,
+              );
+            }
+
+            // After first successful reply, AI-summarize sidebar + browser tab title.
+            if (result.text && !result.error) {
+              await maybeEmitAiTitle(
+                messageId,
+                effectiveSlug,
+                convId,
+                userVisibleText,
+                result.text,
+              );
+            }
+          },
+        }),
+      )
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[chat/run] messageId=${messageId} threw post-respond: ${msg}`);
+        emit(messageId, { type: 'error', message: `Agent error: ${msg}`, phase: 'during_run' });
+        emit(messageId, { type: 'end' });
+      });
 
     res.json({
       kind: 'run',
@@ -733,7 +811,16 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
     const user = (req as any).user as AuthUser;
     // LLM capabilities — clients bind capability-gated UI (e.g. the photo
     // attach button) to this, never to provider/model ids.
-    const capabilities = { imageInput: visionEnabled() };
+    let capabilities: { imageInput: boolean };
+    let routing: ReturnType<typeof getLlmRoutingDebug> | undefined;
+    try {
+      capabilities = { imageInput: visionEnabled() };
+      routing = getLlmRoutingDebug();
+    } catch (e) {
+      const mapped = mapLlmConfigError(e);
+      res.status(mapped.status).json(mapped.body);
+      return;
+    }
     if (!user.slug) {
       res.json({
         slug: '',
@@ -743,6 +830,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         isStreaming: false,
         hasContext: false,
         capabilities,
+        routing,
       });
       return;
     }
@@ -762,6 +850,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       hasContext: !!agent.state.messages?.length,
       conversationId: conversationId ?? null,
       capabilities,
+      routing,
     });
   });
 

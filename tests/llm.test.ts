@@ -19,6 +19,11 @@ const ENV_KEYS = [
   'UTARUS_LLM_API_KEY',
   'UTARUS_LLM_API_KEY_ENV',
   'UTARUS_LLM_IMAGE_INPUT',
+  'UTARUS_LLM_PROFILES',
+  'UTARUS_LLM_ROUTING',
+  'UTARUS_LLM_ROUTE_HEAVY_MIN_CHARS',
+  'UTARUS_LLM_ROUTE_HEAVY_KEYWORDS',
+  'UTARUS_LLM_CAP_WEIGHTS',
   'MY_CUSTOM_LLM_KEY',
 ];
 
@@ -257,5 +262,163 @@ describe('getAgentLlmCapabilities', () => {
     process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
     const { getAgentLlmCapabilities } = await freshLLM();
     expect(getAgentLlmCapabilities()).toEqual({ imageInput: false });
+  });
+});
+
+describe('multi-profile routing', () => {
+  function setDailyVision() {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    process.env.UTARUS_LLM_PROFILES = JSON.stringify({
+      daily: { provider: 'deepseek' },
+      vision: { provider: 'kimi' },
+    });
+    process.env.UTARUS_LLM_ROUTING = JSON.stringify({
+      default: 'daily',
+      has_images: 'vision',
+      utility: 'daily',
+    });
+  }
+
+  it('requires UTARUS_LLM_ROUTING when profiles are set', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.UTARUS_LLM_PROFILES = JSON.stringify({ daily: { provider: 'deepseek' } });
+    const { assertLlmConfig } = await freshLLM();
+    expect(() => assertLlmConfig()).toThrow(/UTARUS_LLM_ROUTING is required/);
+  });
+
+  it('resolves daily + vision profiles and UI vision from has_images', async () => {
+    setDailyVision();
+    const {
+      assertLlmConfig,
+      getAgentLLM,
+      getUiLlmCapabilities,
+      isLlmRoutingEnabled,
+      selectLlmProfileForTurn,
+      resolveUtilityLlm,
+    } = await freshLLM();
+    assertLlmConfig();
+    expect(isLlmRoutingEnabled()).toBe(true);
+    expect(getAgentLLM().profileName).toBe('daily');
+    expect(getAgentLLM().model.id).toBe('deepseek-v4-pro');
+    expect(getUiLlmCapabilities().imageInput).toBe(true);
+
+    const textTurn = selectLlmProfileForTurn({
+      hasImages: false,
+      text: 'hello',
+      userSlug: 'u',
+      isAdmin: false,
+      channel: 'web',
+    });
+    expect(textTurn.profileName).toBe('daily');
+    expect(textTurn.reason).toBe('default');
+
+    const imgTurn = selectLlmProfileForTurn({
+      hasImages: true,
+      text: 'see this',
+      userSlug: 'u',
+      isAdmin: false,
+      channel: 'web',
+    });
+    expect(imgTurn.profileName).toBe('vision');
+    expect(imgTurn.reason).toBe('has_images');
+    expect(imgTurn.resolved.capabilities.imageInput).toBe(true);
+
+    const util = resolveUtilityLlm();
+    expect(util.profileName).toBe('daily');
+    expect(util.reason).toBe('utility');
+  });
+
+  it('throws on conflicting API keys for the same pi-ai provider', async () => {
+    process.env.UTARUS_LLM_API_KEY = 'sk-a';
+    process.env.MY_CUSTOM_LLM_KEY = 'sk-b';
+    process.env.UTARUS_LLM_PROFILES = JSON.stringify({
+      a: {
+        provider: 'generic',
+        model: 'm1',
+        baseUrl: 'http://localhost/a',
+        apiKeyEnv: 'UTARUS_LLM_API_KEY',
+      },
+      b: {
+        provider: 'generic',
+        model: 'm2',
+        baseUrl: 'http://localhost/b',
+        apiKeyEnv: 'MY_CUSTOM_LLM_KEY',
+      },
+    });
+    process.env.UTARUS_LLM_ROUTING = JSON.stringify({ default: 'a' });
+    const { assertLlmConfig } = await freshLLM();
+    expect(() => assertLlmConfig()).toThrow(/Conflicting API keys/);
+  });
+
+  it('routes heavy by keyword and min chars', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    process.env.UTARUS_LLM_PROFILES = JSON.stringify({
+      daily: { provider: 'deepseek' },
+      heavy: { provider: 'kimi' },
+    });
+    process.env.UTARUS_LLM_ROUTING = JSON.stringify({
+      default: 'daily',
+      heavy: 'heavy',
+    });
+    process.env.UTARUS_LLM_ROUTE_HEAVY_KEYWORDS = 'Deep Dive,proof';
+    process.env.UTARUS_LLM_ROUTE_HEAVY_MIN_CHARS = '50';
+    const { assertLlmConfig, selectLlmProfileForTurn } = await freshLLM();
+    assertLlmConfig();
+
+    const byKw = selectLlmProfileForTurn({
+      hasImages: false,
+      text: 'Please do a Deep Dive on AAPL',
+      userSlug: 'u',
+      isAdmin: false,
+      channel: 'web',
+    });
+    expect(byKw.reason).toBe('heavy_keyword');
+    expect(byKw.profileName).toBe('heavy');
+
+    const byChars = selectLlmProfileForTurn({
+      hasImages: false,
+      text: 'x'.repeat(50),
+      userSlug: 'u',
+      isAdmin: false,
+      channel: 'cli',
+    });
+    expect(byChars.reason).toBe('heavy_chars');
+
+    const domain = selectLlmProfileForTurn({
+      hasImages: false,
+      text: 'hi',
+      userSlug: 'u',
+      isAdmin: false,
+      channel: 'task',
+      domainProfile: 'heavy',
+    });
+    expect(domain.reason).toBe('domain');
+    expect(domain.profileName).toBe('heavy');
+  });
+
+  it('does not apply process-global UTARUS_LLM_IMAGE_INPUT to every routing profile', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.KIMI_API_KEY = 'sk-kimi-test';
+    process.env.UTARUS_LLM_IMAGE_INPUT = 'true';
+    process.env.UTARUS_LLM_PROFILES = JSON.stringify({
+      daily: { provider: 'deepseek' },
+      vision: { provider: 'kimi' },
+    });
+    process.env.UTARUS_LLM_ROUTING = JSON.stringify({
+      default: 'daily',
+      has_images: 'vision',
+    });
+    const { assertLlmConfig, getLlmProfile } = await freshLLM();
+    assertLlmConfig();
+    // daily stays text-only unless profile.imageInput is set
+    expect(getLlmProfile('daily').capabilities.imageInput).toBe(false);
+    expect(getLlmProfile('vision').capabilities.imageInput).toBe(true);
+  });
+
+  it('parseHeavyKeywords lowercases tokens', async () => {
+    const { parseHeavyKeywords } = await freshLLM();
+    expect(parseHeavyKeywords('Deep Dive,  PROOF ,')).toEqual(['deep dive', 'proof']);
   });
 });

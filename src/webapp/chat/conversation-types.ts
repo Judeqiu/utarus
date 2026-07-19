@@ -34,6 +34,14 @@ export interface StoredQuote {
   text: string;
 }
 
+/** LLM route that produced an assistant turn (audit / hydrate). */
+export interface StoredMessageLlm {
+  profile: string;
+  provider: string;
+  model: string;
+  reason?: string;
+}
+
 export interface StoredChatMessage {
   id: string;
   role: StoredMessageRole;
@@ -44,6 +52,8 @@ export interface StoredChatMessage {
   attachments?: StoredAttachment[];
   /** Present on user turns when the client quoted a prior message span. */
   quotes?: StoredQuote[];
+  /** Present on assistant turns after multi-LLM routing. */
+  llm?: StoredMessageLlm;
   tools?: Array<{
     toolCallId: string;
     name: string;
