@@ -168,7 +168,10 @@ export function MapEmbed(props: MapEmbedProps) {
   const title = spec.label ?? spec.query ?? 'Map';
 
   return (
-    <div className="my-3 w-full max-w-2xl overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900">
+    <div
+      data-map-embed
+      className="my-3 w-full overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900"
+    >
       <div className="flex items-center justify-between gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
         <span className="truncate text-sm font-medium text-stone-800 dark:text-stone-100">
           {title}
@@ -189,8 +192,10 @@ export function MapEmbed(props: MapEmbedProps) {
         loading="lazy"
         referrerPolicy="strict-origin-when-cross-origin"
         allowFullScreen
-        className="h-[320px] min-h-[280px] w-full border-0"
+        className="block h-[420px] min-h-[360px] w-full border-0"
       />
     </div>
   );
 }
+
+MapEmbed.displayName = 'MapEmbed';

@@ -242,12 +242,27 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               <table {...props} />
             </div>
           ),
-          // Fenced blocks are pre>code; MapEmbed/MapError replace code — unwrap pre.
+          // Fenced blocks are pre>code; MapEmbed/MapError replace code — unwrap pre
+          // so maps are not styled as dark code shells (.prose-chat pre).
           pre: ({ children }) => {
             const list = Children.toArray(children);
             if (list.length === 1 && isValidElement(list[0])) {
-              const t = list[0].type;
-              if (t === MapEmbed || t === MapError) {
+              const el = list[0];
+              const t = el.type;
+              const displayName =
+                typeof t === 'function' || (typeof t === 'object' && t !== null)
+                  ? (t as { displayName?: string; name?: string }).displayName ||
+                    (t as { name?: string }).name
+                  : undefined;
+              const props = el.props as { 'data-map-embed'?: boolean | string };
+              const isMap =
+                t === MapEmbed ||
+                t === MapError ||
+                displayName === 'MapEmbed' ||
+                displayName === 'MapError' ||
+                props['data-map-embed'] === true ||
+                props['data-map-embed'] === '';
+              if (isMap) {
                 return <>{children}</>;
               }
             }
