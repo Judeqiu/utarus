@@ -110,7 +110,12 @@ export function createBillingRouter(): Router {
   /** Public config for WebUI (no price ids). */
   router.get('/config', (_req: Request, res: Response) => {
     if (!isBillingEnabled()) {
-      res.json({ enabled: false, trialPeriodDays: TRIAL_PERIOD_DAYS });
+      res.json({
+        enabled: false,
+        trialPeriodDays: TRIAL_PERIOD_DAYS,
+        introTrialDays: 7,
+        stripeTrialDays: TRIAL_PERIOD_DAYS,
+      });
       return;
     }
     try {
@@ -119,7 +124,14 @@ export function createBillingRouter(): Router {
       res.json({
         enabled: true,
         publishableKey: getStripePublishableKey() ?? null,
+        /** Stripe Checkout trial (card) — same as stripeTrialDays. */
         trialPeriodDays: catalog.trial_period_days,
+        introTrialDays: catalog.intro_trial_days,
+        stripeTrialDays: catalog.trial_period_days,
+        introCapsSummary: {
+          llm_total_tokens: catalog.intro_caps.llm_total_tokens,
+          tools: catalog.intro_caps.tools ?? {},
+        },
         defaultPaidPlan: {
           id: paid.id,
           display_name: paid.display_name,
@@ -163,6 +175,7 @@ export function createBillingRouter(): Router {
           features: ent.features,
           current_period_end: ent.current_period_end ?? null,
           cancel_at_period_end: ent.cancel_at_period_end ?? false,
+          intro_trial_ends_at: ent.intro_trial_ends_at ?? null,
           has_stripe_customer: Boolean(ent.stripe_customer_id),
         },
         usage: {
@@ -179,6 +192,8 @@ export function createBillingRouter(): Router {
           },
         },
         trialPeriodDays: catalog.trial_period_days,
+        introTrialDays: catalog.intro_trial_days,
+        stripeTrialDays: catalog.trial_period_days,
         freePlanId: freePlanId(catalog),
       });
     } catch (err) {

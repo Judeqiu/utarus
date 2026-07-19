@@ -34,13 +34,15 @@ const BILLING_ENV_KEYS = [
 const SAMPLE_PLANS: PlansCatalogInput = {
   version: 1,
   past_due_policy: 'retain_until_period_end',
-  trial_period_days: 7,
+  trial_period_days: 30,
+  intro_trial_days: 7,
+  intro_caps: { llm_total_tokens: 500, tools: { firecrawl: 1 } },
   default_paid_plan_id: 'pro',
   plans: {
     free: {
       display_name: 'Free',
       stripe_price_id: null,
-      caps: { llm_total_tokens: 1000, tools: { firecrawl: 1 } },
+      caps: { llm_total_tokens: 0, tools: { firecrawl: 0 } },
       features: [],
     },
     pro: {
@@ -251,18 +253,19 @@ describe('checkTurnAllowed (billing on)', () => {
   });
 
   it('returns structured cap_exceeded with web relative upgrade_url', () => {
-    recordLlm('alice', { total_tokens: 1000 });
+    // Free plan cap is 0 after intro — any usage is blocked
+    recordLlm('alice', { total_tokens: 1 });
     const block = checkTurnAllowed('alice', false, { channel: 'web' });
     expect(block).not.toBeNull();
     expect(block!.code).toBe('cap_exceeded');
     expect(block!.upgradeUrl).toBe('/billing');
-    expect(block!.current).toBe(1000);
-    expect(block!.cap).toBe(1000);
+    expect(block!.current).toBe(1);
+    expect(block!.cap).toBe(0);
     expect(block!.planId).toBe('free');
   });
 
   it('mints enter URL for telegram when public base is set', () => {
-    recordLlm('alice', { total_tokens: 1000 });
+    recordLlm('alice', { total_tokens: 1 });
     const block = checkTurnAllowed('alice', false, { channel: 'telegram' });
     expect(block?.upgradeUrl).toMatch(
       /^https:\/\/agent\.example\.com\/api\/billing\/enter\?return=%2Fbilling&t=/,

@@ -1,14 +1,17 @@
 /**
  * Entitlement read API.
  *
- * - Implicit free when no billing file
+ * - Implicit free when no billing file (or free after intro)
+ * - App-owned intro trial: 7 days from user.created_at, no card, intro_caps
+ * - Stripe Checkout trial / active: full paid plan caps (30-day free with card)
  * - Read-time period expiry (missed webhooks cannot leave forever-paid)
- * - Effective caps = plan caps + caps.yaml per-slug overrides only
+ * - Effective caps = plan/intro caps + caps.yaml per-slug overrides only
  * - hasFeature(slug, flag) for domain feature gates (API only in v1)
  */
 
 import type { CapKind } from '../usage/caps.js';
 import { getCap, getCapOverride } from '../usage/caps.js';
+import { loadState, stateExists } from '../state/index.js';
 import { loadBillingState } from './billing-file.js';
 import { freePlanId, getPlan, loadPlansCatalog } from './plans.js';
 import { isBillingEnabled } from './validate.js';
@@ -17,6 +20,7 @@ import type {
   BillingStatus,
   Entitlement,
   EntitlementSource,
+  PlanCaps,
   PlansCatalog,
 } from './types.js';
 
@@ -72,8 +76,63 @@ function paidEntitlement(
 }
 
 /**
+ * Parse user.created_at (YYYY-MM-DD or ISO) to UTC start-of-day ms when date-only.
+ */
+export function parseUserCreatedAtMs(createdAt: string): number {
+  if (!createdAt || typeof createdAt !== 'string') {
+    throw new Error(`user.created_at is required for intro trial (got: ${String(createdAt)})`);
+  }
+  // Date-only YYYY-MM-DD → treat as UTC midnight
+  if (/^\d{4}-\d{2}-\d{2}$/.test(createdAt)) {
+    const ms = Date.parse(`${createdAt}T00:00:00.000Z`);
+    if (Number.isNaN(ms)) {
+      throw new Error(`user.created_at is not a valid date: ${createdAt}`);
+    }
+    return ms;
+  }
+  const ms = Date.parse(createdAt);
+  if (Number.isNaN(ms)) {
+    throw new Error(`user.created_at is not a valid date: ${createdAt}`);
+  }
+  return ms;
+}
+
+export function introTrialEndsAtIso(createdAt: string, introDays: number): string {
+  const start = parseUserCreatedAtMs(createdAt);
+  return new Date(start + introDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+export function isWithinIntroTrial(
+  createdAt: string,
+  introDays: number,
+  now: Date = new Date(),
+): boolean {
+  const endMs = parseUserCreatedAtMs(createdAt) + introDays * 24 * 60 * 60 * 1000;
+  return now.getTime() < endMs;
+}
+
+function introEntitlement(
+  catalog: PlansCatalog,
+  createdAt: string,
+): Entitlement {
+  const paid = getPlan(catalog.default_paid_plan_id, catalog);
+  const ends = introTrialEndsAtIso(createdAt, catalog.intro_trial_days);
+  return {
+    // Point at paid plan id for upgrade UX; caps come from intro_caps via getEffectiveCap.
+    plan_id: paid.id,
+    status: 'trialing',
+    source: 'intro_trial',
+    display_name: 'Intro trial',
+    features: [...paid.features],
+    intro_trial_ends_at: ends,
+    current_period_end: ends,
+  };
+}
+
+/**
  * Compute effective entitlement from stored billing state + wall clock.
  * Pure read — does not rewrite the billing file.
+ * Does **not** apply intro trial (needs user.created_at — see getEntitlement).
  *
  * Rules (v1):
  * 1. status === comped → comp plan; ignore period end
@@ -111,7 +170,7 @@ export function entitlementFromBillingState(
     return freeEntitlement(catalog, 'period_expired_read');
   }
 
-  // 4. Active / trialing → paid
+  // 4. Active / trialing → paid (Stripe path — full Pro caps)
   if (raw.status === 'active' || raw.status === 'trialing') {
     return paidEntitlement(raw, catalog, 'stripe', raw.plan_id, raw.status);
   }
@@ -125,8 +184,15 @@ export function entitlementFromBillingState(
   return freeEntitlement(catalog, 'default_free');
 }
 
+function isFreeLike(ent: Entitlement): boolean {
+  return ent.source === 'default_free' || ent.source === 'period_expired_read';
+}
+
 /**
  * Resolve effective entitlement for a user. Requires billing enabled.
+ *
+ * After Stripe/comp rules, free-like users within intro_trial_days of
+ * user.created_at receive intro_trial (no card, intro_caps).
  */
 export function getEntitlement(
   userSlug: string,
@@ -139,28 +205,46 @@ export function getEntitlement(
   }
   const catalog = loadPlansCatalog();
   const raw = loadBillingState(userSlug);
-  return entitlementFromBillingState(raw, catalog, now);
+  const fromBilling = entitlementFromBillingState(raw, catalog, now);
+
+  if (!isFreeLike(fromBilling)) {
+    return fromBilling;
+  }
+
+  // Intro trial needs a user file (created_at). Missing user → free (fail closed for caps).
+  if (!stateExists(userSlug)) {
+    return fromBilling;
+  }
+  const user = loadState(userSlug);
+  const createdAt = user.user.created_at;
+  if (isWithinIntroTrial(createdAt, catalog.intro_trial_days, now)) {
+    return introEntitlement(catalog, createdAt);
+  }
+  return fromBilling;
 }
 
-function planCapFor(planId: string, kind: CapKind, catalog: PlansCatalog): number | undefined {
-  const plan = getPlan(planId, catalog);
+function capsForKind(caps: PlanCaps, kind: CapKind): number | undefined {
   if (kind === 'llm_total_tokens') {
-    return plan.caps.llm_total_tokens;
+    return caps.llm_total_tokens;
   }
   if (kind === 'llm_cost_usd') {
-    return plan.caps.llm_cost_usd;
+    return caps.llm_cost_usd;
   }
   if (kind.startsWith('tools.')) {
     const toolName = kind.slice('tools.'.length);
-    return plan.caps.tools?.[toolName];
+    return caps.tools?.[toolName];
   }
   return undefined;
+}
+
+function planCapFor(planId: string, kind: CapKind, catalog: PlansCatalog): number | undefined {
+  return capsForKind(getPlan(planId, catalog).caps, kind);
 }
 
 /**
  * Effective cap for a user + kind.
  * - Billing off: same as getCap (default + overrides)
- * - Billing on: overrides.<slug> only, else plan caps, else unlimited (undefined)
+ * - Billing on: overrides.<slug> only, else intro_caps / plan caps
  * - Admins: caller short-circuits before this (unlimited)
  */
 export function getEffectiveCap(
@@ -182,12 +266,16 @@ export function getEffectiveCap(
 
   const ent = getEntitlement(userSlug, now);
   const catalog = loadPlansCatalog();
+  if (ent.source === 'intro_trial') {
+    return capsForKind(catalog.intro_caps, kind);
+  }
   return planCapFor(ent.plan_id, kind, catalog);
 }
 
 /**
  * Domain feature gate. Returns false when billing is disabled or flag missing.
  * Empty features: [] on a plan is valid (no flags).
+ * Intro trial uses paid plan features (try Pro product surface with lower caps).
  */
 export function hasFeature(userSlug: string, flag: string): boolean {
   if (!flag || typeof flag !== 'string') {

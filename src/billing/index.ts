@@ -19,7 +19,11 @@ export type {
   PlansCatalog,
   PlansCatalogInput,
 } from './types.js';
-export { TRIAL_PERIOD_DAYS } from './types.js';
+export {
+  INTRO_TRIAL_DAYS,
+  STRIPE_TRIAL_DAYS,
+  TRIAL_PERIOD_DAYS,
+} from './types.js';
 
 export {
   assertPlansCatalog,
@@ -47,6 +51,9 @@ export {
   getEffectiveCap,
   getEntitlement,
   hasFeature,
+  introTrialEndsAtIso,
+  isWithinIntroTrial,
+  parseUserCreatedAtMs,
 } from './entitlements.js';
 
 export {

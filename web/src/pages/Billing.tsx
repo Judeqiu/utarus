@@ -22,6 +22,7 @@ interface BillingStatus {
     source: string;
     display_name: string;
     current_period_end?: string | null;
+    intro_trial_ends_at?: string | null;
     has_stripe_customer?: boolean;
   };
   usage?: {
@@ -35,6 +36,8 @@ interface BillingStatus {
     caps_summary: { llm_total_tokens: number };
   };
   trialPeriodDays?: number;
+  introTrialDays?: number;
+  stripeTrialDays?: number;
 }
 
 export function BillingPage({ session, onBack }: BillingPageProps) {
@@ -152,11 +155,15 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
   }
 
   const paidName = status?.defaultPaidPlan?.display_name ?? 'Pro';
-  const isFree =
-    !status?.admin &&
-    (!status?.entitlement ||
-      status.entitlement.plan_id === 'free' ||
-      status.entitlement.status === 'none');
+  const source = status?.entitlement?.source;
+  const isIntro = source === 'intro_trial';
+  const isStripePaid =
+    source === 'stripe' ||
+    source === 'admin_comp' ||
+    status?.entitlement?.status === 'active' ||
+    (status?.entitlement?.status === 'trialing' && source === 'stripe');
+  const showUpgrade = !status?.admin && !isStripePaid;
+  const stripeTrialDays = status?.stripeTrialDays ?? status?.trialPeriodDays ?? 30;
 
   return (
     <div className="min-h-dvh bg-slate-50">
@@ -210,6 +217,20 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
                   status: {status?.entitlement?.status ?? 'none'} · source:{' '}
                   {status?.entitlement?.source ?? 'default_free'}
                 </p>
+                {isIntro && status?.entitlement?.intro_trial_ends_at && (
+                  <p className="mt-2 text-xs text-amber-800">
+                    Free intro trial (no card) until{' '}
+                    {new Date(status.entitlement.intro_trial_ends_at).toLocaleString()}.
+                    Caps are limited; upgrade for full {paidName} with a{' '}
+                    {stripeTrialDays}-day free period (card required).
+                  </p>
+                )}
+                {source === 'default_free' && (
+                  <p className="mt-2 text-xs text-rose-800">
+                    Intro trial ended. Upgrade to {paidName} to keep using the agent (
+                    {stripeTrialDays} days free with card, then billing starts).
+                  </p>
+                )}
                 {status?.usage && (
                   <p className="mt-2 text-xs text-slate-600">
                     Usage this month ({status.usage.period}):{' '}
@@ -226,14 +247,14 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
                   {paidName}
                 </h2>
                 <p className="mt-1 text-xs text-slate-600">
-                  Higher monthly caps
+                  Full monthly caps
                   {status?.defaultPaidPlan?.caps_summary?.llm_total_tokens != null
                     ? ` (${status.defaultPaidPlan.caps_summary.llm_total_tokens.toLocaleString()} tokens)`
                     : ''}
-                  . Includes a {status?.trialPeriodDays ?? 7}-day free trial.
+                  . After you add a card: {stripeTrialDays} days free, then charged.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {isFree ? (
+                  {showUpgrade ? (
                     <button
                       type="button"
                       disabled={busy}
@@ -252,7 +273,7 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
                       {busy ? 'Redirecting…' : 'Manage subscription'}
                     </button>
                   )}
-                  {!isFree && status?.entitlement?.has_stripe_customer && (
+                  {!showUpgrade && status?.entitlement?.has_stripe_customer && (
                     <button
                       type="button"
                       disabled={busy}

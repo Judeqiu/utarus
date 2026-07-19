@@ -8,7 +8,7 @@ import { getEntitlement } from './entitlements.js';
 import { loadBillingState, saveBillingState } from './billing-file.js';
 import { freePlanId, getPlan, loadPlansCatalog } from './plans.js';
 import { getStripe } from './stripe-client.js';
-import { TRIAL_PERIOD_DAYS } from './types.js';
+import { STRIPE_TRIAL_DAYS } from './types.js';
 import { publicBillingBaseUrl } from './messages.js';
 import { isBillingEnabled } from './validate.js';
 
@@ -66,7 +66,8 @@ export function isCheckoutBlocked(userSlug: string): {
 }
 
 /**
- * Create Checkout Session for the default paid plan (7-day trial, no tax).
+ * Create Checkout Session for the default paid plan (card required,
+ * STRIPE_TRIAL_DAYS free then charge; no tax).
  * Optional body plan_id must equal default_paid_plan_id when provided.
  */
 export async function createCheckoutSessionUrl(
@@ -125,7 +126,7 @@ export async function createCheckoutSessionUrl(
     cancel_url: `${base}/billing?checkout=cancel`,
     metadata: { utarus_user_slug: userSlug, plan_id: paidId },
     subscription_data: {
-      trial_period_days: TRIAL_PERIOD_DAYS,
+      trial_period_days: STRIPE_TRIAL_DAYS,
       metadata: { utarus_user_slug: userSlug, plan_id: paidId },
     },
   });

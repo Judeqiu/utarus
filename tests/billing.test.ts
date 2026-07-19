@@ -11,6 +11,8 @@ import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { stringify } from 'yaml';
 import {
+  INTRO_TRIAL_DAYS,
+  STRIPE_TRIAL_DAYS,
   TRIAL_PERIOD_DAYS,
   isBillingEnabled,
   assertBillingConfig,
@@ -36,15 +38,21 @@ let prevEnv: Record<string, string | undefined>;
 const VALID_PLANS: PlansCatalogInput = {
   version: 1,
   past_due_policy: 'retain_until_period_end',
-  trial_period_days: 7,
+  trial_period_days: 30,
+  intro_trial_days: 7,
+  intro_caps: {
+    llm_total_tokens: 500_000,
+    tools: { firecrawl: 50, post_html_report: 10 },
+  },
   default_paid_plan_id: 'pro',
   plans: {
     free: {
       display_name: 'Free',
       stripe_price_id: null,
       caps: {
-        llm_total_tokens: 200_000,
-        tools: { firecrawl: 20, post_html_report: 5 },
+        // Post-intro: no use until Upgrade
+        llm_total_tokens: 0,
+        tools: { firecrawl: 0, post_html_report: 0 },
       },
       features: [],
     },
@@ -59,6 +67,21 @@ const VALID_PLANS: PlansCatalogInput = {
     },
   },
 };
+
+function writeUser(slug: string, createdAt: string): void {
+  writeDataFile(`users/${slug}.yaml`, {
+    user: {
+      id: '00000000-0000-4000-8000-000000000001',
+      slug,
+      created_at: createdAt,
+    },
+    profile: {
+      display_name: slug,
+      contact_email: `${slug}@example.com`,
+    },
+    log: [],
+  });
+}
 
 function envSnapshot(keys: string[]): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
@@ -137,16 +160,37 @@ describe('isBillingEnabled', () => {
 describe('assertPlansCatalog', () => {
   it('accepts a valid catalog and fills plan ids', () => {
     const cat = assertPlansCatalog(VALID_PLANS, 'test');
+    expect(cat.trial_period_days).toBe(STRIPE_TRIAL_DAYS);
     expect(cat.trial_period_days).toBe(TRIAL_PERIOD_DAYS);
+    expect(cat.intro_trial_days).toBe(INTRO_TRIAL_DAYS);
+    expect(cat.intro_caps.llm_total_tokens).toBe(500_000);
     expect(cat.plans.free.id).toBe('free');
     expect(cat.plans.pro.stripe_price_id).toBe('price_pro_test');
     expect(freePlanId(cat)).toBe('free');
   });
 
-  it('rejects wrong trial_period_days', () => {
+  it('rejects wrong trial_period_days (must be Stripe 30)', () => {
     expect(() =>
-      assertPlansCatalog({ ...VALID_PLANS, trial_period_days: 14 as 7 }, 'test'),
-    ).toThrow(/trial_period_days must be 7/);
+      assertPlansCatalog({ ...VALID_PLANS, trial_period_days: 7 as 30 }, 'test'),
+    ).toThrow(/trial_period_days must be 30/);
+  });
+
+  it('rejects wrong intro_trial_days', () => {
+    expect(() =>
+      assertPlansCatalog({ ...VALID_PLANS, intro_trial_days: 14 as 7 }, 'test'),
+    ).toThrow(/intro_trial_days must be 7/);
+  });
+
+  it('rejects intro_caps >= paid llm cap', () => {
+    expect(() =>
+      assertPlansCatalog(
+        {
+          ...VALID_PLANS,
+          intro_caps: { llm_total_tokens: 5_000_000 },
+        },
+        'test',
+      ),
+    ).toThrow(/intro_caps.llm_total_tokens/);
   });
 
   it('rejects zero free plans', () => {
@@ -204,11 +248,12 @@ describe('loadPlansCatalog resolution', () => {
     setBillingExtension({
       plans: {
         ...VALID_PLANS,
+        intro_caps: { llm_total_tokens: 50 },
         plans: {
           free: {
             display_name: 'Ext Free',
             stripe_price_id: null,
-            caps: { llm_total_tokens: 100 },
+            caps: { llm_total_tokens: 0 },
           },
           pro: {
             display_name: 'Ext Pro',
@@ -220,7 +265,8 @@ describe('loadPlansCatalog resolution', () => {
     });
     const cat = loadPlansCatalog();
     expect(cat.plans.free.display_name).toBe('Ext Free');
-    expect(cat.plans.free.caps.llm_total_tokens).toBe(100);
+    expect(cat.plans.free.caps.llm_total_tokens).toBe(0);
+    expect(cat.intro_caps.llm_total_tokens).toBe(50);
   });
 
   it('loads from plans.yaml when extension has no plans', () => {
@@ -400,15 +446,54 @@ describe('getEntitlement / getEffectiveCap / hasFeature', () => {
     expect(() => getEntitlement('alice')).toThrow(/UTARUS_BILLING_ENABLED/);
   });
 
-  it('implicit free when no billing file', () => {
+  it('no user file → free (no intro) with zero free caps', () => {
     const ent = getEntitlement('alice');
     expect(ent.plan_id).toBe('free');
-    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(200_000);
-    expect(getEffectiveCap('alice', 'tools.firecrawl')).toBe(20);
+    expect(ent.source).toBe('default_free');
+    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(0);
     expect(hasFeature('alice', 'html_reports')).toBe(false);
   });
 
+  it('intro trial within 7 days of created_at → intro_caps', () => {
+    const created = new Date();
+    created.setUTCDate(created.getUTCDate() - 1);
+    const ymd = created.toISOString().slice(0, 10);
+    writeUser('alice', ymd);
+    const ent = getEntitlement('alice');
+    expect(ent.source).toBe('intro_trial');
+    expect(ent.status).toBe('trialing');
+    expect(ent.plan_id).toBe('pro');
+    expect(ent.display_name).toBe('Intro trial');
+    expect(ent.intro_trial_ends_at).toBeTruthy();
+    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(500_000);
+    expect(getEffectiveCap('alice', 'tools.firecrawl')).toBe(50);
+    expect(hasFeature('alice', 'html_reports')).toBe(true);
+  });
+
+  it('after intro window → free zero caps', () => {
+    writeUser('alice', '2020-01-01');
+    const ent = getEntitlement('alice');
+    expect(ent.source).toBe('default_free');
+    expect(ent.plan_id).toBe('free');
+    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(0);
+    expect(hasFeature('alice', 'html_reports')).toBe(false);
+  });
+
+  it('Stripe trialing uses full pro caps (not intro_caps)', () => {
+    writeUser('alice', '2020-01-01');
+    saveBillingState(
+      billingState({
+        status: 'trialing',
+        plan_id: 'pro',
+        current_period_end: '2099-01-01T00:00:00.000Z',
+      }),
+    );
+    expect(getEntitlement('alice').source).toBe('stripe');
+    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(5_000_000);
+  });
+
   it('paid plan caps when active', () => {
+    writeUser('alice', '2020-01-01');
     saveBillingState(billingState({ status: 'active', plan_id: 'pro' }));
     expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(5_000_000);
     expect(hasFeature('alice', 'html_reports')).toBe(true);

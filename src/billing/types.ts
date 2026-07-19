@@ -19,14 +19,29 @@ export type BillingStatus =
 /** How the effective entitlement was derived. */
 export type EntitlementSource =
   | 'default_free'
+  | 'intro_trial'
   | 'stripe'
   | 'admin_comp'
   | 'period_expired_read';
 
 export type PastDuePolicy = 'retain_until_period_end';
 
-/** v1 fixed trial length for all paid Checkout sessions. */
-export const TRIAL_PERIOD_DAYS = 7 as const;
+/**
+ * App-owned intro trial (no card): days from account create.
+ * Lower caps than Pro; see `intro_caps` on the plan catalog.
+ */
+export const INTRO_TRIAL_DAYS = 7 as const;
+
+/**
+ * Stripe Checkout subscription trial (card required): days of free Pro
+ * after upgrade, then first charge. Same caps as paid Pro.
+ */
+export const STRIPE_TRIAL_DAYS = 30 as const;
+
+/**
+ * @deprecated Use STRIPE_TRIAL_DAYS. Kept as alias for Checkout / API exports.
+ */
+export const TRIAL_PERIOD_DAYS = STRIPE_TRIAL_DAYS;
 
 export interface PlanCaps {
   llm_total_tokens: number;
@@ -53,7 +68,12 @@ export interface PlanDefinition {
 export interface PlansCatalog {
   version: 1;
   past_due_policy: PastDuePolicy;
-  trial_period_days: typeof TRIAL_PERIOD_DAYS;
+  /** Stripe Checkout trial length (card required). */
+  trial_period_days: typeof STRIPE_TRIAL_DAYS;
+  /** No-card intro window from user.created_at. */
+  intro_trial_days: typeof INTRO_TRIAL_DAYS;
+  /** Caps during intro_trial (must be lower than paid plan caps for llm_total_tokens). */
+  intro_caps: PlanCaps;
   default_paid_plan_id: string;
   plans: Record<string, PlanDefinition>;
 }
@@ -65,7 +85,11 @@ export interface PlansCatalog {
 export interface PlansCatalogInput {
   version: 1;
   past_due_policy: PastDuePolicy;
-  trial_period_days: typeof TRIAL_PERIOD_DAYS;
+  /** Must be STRIPE_TRIAL_DAYS (30). */
+  trial_period_days: typeof STRIPE_TRIAL_DAYS;
+  /** Must be INTRO_TRIAL_DAYS (7). */
+  intro_trial_days: typeof INTRO_TRIAL_DAYS;
+  intro_caps: PlanCaps;
   default_paid_plan_id: string;
   plans: Record<
     string,
@@ -112,6 +136,8 @@ export interface Entitlement {
   stripe_subscription_id?: string | null;
   comped_by?: string | null;
   comped_plan_id?: string | null;
+  /** Set when source === intro_trial (ISO-8601 end of no-card window). */
+  intro_trial_ends_at?: string | null;
 }
 
 /**

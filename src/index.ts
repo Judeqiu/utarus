@@ -148,6 +148,8 @@ export type {
   PaywallChannel,
 } from './usage/index.js';
 export {
+  INTRO_TRIAL_DAYS,
+  STRIPE_TRIAL_DAYS,
   TRIAL_PERIOD_DAYS,
   isBillingEnabled,
   assertBillingConfig,

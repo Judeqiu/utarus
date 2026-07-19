@@ -23,13 +23,15 @@ let prevEnv: Record<string, string | undefined>;
 const PLANS: PlansCatalogInput = {
   version: 1,
   past_due_policy: 'retain_until_period_end',
-  trial_period_days: 7,
+  trial_period_days: 30,
+  intro_trial_days: 7,
+  intro_caps: { llm_total_tokens: 500 },
   default_paid_plan_id: 'pro',
   plans: {
     free: {
       display_name: 'Free',
       stripe_price_id: null,
-      caps: { llm_total_tokens: 1000 },
+      caps: { llm_total_tokens: 0 },
       features: [],
     },
     pro: {

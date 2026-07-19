@@ -15,7 +15,8 @@ import { parse } from 'yaml';
 import { resolveDataRoot } from '../config.js';
 import type { DomainBillingConfig } from './types.js';
 import {
-  TRIAL_PERIOD_DAYS,
+  INTRO_TRIAL_DAYS,
+  STRIPE_TRIAL_DAYS,
   type PlanCaps,
   type PlanDefinition,
   type PlansCatalog,
@@ -68,9 +69,14 @@ export function assertPlansCatalog(
       `Plans catalog past_due_policy must be "retain_until_period_end": ${sourceLabel}`,
     );
   }
-  if (input.trial_period_days !== TRIAL_PERIOD_DAYS) {
+  if (input.trial_period_days !== STRIPE_TRIAL_DAYS) {
     throw new Error(
-      `Plans catalog trial_period_days must be ${TRIAL_PERIOD_DAYS} (v1 fixed trial): ${sourceLabel}`,
+      `Plans catalog trial_period_days must be ${STRIPE_TRIAL_DAYS} (Stripe Checkout trial with card): ${sourceLabel}`,
+    );
+  }
+  if (input.intro_trial_days !== INTRO_TRIAL_DAYS) {
+    throw new Error(
+      `Plans catalog intro_trial_days must be ${INTRO_TRIAL_DAYS} (no-card intro from account create): ${sourceLabel}`,
     );
   }
   if (
@@ -158,10 +164,19 @@ export function assertPlansCatalog(
     );
   }
 
+  const introCaps = assertPlanCaps(input.intro_caps, 'intro_caps', sourceLabel);
+  if (introCaps.llm_total_tokens >= paid.caps.llm_total_tokens) {
+    throw new Error(
+      `intro_caps.llm_total_tokens (${introCaps.llm_total_tokens}) must be lower than paid plan "${paidId}" caps (${paid.caps.llm_total_tokens}): ${sourceLabel}`,
+    );
+  }
+
   return {
     version: 1,
     past_due_policy: 'retain_until_period_end',
-    trial_period_days: TRIAL_PERIOD_DAYS,
+    trial_period_days: STRIPE_TRIAL_DAYS,
+    intro_trial_days: INTRO_TRIAL_DAYS,
+    intro_caps: introCaps,
     default_paid_plan_id: paidId,
     plans,
   };

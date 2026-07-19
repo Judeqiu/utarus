@@ -17,13 +17,11 @@ import {
 } from './types.js';
 import { resolveDataRoot } from '../config.js';
 
-const DATA_ROOT = resolveDataRoot();
-const USERS_DIR = join(DATA_ROOT, 'users');
-
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+/** Re-resolve DATA_ROOT each call so tests can set UTARUS_DATA_ROOT per suite. */
 export function usersDir(): string {
-  return USERS_DIR;
+  return join(resolveDataRoot(), 'users');
 }
 
 export function assertValidSlug(slug: string): void {
@@ -39,7 +37,7 @@ export function assertValidSlug(slug: string): void {
 
 export function stateFilePath(slug: string): string {
   assertValidSlug(slug);
-  return join(USERS_DIR, `${slug}.yaml`);
+  return join(usersDir(), `${slug}.yaml`);
 }
 
 /**
@@ -91,8 +89,9 @@ export function stateExists(slug: string): boolean {
 }
 
 export function listUserSlugs(): string[] {
-  if (!existsSync(USERS_DIR)) return [];
-  return readdirSync(USERS_DIR, { withFileTypes: true })
+  const dir = usersDir();
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true })
     .filter(d => d.isFile() && d.name.endsWith('.yaml'))
     .map(d => d.name.replace(/\.yaml$/, ''));
 }
@@ -183,19 +182,23 @@ export function resolveUserBySlug(slug: string): UserState | null {
 
 // ── Invite codes ──────────────────────────────────────────────────────
 
-const INVITES_FILE = join(DATA_ROOT, 'invites.yaml');
+function invitesFile(): string {
+  return join(resolveDataRoot(), 'invites.yaml');
+}
 
 function loadInvites(): InviteCode[] {
-  if (!existsSync(INVITES_FILE)) return [];
-  const raw = readFileSync(INVITES_FILE, 'utf-8');
+  const path = invitesFile();
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, 'utf-8');
   const parsed = parse(raw);
   if (!Array.isArray(parsed)) return [];
   return parsed as InviteCode[];
 }
 
 function saveInvites(invites: InviteCode[]): void {
-  mkdirSync(dirname(INVITES_FILE), { recursive: true });
-  writeFileSync(INVITES_FILE, stringify(invites, { sortMapEntries: false }), 'utf-8');
+  const path = invitesFile();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, stringify(invites, { sortMapEntries: false }), 'utf-8');
 }
 
 function generateInviteCode(): string {
@@ -276,19 +279,23 @@ export function listInviteCodes(filter?: 'all' | 'unused' | 'used'): InviteCode[
 
 // ── Admin onboard codes ──────────────────────────────────────────────
 
-const ADMIN_CODES_FILE = join(DATA_ROOT, 'admin_codes.yaml');
+function adminCodesFile(): string {
+  return join(resolveDataRoot(), 'admin_codes.yaml');
+}
 
 function loadAdminCodes(): AdminOnboardCode[] {
-  if (!existsSync(ADMIN_CODES_FILE)) return [];
-  const raw = readFileSync(ADMIN_CODES_FILE, 'utf-8');
+  const path = adminCodesFile();
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, 'utf-8');
   const parsed = parse(raw);
   if (!Array.isArray(parsed)) return [];
   return parsed as AdminOnboardCode[];
 }
 
 function saveAdminCodes(codes: AdminOnboardCode[]): void {
-  mkdirSync(dirname(ADMIN_CODES_FILE), { recursive: true });
-  writeFileSync(ADMIN_CODES_FILE, stringify(codes, { sortMapEntries: false }), 'utf-8');
+  const path = adminCodesFile();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, stringify(codes, { sortMapEntries: false }), 'utf-8');
 }
 
 export function createAdminOnboardCode(params: {
@@ -361,11 +368,14 @@ export function listAdminOnboardCodes(filter?: 'all' | 'unused' | 'used'): Admin
 
 // ── Dynamic admin IDs (file-backed) ──────────────────────────────────
 
-const ADMIN_IDS_FILE = join(DATA_ROOT, 'admin_ids.yaml');
+function adminIdsFile(): string {
+  return join(resolveDataRoot(), 'admin_ids.yaml');
+}
 
 export function loadDynamicAdminIds(): number[] {
-  if (!existsSync(ADMIN_IDS_FILE)) return [];
-  const raw = readFileSync(ADMIN_IDS_FILE, 'utf-8');
+  const path = adminIdsFile();
+  if (!existsSync(path)) return [];
+  const raw = readFileSync(path, 'utf-8');
   const parsed = parse(raw);
   if (!Array.isArray(parsed)) return [];
   return parsed.filter((id: unknown): id is number => typeof id === 'number' && !isNaN(id));
@@ -375,6 +385,7 @@ export function addDynamicAdminId(telegramUserId: number): void {
   const ids = loadDynamicAdminIds();
   if (ids.includes(telegramUserId)) return;
   ids.push(telegramUserId);
-  mkdirSync(dirname(ADMIN_IDS_FILE), { recursive: true });
-  writeFileSync(ADMIN_IDS_FILE, stringify(ids, { sortMapEntries: false }), 'utf-8');
+  const path = adminIdsFile();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, stringify(ids, { sortMapEntries: false }), 'utf-8');
 }
