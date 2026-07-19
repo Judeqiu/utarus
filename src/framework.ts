@@ -136,7 +136,7 @@ ${skillCatalog}
 
 ## User state
 
-Every user has a YAML state file at data/users/<slug>.yaml. State on disk is the source of truth — re-read with get_user before any mutation. The framework reserves user.{id,slug,created_at,telegram_user_ids,slack_user_ids,auth_token}, profile.{display_name,contact_email}, and log[]. Everything else is owned by domain extensions.
+Every user has a YAML state file at data/users/<slug>.yaml. State on disk is the source of truth — re-read with get_user before any mutation. The framework reserves user.{id,slug,created_at,telegram_user_ids,slack_user_ids,auth_token,password_hash,beta}, profile.{display_name,contact_email}, and log[]. Everything else is owned by domain extensions. user.beta=true means grandfathered beta (unlimited caps when billing is on).
 
 **At the start of any session that touches a user:**
 1. Load \`getting-started\` skill FIRST when you need framework conventions.

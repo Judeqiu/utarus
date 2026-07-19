@@ -68,12 +68,13 @@ const VALID_PLANS: PlansCatalogInput = {
   },
 };
 
-function writeUser(slug: string, createdAt: string): void {
+function writeUser(slug: string, createdAt: string, opts?: { beta?: boolean }): void {
   writeDataFile(`users/${slug}.yaml`, {
     user: {
       id: '00000000-0000-4000-8000-000000000001',
       slug,
       created_at: createdAt,
+      ...(opts?.beta === true ? { beta: true } : {}),
     },
     profile: {
       display_name: slug,
@@ -477,6 +478,16 @@ describe('getEntitlement / getEffectiveCap / hasFeature', () => {
     expect(ent.plan_id).toBe('free');
     expect(getEffectiveCap('alice', 'llm_total_tokens')).toBe(0);
     expect(hasFeature('alice', 'html_reports')).toBe(false);
+  });
+
+  it('user.beta → unlimited caps, no expiry (even if created long ago)', () => {
+    writeUser('alice', '2020-01-01', { beta: true });
+    const ent = getEntitlement('alice');
+    expect(ent.source).toBe('beta');
+    expect(ent.display_name).toBe('Beta');
+    expect(getEffectiveCap('alice', 'llm_total_tokens')).toBeUndefined();
+    expect(getEffectiveCap('alice', 'tools.firecrawl')).toBeUndefined();
+    expect(hasFeature('alice', 'html_reports')).toBe(true);
   });
 
   it('Stripe trialing uses full pro caps (not intro_caps)', () => {

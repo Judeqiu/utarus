@@ -20,6 +20,7 @@ export type BillingStatus =
 export type EntitlementSource =
   | 'default_free'
   | 'intro_trial'
+  | 'beta'
   | 'stripe'
   | 'admin_comp'
   | 'period_expired_read';

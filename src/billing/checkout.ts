@@ -43,7 +43,8 @@ export function isCheckoutBlocked(userSlug: string): {
   reason?: string;
 } {
   const ent = getEntitlement(userSlug);
-  if (ent.status === 'comped') {
+  // Beta users may still open Checkout if they choose to convert later.
+  if (ent.source === 'admin_comp' || (ent.status === 'comped' && ent.source !== 'beta')) {
     return {
       blocked: true,
       reason:

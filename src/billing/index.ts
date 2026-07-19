@@ -52,6 +52,7 @@ export {
   getEntitlement,
   hasFeature,
   introTrialEndsAtIso,
+  isBetaUser,
   isWithinIntroTrial,
   parseUserCreatedAtMs,
 } from './entitlements.js';

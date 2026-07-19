@@ -24,6 +24,11 @@ export interface UserIdentity {
    *  legacy users backfilled via scripts/backfill-passwords.mjs. A user
    *  without this field cannot authenticate via username+password. */
   password_hash?: string;
+  /**
+   * Beta / grandfathered users: when true and billing is on, unlimited caps,
+   * no intro expiry, full paid-plan features. New signups omit this (false/absent).
+   */
+  beta?: boolean;
 }
 
 /**

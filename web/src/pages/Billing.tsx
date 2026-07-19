@@ -157,12 +157,14 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
   const paidName = status?.defaultPaidPlan?.display_name ?? 'Pro';
   const source = status?.entitlement?.source;
   const isIntro = source === 'intro_trial';
+  const isBeta = source === 'beta';
   const isStripePaid =
     source === 'stripe' ||
     source === 'admin_comp' ||
+    source === 'beta' ||
     status?.entitlement?.status === 'active' ||
     (status?.entitlement?.status === 'trialing' && source === 'stripe');
-  const showUpgrade = !status?.admin && !isStripePaid;
+  const showUpgrade = !status?.admin && !isStripePaid && !isBeta;
   const stripeTrialDays = status?.stripeTrialDays ?? status?.trialPeriodDays ?? 30;
 
   return (
@@ -217,6 +219,11 @@ export function BillingPage({ session, onBack }: BillingPageProps) {
                   status: {status?.entitlement?.status ?? 'none'} · source:{' '}
                   {status?.entitlement?.source ?? 'default_free'}
                 </p>
+                {isBeta && (
+                  <p className="mt-2 text-xs text-emerald-800">
+                    Beta access: unlimited usage, no expiry. Thank you for early support.
+                  </p>
+                )}
                 {isIntro && status?.entitlement?.intro_trial_ends_at && (
                   <p className="mt-2 text-xs text-amber-800">
                     Free intro trial (no card) until{' '}

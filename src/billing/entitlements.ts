@@ -1,6 +1,7 @@
 /**
  * Entitlement read API.
  *
+ * - Beta users (user.beta): unlimited caps, no expiry, full paid features
  * - Implicit free when no billing file (or free after intro)
  * - App-owned intro trial: 7 days from user.created_at, no card, intro_caps
  * - Stripe Checkout trial / active: full paid plan caps (30-day free with card)
@@ -129,6 +130,25 @@ function introEntitlement(
   };
 }
 
+/** Grandfathered / ops beta: unlimited, never expires. */
+function betaEntitlement(catalog: PlansCatalog): Entitlement {
+  const paid = getPlan(catalog.default_paid_plan_id, catalog);
+  return {
+    plan_id: paid.id,
+    status: 'comped',
+    source: 'beta',
+    display_name: 'Beta',
+    features: [...paid.features],
+  };
+}
+
+/** True when user.beta is explicitly true (strict boolean). */
+export function isBetaUser(userSlug: string): boolean {
+  if (!stateExists(userSlug)) return false;
+  const state = loadState(userSlug);
+  return state.user.beta === true;
+}
+
 /**
  * Compute effective entitlement from stored billing state + wall clock.
  * Pure read — does not rewrite the billing file.
@@ -191,8 +211,11 @@ function isFreeLike(ent: Entitlement): boolean {
 /**
  * Resolve effective entitlement for a user. Requires billing enabled.
  *
- * After Stripe/comp rules, free-like users within intro_trial_days of
- * user.created_at receive intro_trial (no card, intro_caps).
+ * Order:
+ * 1. user.beta === true → beta (unlimited, no expire) — wins over Stripe/free/intro
+ * 2. Stripe / admin_comp from billing file
+ * 3. free-like + within intro window → intro_trial
+ * 4. free
  */
 export function getEntitlement(
   userSlug: string,
@@ -204,6 +227,14 @@ export function getEntitlement(
     );
   }
   const catalog = loadPlansCatalog();
+
+  if (stateExists(userSlug)) {
+    const user = loadState(userSlug);
+    if (user.user.beta === true) {
+      return betaEntitlement(catalog);
+    }
+  }
+
   const raw = loadBillingState(userSlug);
   const fromBilling = entitlementFromBillingState(raw, catalog, now);
 
@@ -244,6 +275,7 @@ function planCapFor(planId: string, kind: CapKind, catalog: PlansCatalog): numbe
 /**
  * Effective cap for a user + kind.
  * - Billing off: same as getCap (default + overrides)
+ * - Billing on + beta: unlimited (undefined) — no overrides
  * - Billing on: overrides.<slug> only, else intro_caps / plan caps
  * - Admins: caller short-circuits before this (unlimited)
  */
@@ -259,12 +291,16 @@ export function getEffectiveCap(
     return getCap(userSlug, kind);
   }
 
+  const ent = getEntitlement(userSlug, now);
+  if (ent.source === 'beta') {
+    return undefined;
+  }
+
   const override = getCapOverride(userSlug, kind);
   if (override !== undefined) {
     return override;
   }
 
-  const ent = getEntitlement(userSlug, now);
   const catalog = loadPlansCatalog();
   if (ent.source === 'intro_trial') {
     return capsForKind(catalog.intro_caps, kind);
