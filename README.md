@@ -114,6 +114,17 @@ UTARUS_LLM_ROUTING={"default":"daily","has_images":"vision","utility":"daily"}
 
 Full design: [`docs/multi-llm-routing-design.md`](docs/multi-llm-routing-design.md). Caps stay **unified** across models; optional `UTARUS_LLM_CAP_WEIGHTS` multiplies tokens only at cap-check time.
 
+### Transient provider retries (429 / overload)
+
+pi-ai defaults **client** `maxRetries` to `0`, so a Kimi/DeepSeek `429 The engine is currently overloaded` ends the agent run immediately. Utarus injects retries on every agent stream call and on title `completeSimple`:
+
+| Env | Default when unset | Notes |
+| --- | --- | --- |
+| `UTARUS_LLM_MAX_RETRIES` | `4` | Non-negative integer; `0` disables |
+| `UTARUS_LLM_MAX_RETRY_DELAY_MS` | (unset) | Optional cap on provider-requested wait (ms) |
+
+Retries happen **inside** each LLM HTTP request (OpenAI SDK), so multi-step tool loops keep going without re-routing profiles. Invalid env values fail at boot via `assertLlmConfig()`.
+
 ### Capability model (`LlmCapabilities`)
 
 Features bind to the **nature of the resolved model**, never to provider/model ids. The single source of truth is `LlmCapabilities` (today: `imageInput`), resolved in `src/llm/profiles.ts` in this order:

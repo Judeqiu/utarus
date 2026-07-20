@@ -51,6 +51,15 @@ export {
   requireActiveLlmRoute,
 } from './run-context.js';
 
+export {
+  DEFAULT_LLM_MAX_RETRIES,
+  getLlmMaxRetries,
+  getLlmMaxRetryDelayMs,
+  getLlmStreamRetryOptions,
+  assertLlmRetryConfig,
+  type LlmStreamRetryOptions,
+} from './retry.js';
+
 import type { Model } from '@earendil-works/pi-ai';
 import { getDefaultResolvedLLM, getLlmProfile, getLlmStack } from './profiles.js';
 import { getUiLlmCapabilities } from './routing.js';

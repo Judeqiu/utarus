@@ -6,6 +6,7 @@
 
 import { type Model } from '@earendil-works/pi-ai';
 import { config } from '../config.js';
+import { assertLlmRetryConfig } from './retry.js';
 import type {
   LlmCapabilities,
   LlmProfileConfig,
@@ -475,6 +476,7 @@ export function assertLlmConfig(): void {
       throw new Error(`LLM profile "${name}" failed resolution (empty key or model id).`);
     }
   }
+  assertLlmRetryConfig();
 }
 
 /** Test helper — drop cache between env mutations. */

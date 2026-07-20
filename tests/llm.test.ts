@@ -24,6 +24,8 @@ const ENV_KEYS = [
   'UTARUS_LLM_ROUTE_HEAVY_MIN_CHARS',
   'UTARUS_LLM_ROUTE_HEAVY_KEYWORDS',
   'UTARUS_LLM_CAP_WEIGHTS',
+  'UTARUS_LLM_MAX_RETRIES',
+  'UTARUS_LLM_MAX_RETRY_DELAY_MS',
   'MY_CUSTOM_LLM_KEY',
 ];
 
@@ -422,3 +424,49 @@ describe('multi-profile routing', () => {
     expect(parseHeavyKeywords('Deep Dive,  PROOF ,')).toEqual(['deep dive', 'proof']);
   });
 });
+
+describe('LLM stream retries (UTARUS_LLM_MAX_RETRIES)', () => {
+  it('defaults to DEFAULT_LLM_MAX_RETRIES when unset', async () => {
+    const { getLlmMaxRetries, getLlmStreamRetryOptions, DEFAULT_LLM_MAX_RETRIES } =
+      await freshLLM();
+    expect(getLlmMaxRetries()).toBe(DEFAULT_LLM_MAX_RETRIES);
+    expect(DEFAULT_LLM_MAX_RETRIES).toBe(4);
+    expect(getLlmStreamRetryOptions()).toEqual({ maxRetries: 4 });
+  });
+
+  it('honours UTARUS_LLM_MAX_RETRIES including 0 (disable)', async () => {
+    process.env.UTARUS_LLM_MAX_RETRIES = '0';
+    const { getLlmMaxRetries, getLlmStreamRetryOptions } = await freshLLM();
+    expect(getLlmMaxRetries()).toBe(0);
+    expect(getLlmStreamRetryOptions()).toEqual({ maxRetries: 0 });
+  });
+
+  it('includes maxRetryDelayMs when set', async () => {
+    process.env.UTARUS_LLM_MAX_RETRIES = '3';
+    process.env.UTARUS_LLM_MAX_RETRY_DELAY_MS = '30000';
+    const { getLlmStreamRetryOptions } = await freshLLM();
+    expect(getLlmStreamRetryOptions()).toEqual({
+      maxRetries: 3,
+      maxRetryDelayMs: 30_000,
+    });
+  });
+
+  it('throws on invalid maxRetries / maxRetryDelayMs', async () => {
+    process.env.UTARUS_LLM_MAX_RETRIES = '-1';
+    const { getLlmMaxRetries } = await freshLLM();
+    expect(() => getLlmMaxRetries()).toThrow(/UTARUS_LLM_MAX_RETRIES/);
+
+    delete process.env.UTARUS_LLM_MAX_RETRIES;
+    process.env.UTARUS_LLM_MAX_RETRY_DELAY_MS = '1.5';
+    const mod = await freshLLM();
+    expect(() => mod.getLlmMaxRetryDelayMs()).toThrow(/UTARUS_LLM_MAX_RETRY_DELAY_MS/);
+  });
+
+  it('assertLlmConfig validates retry env', async () => {
+    process.env.DEEPSEEK_API_KEY = 'sk-ds-test';
+    process.env.UTARUS_LLM_MAX_RETRIES = 'not-a-number';
+    const { assertLlmConfig } = await freshLLM();
+    expect(() => assertLlmConfig()).toThrow(/UTARUS_LLM_MAX_RETRIES/);
+  });
+});
+

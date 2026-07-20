@@ -5,6 +5,7 @@
 
 import { completeSimple } from '@earendil-works/pi-ai';
 import { resolveUtilityLlm } from '../../llm/index.js';
+import { getLlmStreamRetryOptions } from '../../llm/retry.js';
 import { recordLlm } from '../../usage/index.js';
 
 const TITLE_MAX = 60;
@@ -73,7 +74,7 @@ export async function summarizeChatTitle(
         },
       ],
     },
-    { apiKey },
+    { apiKey, ...getLlmStreamRetryOptions() },
   );
 
   if (response.stopReason === 'error' || response.stopReason === 'aborted') {

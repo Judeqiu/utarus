@@ -38,7 +38,13 @@ export {
   getActiveLlmRoute,
   requireActiveLlmRoute,
   getCapWeight,
+  DEFAULT_LLM_MAX_RETRIES,
+  getLlmMaxRetries,
+  getLlmMaxRetryDelayMs,
+  getLlmStreamRetryOptions,
+  assertLlmRetryConfig,
 } from './llm/index.js';
+export type { LlmStreamRetryOptions } from './llm/index.js';
 export type {
   ResolvedLLM,
   LlmCapabilities,

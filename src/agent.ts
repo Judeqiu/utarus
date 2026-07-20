@@ -6,7 +6,9 @@
  */
 
 import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
+import { streamSimple } from '@earendil-works/pi-ai';
 import { getAgentModel, agentGetApiKey } from './llm/index.js';
+import { getLlmStreamRetryOptions } from './llm/retry.js';
 import { attachUsageTracking, wrapToolsWithCaps } from './usage/agent-tracking.js';
 
 const MAX_AGENTS = 100;
@@ -84,6 +86,16 @@ export function getOrCreateAgent(
     tools = wrapToolsWithCaps(tools, userSlug);
   }
 
+  // pi-ai defaults maxRetries to 0; wrap streamSimple so 429/overload
+  // retries keep multi-step tool runs alive (see src/llm/retry.ts).
+  const retryOpts = getLlmStreamRetryOptions();
+  console.log(
+    `[llm/retry] agent cacheKey=${cacheKey} maxRetries=${retryOpts.maxRetries}` +
+      (retryOpts.maxRetryDelayMs !== undefined
+        ? ` maxRetryDelayMs=${retryOpts.maxRetryDelayMs}`
+        : ''),
+  );
+
   const agent = new Agent({
     initialState: {
       systemPrompt: opts.systemPrompt,
@@ -91,6 +103,12 @@ export function getOrCreateAgent(
       tools,
     },
     getApiKey: (provider: string) => agentGetApiKey(provider),
+    maxRetryDelayMs: retryOpts.maxRetryDelayMs,
+    streamFn: (m, context, options) =>
+      streamSimple(m, context, {
+        ...options,
+        ...getLlmStreamRetryOptions(),
+      }),
   });
 
   // Subscribe usage + tool tracking. Admins bypass but we still record spend.
