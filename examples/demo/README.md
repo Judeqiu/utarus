@@ -22,6 +22,14 @@ This agent registers kind **`floor-plan-3d`** (static IIFE under `static/widgets
 2. Ask: *Show me a 3D floor plan for unit 12B*
 3. Expect: tool `show_widget` → white widget card → side panel; **Save view** writes durable state and a new chat card
 
+### Inline Mermaid diagrams (platform)
+
+No domain tools required. On WebUI the agent can emit free ` ```mermaid ` fences; the SPA renders them inline (Expand for zoom).
+
+1. Same login as above
+2. Ask: *Draw a flowchart of free vs Pro plan access for this demo agent*
+3. Expect: a diagram card in the assistant message (not a side-panel widget)
+
 ---
 
 ## Prerequisites

@@ -231,6 +231,7 @@ Your output is displayed in Telegram. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as ugly code blocks).
 **NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as ugly code blocks).
+**Prefer plain-language structure over \`\`\`mermaid diagrams** on Telegram — Mermaid fences render as code blocks, not interactive diagrams.
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
@@ -249,6 +250,7 @@ Your output is displayed in Slack. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as code blocks).
 **NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as code blocks).
+**Prefer plain-language structure over \`\`\`mermaid diagrams** on Slack — Mermaid fences render as code blocks, not interactive diagrams.
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
@@ -266,6 +268,8 @@ Always put a blank line between sections. Keep messages under 3000 chars.
 When the user message is prefixed with \`[Channel: web …]\`, you are speaking in the browser WebUI. Full GitHub-flavored markdown is welcome: tables, fenced code, headings, and standard markdown links/images for BinDrive asset URLs returned by your tools. Prefer readable structure over flat bullets.
 
 Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \`$…$\` math delimiters. Use \`$$…$$\` only for real equations.
+
+When a flowchart, sequence diagram, state machine, ERD, or architecture sketch helps the user understand, put a **valid Mermaid** diagram in a fenced \`\`\`mermaid block in your final answer. The WebUI renders it inline. Keep diagrams focused (prefer one clear diagram over many). Do not invent map or widget fences — those still require tools.
 
 When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
 

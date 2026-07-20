@@ -12,7 +12,7 @@
  * Components map:
  *   a       → <AssetLink>
  *   img     → <AssetImage>
- *   code    → <CodeBlock>
+ *   code    → <CodeBlock> | MapEmbed | WidgetCard | DiagramEmbed
  *   table   → wrapped (horizontal-scroll container)
  *   iframe  → <SandboxedIframe> (only same-origin /api/files URLs)
  *
@@ -20,7 +20,13 @@
  * components map uses those tags to decide embed-vs-link.
  */
 
-import { Children, isValidElement, memo, useMemo } from 'react';
+import {
+  Children,
+  isValidElement,
+  memo,
+  useMemo,
+  type ComponentPropsWithoutRef,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -32,12 +38,15 @@ import type { Root } from 'hast';
 
 import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
 import { remarkMapFence } from '../remark/map-fence.js';
+import { remarkMermaidFence } from '../remark/mermaid-fence.js';
 import { remarkWidgetFence } from '../remark/widget-fence.js';
 import { parseWidgetFenceBody } from '../widgets/widget-spec.js';
 import { AssetLink } from './assets/AssetLink.js';
 import { AssetImage } from './assets/AssetImage.js';
 import { SandboxedIframe } from './assets/SandboxedIframe.js';
 import { CodeBlock } from './assets/CodeBlock.js';
+import { DiagramEmbed } from './assets/DiagramEmbed.js';
+import { DiagramError } from './assets/DiagramError.js';
 import { MapEmbed } from './assets/MapEmbed.js';
 import { MapError } from './assets/MapError.js';
 import { WidgetCard, WidgetError } from './widgets/WidgetCard.js';
@@ -47,6 +56,44 @@ interface MarkdownRendererProps {
   text: string;
   viewerSlug: string;
   onOpenWidget?: (spec: WidgetSpec) => void;
+  /**
+   * When true (assistant still streaming/pending), chat embeds (map / widget /
+   * mermaid) stay as labeled source fences. Full cards/embeds only after the
+   * reply finishes — incomplete fences otherwise spam parse/render errors.
+   */
+  streaming?: boolean;
+}
+
+/** Shared chrome while an embed fence is still streaming in. */
+function EmbedFencePending({
+  label,
+  language,
+  codeProps,
+}: {
+  label: string;
+  language: string;
+  codeProps: ComponentPropsWithoutRef<'code'>;
+}) {
+  const className =
+    typeof codeProps.className === 'string' &&
+    codeProps.className.includes('language-')
+      ? codeProps.className
+      : `language-${language}`;
+  return (
+    <div
+      data-embed-pending
+      className="my-3 overflow-hidden rounded-lg border border-stone-200 dark:border-stone-700"
+    >
+      <div className="flex items-center gap-2 border-b border-stone-200 bg-stone-50 px-3 py-1.5 text-xs text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400">
+        <span className="font-medium text-stone-700 dark:text-stone-200">{label}</span>
+        <span className="text-stone-400">·</span>
+        <span>source (renders when reply finishes)</span>
+      </div>
+      <div className="[&_.my-3]:my-0 [&_pre]:rounded-none [&_pre]:border-0">
+        <CodeBlock {...codeProps} className={className} />
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -106,6 +153,13 @@ const DATA_WIDGET_ATTRS = [
   'dataWidgetPersistence',
 ] as const;
 
+const DATA_DIAGRAM_ATTRS = [
+  'data-diagram',
+  'data-diagram-error',
+  'dataDiagram',
+  'dataDiagramError',
+] as const;
+
 function buildSchema(): typeof defaultSchema {
   const base = defaultSchema;
   return {
@@ -127,6 +181,7 @@ function buildSchema(): typeof defaultSchema {
         'className',
         ...DATA_MAP_ATTRS,
         ...DATA_WIDGET_ATTRS,
+        ...DATA_DIAGRAM_ATTRS,
       ],
       pre: [...(base.attributes?.pre ?? []), 'className'],
       span: [...(base.attributes?.span ?? []), 'className'],
@@ -163,6 +218,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   text,
   viewerSlug,
   onOpenWidget,
+  streaming = false,
 }: MarkdownRendererProps) {
   const schema = useMemo(() => buildSchema(), []);
   const remarkPlugins = useMemo(
@@ -173,6 +229,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         [remarkMath, { singleDollarTextMath: false }],
         [remarkBinDriveAssets, { viewerSlug }],
         remarkMapFence,
+        // Tag embed fences while streaming; full render gated in code component.
+        remarkMermaidFence,
         remarkWidgetFence,
       ] as never,
     [viewerSlug],
@@ -183,8 +241,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypeRaw,
         [rehypeSanitize, schema],
         rehypeKatex,
-        // Do not highlight ```map / ```widget fences.
-        [rehypeHighlight, { plainText: ['map', 'widget'] }],
+        // Do not highlight ```map / ```widget / ```mermaid fences.
+        [rehypeHighlight, { plainText: ['map', 'widget', 'mermaid'] }],
       ] as never,
     [schema],
   );
@@ -200,16 +258,26 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           code: (props) => {
             const rec = props as Record<string, unknown>;
             const widgetFlag = pickDataProp(rec, 'data-widget');
-            if (widgetFlag === 'error') {
-              return (
-                <WidgetError
-                  message={
-                    pickDataProp(rec, 'data-widget-error') ?? 'Invalid widget block'
-                  }
-                />
-              );
-            }
-            if (widgetFlag === '1') {
+            if (widgetFlag === 'error' || widgetFlag === '1') {
+              if (streaming) {
+                return (
+                  <EmbedFencePending
+                    label="Widget"
+                    language="widget"
+                    codeProps={props}
+                  />
+                );
+              }
+              if (widgetFlag === 'error') {
+                return (
+                  <WidgetError
+                    message={
+                      pickDataProp(rec, 'data-widget-error') ??
+                      'Invalid widget block'
+                    }
+                  />
+                );
+              }
               // Re-parse fence body from code children for full props (not in attrs).
               const rawChildren = props.children;
               const body = String(
@@ -227,14 +295,21 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               return <WidgetCard spec={parsed.spec} onOpen={onOpenWidget} />;
             }
             const mapFlag = pickDataProp(rec, 'data-map');
-            if (mapFlag === 'error') {
-              return (
-                <MapError
-                  message={pickDataProp(rec, 'data-map-error') ?? 'Invalid map block'}
-                />
-              );
-            }
-            if (mapFlag === '1') {
+            if (mapFlag === 'error' || mapFlag === '1') {
+              if (streaming) {
+                return (
+                  <EmbedFencePending label="Map" language="map" codeProps={props} />
+                );
+              }
+              if (mapFlag === 'error') {
+                return (
+                  <MapError
+                    message={
+                      pickDataProp(rec, 'data-map-error') ?? 'Invalid map block'
+                    }
+                  />
+                );
+              }
               const mode = pickDataProp(rec, 'data-map-mode');
               if (mode !== 'place' && mode !== 'view') {
                 return <MapError message="map mode missing or invalid after sanitize" />;
@@ -273,6 +348,35 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                   label={pickDataProp(rec, 'data-map-label')}
                 />
               );
+            }
+            const diagramFlag = pickDataProp(rec, 'data-diagram');
+            if (diagramFlag === 'error' || diagramFlag === '1') {
+              if (streaming) {
+                return (
+                  <EmbedFencePending
+                    label="Diagram"
+                    language="mermaid"
+                    codeProps={props}
+                  />
+                );
+              }
+              if (diagramFlag === 'error') {
+                return (
+                  <DiagramError
+                    message={
+                      pickDataProp(rec, 'data-diagram-error') ??
+                      'Invalid diagram block'
+                    }
+                  />
+                );
+              }
+              const rawChildren = props.children;
+              const body = String(
+                Array.isArray(rawChildren)
+                  ? rawChildren.join('')
+                  : (rawChildren ?? ''),
+              );
+              return <DiagramEmbed source={body} />;
             }
             return <CodeBlock {...props} />;
           },
@@ -313,6 +417,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               const props = el.props as {
                 'data-map-embed'?: boolean | string;
                 'data-widget-card'?: boolean | string;
+                'data-diagram-embed'?: boolean | string;
+                'data-embed-pending'?: boolean | string;
               };
               const isMap =
                 t === MapEmbed ||
@@ -328,7 +434,17 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 displayName === 'WidgetError' ||
                 props['data-widget-card'] === true ||
                 props['data-widget-card'] === '';
-              if (isMap || isWidget) {
+              const isDiagram =
+                t === DiagramEmbed ||
+                t === DiagramError ||
+                displayName === 'DiagramEmbed' ||
+                displayName === 'DiagramError' ||
+                props['data-diagram-embed'] === true ||
+                props['data-diagram-embed'] === '';
+              const isEmbedPending =
+                props['data-embed-pending'] === true ||
+                props['data-embed-pending'] === '';
+              if (isMap || isWidget || isDiagram || isEmbedPending) {
                 return <>{children}</>;
               }
             }

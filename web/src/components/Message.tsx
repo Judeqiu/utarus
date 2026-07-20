@@ -102,6 +102,7 @@ export function MessageView({ message, viewerSlug, now, onOpenWidget }: MessageV
               text={message.text}
               viewerSlug={viewerSlug}
               onOpenWidget={onOpenWidget}
+              streaming={Boolean(message.streaming || message.pending)}
             />
           </div>
         ) : null}
