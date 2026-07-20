@@ -37,7 +37,18 @@ import { ThreadView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
 import { ConversationSidebar } from '../components/ConversationSidebar.js';
 import { AssetPanel } from '../components/AssetPanel.js';
-import { AssetPanelContext, type PanelAsset } from '../panel.js';
+import { WidgetPanelHost } from '../components/widgets/WidgetPanelHost.js';
+import {
+  AssetPanelContext,
+  PanelContext,
+  type PanelAsset,
+  type PanelContent,
+} from '../panel.js';
+import {
+  lastOpenInAssistantText,
+  resolveWidgetInstance,
+} from '../widgets/resolve-instance.js';
+import type { WidgetSpec } from '../widgets/widget-spec.js';
 import { Menu, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
@@ -92,6 +103,7 @@ export function ChatPage({ session }: ChatPageProps) {
   const [imageInputEnabled, setImageInputEnabled] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [panelAsset, setPanelAsset] = useState<PanelAsset | null>(null);
+  const [panelContent, setPanelContent] = useState<PanelContent | null>(null);
   const [pendingQuote, setPendingQuote] = useState<ChatQuoteRef | null>(null);
   /** Message ids known to exist on the server (conversation load + run ack swaps). */
   const [serverKnownMessageIds, setServerKnownMessageIds] = useState<
@@ -245,6 +257,12 @@ export function ChatPage({ session }: ChatPageProps) {
               : m,
           ),
         );
+        // Auto-open last action:open widget in this assistant message (K8).
+        const openSpec = lastOpenInAssistantText(ev.text);
+        if (openSpec) {
+          setPanelContent({ type: 'widget', spec: openSpec });
+          setPanelAsset(null);
+        }
         void refreshList();
         finalize();
         break;
@@ -425,6 +443,20 @@ export function ChatPage({ session }: ChatPageProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- boot once
   }, []);
+
+  const handleOpenWidget = useCallback(
+    (spec: WidgetSpec) => {
+      // Prefer latest resolved props from full thread for this instance.
+      const resolved = resolveWidgetInstance(
+        messages.map((m) => ({ role: m.role, text: m.text })),
+        spec.instanceId,
+      );
+      const openSpec = resolved.ok ? resolved.spec : spec;
+      setPanelContent({ type: 'widget', spec: openSpec });
+      setPanelAsset(null);
+    },
+    [messages],
+  );
 
   async function handleSend(
     text: string,
@@ -717,73 +749,129 @@ export function ChatPage({ session }: ChatPageProps) {
         </div>
       )}
 
-      <AssetPanelContext.Provider value={setPanelAsset}>
-        <div className="relative flex min-h-0 flex-1">
-          <ConversationSidebar
-            conversations={conversations}
-            activeId={activeConversationId}
-            collapsed={sidebarCollapsed}
-            busy={isStreaming}
-            mobileOpen={sidebarMobileOpen}
-            session={session}
-            agentName={agentName}
-            onSelect={(id) => void handleSelectChat(id)}
-            onNew={() => void handleNewChat()}
-            onDelete={(id) => void handleDeleteChat(id)}
-            onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-            onCloseMobile={() => setSidebarMobileOpen(false)}
-            onLogout={() => void logout()}
-            onChangePassword={() => setShowChangePassword(true)}
-            onHelp={() => {
-              setPendingQuote(null);
-              setShowHelp(true);
-            }}
-          />
-
-          {sidebarMobileOpen && (
-            <button
-              type="button"
-              onClick={() => setSidebarMobileOpen(false)}
-              className="fixed inset-0 z-30 bg-black/40 sm:hidden"
-              aria-label="Close chats"
-            />
-          )}
-
-          <div className="flex min-w-0 flex-1 flex-col">
-            <ThreadView
-              messages={messages}
-              viewerSlug={session.slug}
-              now={now}
+      <AssetPanelContext.Provider
+        value={(asset) => {
+          setPanelAsset(asset);
+          if (asset) {
+            setPanelContent({
+              type: 'file',
+              url: asset.url,
+              filename: asset.filename,
+              kind: asset.kind,
+            });
+          } else if (panelContent?.type === 'file') {
+            setPanelContent(null);
+          }
+        }}
+      >
+        <PanelContext.Provider value={setPanelContent}>
+          <div className="relative flex min-h-0 flex-1">
+            <ConversationSidebar
+              conversations={conversations}
+              activeId={activeConversationId}
+              collapsed={sidebarCollapsed}
+              busy={isStreaming}
+              mobileOpen={sidebarMobileOpen}
+              session={session}
               agentName={agentName}
-              serverKnownMessageIds={serverKnownMessageIds}
-              onQuote={handleQuote}
-              onQuoteError={handleQuoteError}
-            />
-
-            <Composer
-              isStreaming={isStreaming}
-              agentName={agentName}
-              imageInputEnabled={imageInputEnabled}
-              pendingQuote={pendingQuote}
-              onClearQuote={() => setPendingQuote(null)}
-              onSend={handleSend}
-              onAbort={handleAbort}
-              onClear={handleClear}
+              onSelect={(id) => void handleSelectChat(id)}
+              onNew={() => void handleNewChat()}
+              onDelete={(id) => void handleDeleteChat(id)}
+              onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+              onCloseMobile={() => setSidebarMobileOpen(false)}
+              onLogout={() => void logout()}
+              onChangePassword={() => setShowChangePassword(true)}
               onHelp={() => {
                 setPendingQuote(null);
                 setShowHelp(true);
               }}
             />
-          </div>
 
-          {panelAsset && (
-            <AssetPanel
-              asset={panelAsset}
-              viewerSlug={session.slug}
-              onClose={() => setPanelAsset(null)}
-            />
-          )}
-        </div>
+            {sidebarMobileOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarMobileOpen(false)}
+                className="fixed inset-0 z-30 bg-black/40 sm:hidden"
+                aria-label="Close chats"
+              />
+            )}
+
+            <div className="flex min-w-0 flex-1 flex-col">
+              <ThreadView
+                messages={messages}
+                viewerSlug={session.slug}
+                now={now}
+                agentName={agentName}
+                serverKnownMessageIds={serverKnownMessageIds}
+                onQuote={handleQuote}
+                onQuoteError={handleQuoteError}
+                onOpenWidget={handleOpenWidget}
+              />
+
+              <Composer
+                isStreaming={isStreaming}
+                agentName={agentName}
+                imageInputEnabled={imageInputEnabled}
+                pendingQuote={pendingQuote}
+                onClearQuote={() => setPendingQuote(null)}
+                onSend={handleSend}
+                onAbort={handleAbort}
+                onClear={handleClear}
+                onHelp={() => {
+                  setPendingQuote(null);
+                  setShowHelp(true);
+                }}
+              />
+            </div>
+
+            {panelContent?.type === 'widget' ? (
+              <WidgetPanelHost
+                spec={panelContent.spec}
+                conversationId={activeConversationId}
+                onClose={() => {
+                  setPanelContent(null);
+                  setPanelAsset(null);
+                }}
+                onArtifactMessage={(msg) => {
+                  setMessages((prev) => {
+                    if (prev.some((m) => m.id === msg.id)) return prev;
+                    return [
+                      ...prev,
+                      {
+                        id: msg.id,
+                        role: msg.role,
+                        text: msg.text,
+                        stopReason: msg.stopReason,
+                      },
+                    ];
+                  });
+                  setServerKnownMessageIds((prev) => {
+                    const next = new Set(prev);
+                    next.add(msg.id);
+                    return next;
+                  });
+                }}
+              />
+            ) : panelContent?.type === 'file' || panelAsset ? (
+              <AssetPanel
+                asset={
+                  panelContent?.type === 'file'
+                    ? {
+                        url: panelContent.url,
+                        filename: panelContent.filename,
+                        kind: panelContent.kind,
+                      }
+                    : panelAsset!
+                }
+                viewerSlug={session.slug}
+                onClose={() => {
+                  setPanelContent(null);
+                  setPanelAsset(null);
+                }}
+              />
+            ) : null}
+          </div>
+        </PanelContext.Provider>
       </AssetPanelContext.Provider>
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}

@@ -2,7 +2,7 @@
  * Authenticated shell — top nav from /api/webui/manifest + page outlet.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SessionUser } from '../types.js';
 import { logout } from '../auth.js';
 import { ChatPage } from './Chat.js';
@@ -20,6 +20,11 @@ import {
   MessageSquare,
   Shield,
 } from 'lucide-react';
+import {
+  WidgetRegistryContext,
+  buildClientRegistry,
+  type WidgetKindRegistration,
+} from '../widgets/registry-context.js';
 
 export interface ManifestNavItem {
   id: string;
@@ -46,6 +51,7 @@ export interface WebUiManifest {
   defaultPath: string;
   nav: ManifestNavItem[];
   routes: ManifestRoute[];
+  widgets?: WidgetKindRegistration[];
 }
 
 interface ShellProps {
@@ -86,16 +92,20 @@ export function Shell({ session, path, navigate }: ShellProps) {
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [manifestFetchOk, setManifestFetchOk] = useState(false);
+
   const loadManifest = useCallback(async () => {
     try {
       const res = await fetch('/api/webui/manifest', { credentials: 'include' });
       if (!res.ok) throw new Error(`manifest ${res.status}`);
       const data = (await res.json()) as WebUiManifest;
       setManifest(data);
+      setManifestFetchOk(true);
       setLoadError(null);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
-      // Fallback: chat only
+      setManifestFetchOk(false);
+      // Fallback: chat only (widgets unavailable)
       setManifest({
         agentKey: null,
         productName: 'Agent',
@@ -104,9 +114,21 @@ export function Shell({ session, path, navigate }: ShellProps) {
           { id: 'chat', label: 'Chat', path: '/', icon: 'message-square', framework: true },
         ],
         routes: [],
+        widgets: undefined,
       });
     }
   }, []);
+
+  const widgetRegistry = useMemo(
+    () =>
+      buildClientRegistry({
+        agentKey: manifest?.agentKey ?? null,
+        widgets: manifest?.widgets,
+        fetchOk: manifestFetchOk,
+        fetchError: loadError ?? undefined,
+      }),
+    [manifest, manifestFetchOk, loadError],
+  );
 
   useEffect(() => {
     void loadManifest();
@@ -248,7 +270,9 @@ export function Shell({ session, path, navigate }: ShellProps) {
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-        {showChat && <ChatPage session={session} />}
+        <WidgetRegistryContext.Provider value={widgetRegistry}>
+          {showChat && <ChatPage session={session} />}
+        </WidgetRegistryContext.Provider>
         {!showChat && route?.pageKind === 'notifications' && (
           <NotificationsPage
             apiBase={route.apiBase || ''}

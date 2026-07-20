@@ -84,6 +84,7 @@ const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
   'For BinDrive assets, write standard markdown links/images using the URLs your tools returned.\n' +
   'For maps: call show_map when a place map helps; paste the WEB ONLY ```map fence once; never invent map fences.\n' +
+  'For side-panel widgets: call show_widget / update_widget; paste the WEB ONLY ```widget fence once; never invent widget fences.\n' +
   'Keep total length reasonable.]';
 
 const UUID_RE =

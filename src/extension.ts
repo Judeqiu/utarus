@@ -99,6 +99,11 @@ export interface DomainWebUiExtension {
   }>;
   /** Static files at /domain-assets/<agentKey>/ */
   staticDir?: string;
+  /**
+   * Domain-registered side-panel widget kinds (iframe-bundle under staticDir).
+   * Platform always adds html-bundle. See docs/webui-chat-widgets-design.md.
+   */
+  widgets?: import('./widgets/registry.js').WidgetKindRegistration[];
 }
 
 export interface DomainExtension {

@@ -20,15 +20,17 @@ import { ToolChipView } from './ToolChip.js';
 import { AttachmentStrip } from './AttachmentStrip.js';
 import { QuoteChip } from './QuoteChip.js';
 import { Check, Copy, Loader2 } from 'lucide-react';
+import type { WidgetSpec } from '../widgets/widget-spec.js';
 
 interface MessageViewProps {
   message: ChatMessage;
   viewerSlug: string;
   now: number;
   agentName: string;
+  onOpenWidget?: (spec: WidgetSpec) => void;
 }
 
-export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
+export function MessageView({ message, viewerSlug, now, onOpenWidget }: MessageViewProps) {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -96,7 +98,11 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
             data-message-id={message.id}
             data-message-role="assistant"
           >
-            <MarkdownRenderer text={message.text} viewerSlug={viewerSlug} />
+            <MarkdownRenderer
+              text={message.text}
+              viewerSlug={viewerSlug}
+              onOpenWidget={onOpenWidget}
+            />
           </div>
         ) : null}
 
@@ -104,7 +110,9 @@ export function MessageView({ message, viewerSlug, now }: MessageViewProps) {
           <AttachmentStrip assets={message.assets} viewerSlug={viewerSlug} />
         )}
 
-        {message.stopReason && message.stopReason !== 'stop' && (
+        {message.stopReason &&
+          message.stopReason !== 'stop' &&
+          message.stopReason !== 'widget_state_save' && (
           <div className="mt-2 text-xs text-stone-500">
             stop: <code className="rounded bg-stone-100 px-1 py-0.5">{message.stopReason}</code>
           </div>

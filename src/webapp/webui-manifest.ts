@@ -5,6 +5,11 @@
 import type { DomainExtension, DomainWebNavItem, DomainWebRoute } from '../extension.js';
 import { config } from '../config.js';
 import { isBillingEnabled } from '../billing/index.js';
+import {
+  buildWidgetRegistry,
+  listWidgetRegistrations,
+  type WidgetKindRegistration,
+} from '../widgets/registry.js';
 
 export interface WebUiManifest {
   agentKey: string | null;
@@ -12,11 +17,14 @@ export interface WebUiManifest {
   defaultPath: string;
   nav: Array<DomainWebNavItem & { framework?: boolean }>;
   routes: DomainWebRoute[];
+  /** Always present after widgets ship — platform + domain kinds. */
+  widgets: WidgetKindRegistration[];
 }
 
 export function buildWebUiManifest(ext: DomainExtension): WebUiManifest {
   const webUi = ext.webUi;
   const productName = webUi?.productName?.trim() || config.agent.name || 'Agent';
+  const widgetRegistry = buildWidgetRegistry(ext);
 
   const frameworkNav: Array<DomainWebNavItem & { framework?: boolean }> = [
     {
@@ -63,5 +71,6 @@ export function buildWebUiManifest(ext: DomainExtension): WebUiManifest {
     defaultPath: webUi?.defaultPath?.trim() || '/',
     nav,
     routes: webUi?.routes ?? [],
+    widgets: listWidgetRegistrations(widgetRegistry),
   };
 }

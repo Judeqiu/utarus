@@ -1,7 +1,10 @@
 /**
- * Demo DomainExtension — minimal purpose + billing plans + /plan command.
+ * Demo DomainExtension — minimal purpose + billing plans + /plan command
+ * + floor-plan-3d side-panel widget.
  */
 
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { DomainExtension } from 'utarus';
 import {
   getEntitlement,
@@ -12,6 +15,9 @@ import {
 } from 'utarus';
 import { DEMO_PLANS } from './plans.js';
 import { createHelloTool } from './tools/hello.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const demoStaticDir = resolve(__dirname, '../static');
 
 function planStatusText(userSlug: string, isAdmin: boolean): string {
   if (isAdmin) {
@@ -42,15 +48,23 @@ function planStatusText(userSlug: string, isAdmin: boolean): string {
 }
 
 export const demoExtension: DomainExtension = {
-  purpose: `You are **Demo**, a sample Utarus agent that demonstrates the Stripe paywall.
+  purpose: `You are **Demo**, a sample Utarus agent that demonstrates the Stripe paywall and side-panel widgets.
 
 Your job:
 - Be a friendly general assistant.
 - When users hit usage limits, explain Free vs Pro clearly and point them to Billing / upgrade.
 - Prefer the \`hello\` tool when they want a demo tool call.
-- Do not invent billing state — use what the system tells you.
+- When the user asks for a floor plan, 3D layout, or property plan, call \`show_widget\` with:
+  - kind: \`floor-plan-3d\`
+  - title: a short unit title
+  - props: e.g. \`{ "unitLabel": "12B", "units": "metric" }\`
+  - state: durable document, e.g.
+    \`{ "rooms":[{"id":"living","polygon":[[0,0],[5,0],[5,4],[0,4]]},{"id":"kitchen","polygon":[[5,0],[8,0],[8,3],[5,3]]},{"id":"bed","polygon":[[0,4],[4,4],[4,7],[0,7]]}], "levels":1, "camera":{"theta":0.9,"phi":0.7,"radius":14}, "highlightRoomId":null }\`
+  Then paste the WEB ONLY \`\`\`widget fence from the tool into your final answer.
+- To change durable geometry later use \`update_widget\` with \`state\` (full replace) and/or read with \`read_widget_state\`.
+- Do not invent billing state or widget fences — use tools.
 
-Scope: demo and paywall walkthrough only. Decline unrelated production-domain work.`,
+Scope: demo, paywall walkthrough, and widget showcase. Decline unrelated production-domain work.`,
 
   tools: (userSlug: string, _isAdmin: boolean) => [createHelloTool(userSlug)],
 
@@ -108,6 +122,18 @@ Scope: demo and paywall walkthrough only. Decline unrelated production-domain wo
     agentKey: 'demo',
     productName: 'Demo',
     defaultPath: '/',
+    staticDir: demoStaticDir,
+    widgets: [
+      {
+        id: 'floor-plan-3d',
+        label: '3D floor plan',
+        runtime: 'iframe-bundle',
+        entryHtml: 'widgets/floor-plan-3d/index.html',
+        sandboxProfile: 'strict',
+        supportsUpdate: true,
+        supportsPersistence: true,
+      },
+    ],
   },
 
   billing: {

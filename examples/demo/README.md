@@ -12,7 +12,15 @@ Use this to learn the free → Pro path end-to-end without forking Binary/Marie.
 | **Trial** | 7 days on every Checkout |
 | **WebUI** | `http://localhost:3010` (default) |
 
-Design / framework docs: [`docs/paywall-stripe-design.md`](../../docs/paywall-stripe-design.md), [`docs/billing.md`](../../docs/billing.md).
+Design / framework docs: [`docs/paywall-stripe-design.md`](../../docs/paywall-stripe-design.md), [`docs/billing.md`](../../docs/billing.md), [`docs/webui-chat-widgets.md`](../../docs/webui-chat-widgets.md) (side-panel widgets / floor plan).
+
+### Side-panel widget demo
+
+This agent registers kind **`floor-plan-3d`** (static IIFE under `static/widgets/floor-plan-3d/`).
+
+1. `npm run dev` → http://localhost:3010 → login **demo** / **demo1234**
+2. Ask: *Show me a 3D floor plan for unit 12B*
+3. Expect: tool `show_widget` → white widget card → side panel; **Save view** writes durable state and a new chat card
 
 ---
 

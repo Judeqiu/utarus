@@ -83,8 +83,9 @@
   .prose-chat pre {
     @apply my-3 overflow-x-auto rounded-lg bg-stone-900 p-3 text-stone-100;
   }
-  /* Map embeds must not inherit code-block chrome if pre unwrap fails */
-  .prose-chat pre:has([data-map-embed]) {
+  /* Map / widget cards must not inherit code-block chrome if pre unwrap fails */
+  .prose-chat pre:has([data-map-embed]),
+  .prose-chat pre:has([data-widget-card]) {
     @apply my-0 bg-transparent p-0 text-inherit shadow-none;
   }
   .prose-chat pre code {

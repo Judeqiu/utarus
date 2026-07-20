@@ -15,6 +15,7 @@ import {
   resolveQuoteFromSelection,
   type QuoteSelectionResult,
 } from '../lib/quote-selection.js';
+import type { WidgetSpec } from '../widgets/widget-spec.js';
 
 interface ThreadViewProps {
   messages: ChatMessage[];
@@ -25,6 +26,7 @@ interface ThreadViewProps {
   serverKnownMessageIds: ReadonlySet<string>;
   onQuote?: (quote: ChatQuoteRef) => void;
   onQuoteError?: (message: string) => void;
+  onOpenWidget?: (spec: WidgetSpec) => void;
 }
 
 export function ThreadView({
@@ -35,6 +37,7 @@ export function ThreadView({
   serverKnownMessageIds,
   onQuote,
   onQuoteError,
+  onOpenWidget,
 }: ThreadViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -154,6 +157,7 @@ export function ThreadView({
             viewerSlug={viewerSlug}
             now={now}
             agentName={agentName}
+            onOpenWidget={onOpenWidget}
           />
         ))}
         <div ref={bottomRef} />

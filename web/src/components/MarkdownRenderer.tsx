@@ -32,16 +32,21 @@ import type { Root } from 'hast';
 
 import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
 import { remarkMapFence } from '../remark/map-fence.js';
+import { remarkWidgetFence } from '../remark/widget-fence.js';
+import { parseWidgetFenceBody } from '../widgets/widget-spec.js';
 import { AssetLink } from './assets/AssetLink.js';
 import { AssetImage } from './assets/AssetImage.js';
 import { SandboxedIframe } from './assets/SandboxedIframe.js';
 import { CodeBlock } from './assets/CodeBlock.js';
 import { MapEmbed } from './assets/MapEmbed.js';
 import { MapError } from './assets/MapError.js';
+import { WidgetCard, WidgetError } from './widgets/WidgetCard.js';
+import type { WidgetSpec } from '../widgets/widget-spec.js';
 
 interface MarkdownRendererProps {
   text: string;
   viewerSlug: string;
+  onOpenWidget?: (spec: WidgetSpec) => void;
 }
 
 /**
@@ -84,6 +89,23 @@ const DATA_MAP_ATTRS = [
   'dataMapLabel',
 ] as const;
 
+const DATA_WIDGET_ATTRS = [
+  'data-widget',
+  'data-widget-error',
+  'data-widget-instance-id',
+  'data-widget-kind',
+  'data-widget-title',
+  'data-widget-action',
+  'data-widget-persistence',
+  'dataWidget',
+  'dataWidgetError',
+  'dataWidgetInstanceId',
+  'dataWidgetKind',
+  'dataWidgetTitle',
+  'dataWidgetAction',
+  'dataWidgetPersistence',
+] as const;
+
 function buildSchema(): typeof defaultSchema {
   const base = defaultSchema;
   return {
@@ -100,7 +122,12 @@ function buildSchema(): typeof defaultSchema {
         'title',
         ...DATA_ASSET_ATTRS,
       ],
-      code: [...(base.attributes?.code ?? []), 'className', ...DATA_MAP_ATTRS],
+      code: [
+        ...(base.attributes?.code ?? []),
+        'className',
+        ...DATA_MAP_ATTRS,
+        ...DATA_WIDGET_ATTRS,
+      ],
       pre: [...(base.attributes?.pre ?? []), 'className'],
       span: [...(base.attributes?.span ?? []), 'className'],
     },
@@ -135,6 +162,7 @@ function pickDataProp(
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   text,
   viewerSlug,
+  onOpenWidget,
 }: MarkdownRendererProps) {
   const schema = useMemo(() => buildSchema(), []);
   const remarkPlugins = useMemo(
@@ -145,6 +173,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         [remarkMath, { singleDollarTextMath: false }],
         [remarkBinDriveAssets, { viewerSlug }],
         remarkMapFence,
+        remarkWidgetFence,
       ] as never,
     [viewerSlug],
   );
@@ -154,8 +183,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypeRaw,
         [rehypeSanitize, schema],
         rehypeKatex,
-        // Do not highlight ```map fences (and avoid mutating their props).
-        [rehypeHighlight, { plainText: ['map'] }],
+        // Do not highlight ```map / ```widget fences.
+        [rehypeHighlight, { plainText: ['map', 'widget'] }],
       ] as never,
     [schema],
   );
@@ -170,6 +199,33 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           img: (props) => <AssetImage {...props} />,
           code: (props) => {
             const rec = props as Record<string, unknown>;
+            const widgetFlag = pickDataProp(rec, 'data-widget');
+            if (widgetFlag === 'error') {
+              return (
+                <WidgetError
+                  message={
+                    pickDataProp(rec, 'data-widget-error') ?? 'Invalid widget block'
+                  }
+                />
+              );
+            }
+            if (widgetFlag === '1') {
+              // Re-parse fence body from code children for full props (not in attrs).
+              const rawChildren = props.children;
+              const body = String(
+                Array.isArray(rawChildren)
+                  ? rawChildren.join('')
+                  : (rawChildren ?? ''),
+              );
+              const parsed = parseWidgetFenceBody(body);
+              if (!parsed.ok) {
+                return <WidgetError message={parsed.error} />;
+              }
+              if (!onOpenWidget) {
+                return <WidgetError message="Widget panel is not available" />;
+              }
+              return <WidgetCard spec={parsed.spec} onOpen={onOpenWidget} />;
+            }
             const mapFlag = pickDataProp(rec, 'data-map');
             if (mapFlag === 'error') {
               return (
@@ -242,8 +298,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               <table {...props} />
             </div>
           ),
-          // Fenced blocks are pre>code; MapEmbed/MapError replace code — unwrap pre
-          // so maps are not styled as dark code shells (.prose-chat pre).
+          // Fenced blocks are pre>code; Map/Widget replace code — unwrap pre
+          // so they are not styled as dark code shells (.prose-chat pre).
           pre: ({ children }) => {
             const list = Children.toArray(children);
             if (list.length === 1 && isValidElement(list[0])) {
@@ -254,7 +310,10 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                   ? (t as { displayName?: string; name?: string }).displayName ||
                     (t as { name?: string }).name
                   : undefined;
-              const props = el.props as { 'data-map-embed'?: boolean | string };
+              const props = el.props as {
+                'data-map-embed'?: boolean | string;
+                'data-widget-card'?: boolean | string;
+              };
               const isMap =
                 t === MapEmbed ||
                 t === MapError ||
@@ -262,7 +321,14 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                 displayName === 'MapError' ||
                 props['data-map-embed'] === true ||
                 props['data-map-embed'] === '';
-              if (isMap) {
+              const isWidget =
+                t === WidgetCard ||
+                t === WidgetError ||
+                displayName === 'WidgetCard' ||
+                displayName === 'WidgetError' ||
+                props['data-widget-card'] === true ||
+                props['data-widget-card'] === '';
+              if (isMap || isWidget) {
                 return <>{children}</>;
               }
             }

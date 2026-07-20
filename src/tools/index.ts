@@ -7,3 +7,4 @@ export { createWriteReportTool } from './write-report.js';
 export { createBinDriveTools } from './bindrive.js';
 export { createReportingTools } from './reporting.js';
 export { createShowMapTool } from './show-map.js';
+export { createShowWidgetTools } from './show-widget.js';

@@ -31,6 +31,7 @@ import { adminRouter } from './chat/admin-router.js';
 import { onboardRedeemRouter } from './chat/onboard.js';
 import { createWebUiRouter } from './webui-router.js';
 import { mapsRouter } from './maps-router.js';
+import { createWidgetsRouter } from './widgets-router.js';
 import { requireAuth, requireAdmin } from './auth.js';
 import { isBillingEnabled, assertBillingConfig } from '../billing/index.js';
 import { billingWebhookHandler } from '../billing/webhooks.js';
@@ -169,6 +170,13 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   app.use('/api/chat', createChatRouter({ framework }));
   app.use('/api/admin', adminRouter);
   app.use('/api/maps', mapsRouter);
+  app.use(
+    '/api/widgets',
+    createWidgetsRouter({
+      store: framework.widgetStateStore,
+      registry: framework.widgetRegistry,
+    }),
+  );
   app.use('/api/webui', createWebUiRouter(framework));
   if (isBillingEnabled()) {
     app.use('/api/billing', createBillingRouter());

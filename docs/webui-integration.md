@@ -4,7 +4,7 @@ How a **domain agent** enables the Utarus browser chat (Claude-style multi-chat,
 
 **Audience:** engineers wiring Binary, Marie, Invage, or a new vertical.  
 **Status:** shipped in Utarus ≥ **0.3.0** (SPA + chat APIs live in the framework package).  
-**Related:** [integration-guide.md](integration-guide.md) · [onboarding-integration.md](onboarding-integration.md) · [webui-chat-design.md](webui-chat-design.md) (architecture detail)
+**Related:** [integration-guide.md](integration-guide.md) · [onboarding-integration.md](onboarding-integration.md) · [webui-chat-design.md](webui-chat-design.md) (architecture detail) · [webui-chat-widgets.md](webui-chat-widgets.md) (side-panel widgets)
 
 ---
 
@@ -326,7 +326,21 @@ Never serialize `auth_token` or `password_hash` to the browser.
 
 ---
 
-## 9. Pinning Utarus
+## 9. Side-panel widgets (optional domain UI)
+
+Interactive panel apps (3D floor plans, calculators, galleries) are a **platform** capability. Domains register kinds on `DomainWebUiExtension.widgets`, ship classic **IIFE** bundles under `staticDir`, and teach the model to call `show_widget` / `update_widget` / `read_widget_state`.
+
+Durable instance state is **user-owned** BinDrive storage (`data/drive/<slug>/_utarus/widgets/…`). User “Save” in the panel also emits a chat card.
+
+Full integration guide: **[webui-chat-widgets.md](webui-chat-widgets.md)**  
+Design: [webui-chat-widgets-design.md](webui-chat-widgets-design.md)  
+Demo: `examples/demo` (`floor-plan-3d`)
+
+Maps (inline Google Embed) remain separate — see [webui-chat-maps-design.md](webui-chat-maps-design.md).
+
+---
+
+## 10. Pinning Utarus
 
 ```json
 {

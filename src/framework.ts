@@ -18,6 +18,11 @@ import { createBinDriveTools } from './tools/bindrive.js';
 import { createReportingTools } from './tools/reporting.js';
 import { createShowMapTool } from './tools/show-map.js';
 import { createReadImageTool } from './tools/read-image.js';
+import { createShowWidgetTools } from './tools/show-widget.js';
+import { buildWidgetRegistry } from './widgets/registry.js';
+import { createBinDriveWidgetStateStore } from './widgets/state-store-bindrive.js';
+import { resolveDataRoot } from './config.js';
+import { join } from 'path';
 import { getOrCreateAgent as baseGetOrCreateAgent, clearAgentContext as baseClearAgentContext } from './agent.js';
 import {
   assertLlmConfig,
@@ -105,6 +110,10 @@ export interface Framework {
    * Build the WebUI express app without listening (tests / custom host).
    */
   buildWebApp: (opts?: BuildWebAppOptions) => Express;
+  /** Process-lifetime widget kind registry (platform + domain). */
+  readonly widgetRegistry: import('./widgets/registry.js').WidgetRegistry;
+  /** Process-lifetime durable widget state store (BinDrive adapter). */
+  readonly widgetStateStore: import('./widgets/state-store.js').WidgetStateStore;
 }
 
 export type { BuildWebAppOptions, StartWebAppOptions };
@@ -221,6 +230,7 @@ The message context ALWAYS includes the sender's Slack user ID. Never ask users 
 Your output is displayed in Telegram. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as ugly code blocks).
+**NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as ugly code blocks).
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
@@ -238,6 +248,7 @@ Always put a blank line between sections. Keep messages under 3000 chars.
 Your output is displayed in Slack. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as code blocks).
+**NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as code blocks).
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
 
@@ -257,6 +268,8 @@ When the user message is prefixed with \`[Channel: web …]\`, you are speaking 
 Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \`$…$\` math delimiters. Use \`$$…$$\` only for real equations.
 
 When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
+
+When a widget tool (\`show_widget\` / \`update_widget\`) succeeds, paste the WEB ONLY \`\`\`widget fence once in your final answer so the WebUI can show a card and open the side panel. **Do not invent** \`\`\`widget fences — always call the tool.
 
 ## User reporting (framework-owned)
 
@@ -295,6 +308,12 @@ export function createFramework(opts: FrameworkOptions): Framework {
   // LLM stack before system prompt (buildSystemPrompt calls getAgentLLM / routing).
   assertLlmConfig();
 
+  // Widgets: registry boot validation + process-lifetime BinDrive state store.
+  const widgetRegistry = buildWidgetRegistry(extension);
+  const widgetStateStore = createBinDriveWidgetStateStore({
+    driveRoot: join(resolveDataRoot(), 'drive'),
+  });
+
   const allSkills = [...frameworkSkills, ...extension.skills];
 
   const systemPrompt = buildSystemPrompt(extension, allSkills);
@@ -312,6 +331,10 @@ export function createFramework(opts: FrameworkOptions): Framework {
       ...createReportingTools(userSlug, isAdmin),
       createShowMapTool(),
       createReadImageTool(),
+      ...createShowWidgetTools(widgetRegistry, {
+        viewerSlug: userSlug,
+        store: widgetStateStore,
+      }),
     ];
     const domain = typeof extension.tools === 'function'
       ? extension.tools(userSlug, isAdmin)
@@ -347,6 +370,8 @@ export function createFramework(opts: FrameworkOptions): Framework {
     clearAgentContext,
     allSkills,
     extension,
+    widgetRegistry,
+    widgetStateStore,
     startTelegram: () => startTelegram({ handle: { getOrCreateAgent, allSkills, extension } }),
     startSlack: () => startSlack({ handle: { getOrCreateAgent, allSkills, extension } }),
     startCli: () => startCli({ handle: { getOrCreateAgent, allSkills, extension } }),
