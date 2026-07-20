@@ -3,6 +3,7 @@
  */
 
 import { Box, Layers } from 'lucide-react';
+import { CHAT_EMBED_PROPS } from '../../embeds/chat-embed.js';
 import { useWidgetRegistry } from '../../widgets/registry-context.js';
 import type { WidgetSpec } from '../../widgets/widget-spec.js';
 
@@ -19,6 +20,7 @@ export function WidgetCard({ spec, onOpen }: WidgetCardProps) {
   return (
     <button
       type="button"
+      {...CHAT_EMBED_PROPS}
       data-widget-card
       onClick={() => onOpen(spec)}
       className="my-3 flex w-full max-w-md items-start gap-3 rounded-xl border border-stone-200 bg-white p-3 text-left shadow-sm transition hover:border-stone-300 hover:bg-stone-50"
@@ -50,6 +52,7 @@ export function WidgetCard({ spec, onOpen }: WidgetCardProps) {
 export function WidgetError({ message }: { message: string }) {
   return (
     <div
+      {...CHAT_EMBED_PROPS}
       data-widget-card
       className="my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
     >

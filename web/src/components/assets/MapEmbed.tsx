@@ -12,6 +12,7 @@ import {
   type MapMode,
   type MapSpec,
 } from '../../maps/map-spec.js';
+import { CHAT_EMBED_PROPS } from '../../embeds/chat-embed.js';
 import { MapError } from './MapError.js';
 import { ExternalLink } from 'lucide-react';
 
@@ -169,6 +170,7 @@ export function MapEmbed(props: MapEmbedProps) {
 
   return (
     <div
+      {...CHAT_EMBED_PROPS}
       data-map-embed
       className="my-3 w-full overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900"
     >

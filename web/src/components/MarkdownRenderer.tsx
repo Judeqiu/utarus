@@ -16,16 +16,22 @@
  *   table   → wrapped (horizontal-scroll container)
  *   iframe  → <SandboxedIframe> (only same-origin /api/files URLs)
  *
+ * New chat fence embeds: root element must set CHAT_EMBED_PROPS
+ * (data-chat-embed) — see web/src/embeds/chat-embed.ts.
+ *
  * The custom remark plugin tags asset nodes with data-asset-kind; the
  * components map uses those tags to decide embed-vs-link.
  */
 
 import {
   Children,
+  Fragment,
   isValidElement,
   memo,
   useMemo,
   type ComponentPropsWithoutRef,
+  type ReactElement,
+  type ReactNode,
 } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -36,6 +42,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Root } from 'hast';
 
+import { CHAT_EMBED_ATTR, CHAT_EMBED_PROPS } from '../embeds/chat-embed.js';
 import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
 import { remarkMapFence } from '../remark/map-fence.js';
 import { remarkMermaidFence } from '../remark/mermaid-fence.js';
@@ -81,6 +88,7 @@ function EmbedFencePending({
       : `language-${language}`;
   return (
     <div
+      {...CHAT_EMBED_PROPS}
       data-embed-pending
       className="my-3 overflow-hidden rounded-lg border border-stone-200 dark:border-stone-700"
     >
@@ -94,6 +102,32 @@ function EmbedFencePending({
       </div>
     </div>
   );
+}
+
+/** True when props mark a chat fence embed root (`data-chat-embed`). */
+function hasChatEmbedAttr(props: unknown): boolean {
+  if (props == null || typeof props !== 'object') return false;
+  const rec = props as Record<string, unknown>;
+  const v = rec[CHAT_EMBED_ATTR] ?? rec.dataChatEmbed;
+  return v === true || v === '' || v === 'true' || v === 1;
+}
+
+/**
+ * Whether a react-markdown `pre` child is a chat embed (unwrap pre chrome).
+ * Accepts a single element with CHAT_EMBED_ATTR, or a Fragment whose child has it.
+ */
+function isChatEmbedMarkdownChild(node: ReactNode): boolean {
+  if (!isValidElement(node)) return false;
+  if (hasChatEmbedAttr(node.props)) return true;
+  if (node.type === Fragment) {
+    const kids = Children.toArray(
+      (node.props as { children?: ReactNode }).children,
+    );
+    return kids.some(
+      (k) => isValidElement(k) && hasChatEmbedAttr((k as ReactElement).props),
+    );
+  }
+  return false;
 }
 
 /**
@@ -402,51 +436,12 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
               <table {...props} />
             </div>
           ),
-          // Fenced blocks are pre>code; Map/Widget replace code — unwrap pre
-          // so they are not styled as dark code shells (.prose-chat pre).
+          // Fenced blocks are pre>code. Embed components replace code — unwrap
+          // pre when the child opts into CHAT_EMBED_ATTR (see embeds/chat-embed.ts).
           pre: ({ children }) => {
             const list = Children.toArray(children);
-            if (list.length === 1 && isValidElement(list[0])) {
-              const el = list[0];
-              const t = el.type;
-              const displayName =
-                typeof t === 'function' || (typeof t === 'object' && t !== null)
-                  ? (t as { displayName?: string; name?: string }).displayName ||
-                    (t as { name?: string }).name
-                  : undefined;
-              const props = el.props as {
-                'data-map-embed'?: boolean | string;
-                'data-widget-card'?: boolean | string;
-                'data-diagram-embed'?: boolean | string;
-                'data-embed-pending'?: boolean | string;
-              };
-              const isMap =
-                t === MapEmbed ||
-                t === MapError ||
-                displayName === 'MapEmbed' ||
-                displayName === 'MapError' ||
-                props['data-map-embed'] === true ||
-                props['data-map-embed'] === '';
-              const isWidget =
-                t === WidgetCard ||
-                t === WidgetError ||
-                displayName === 'WidgetCard' ||
-                displayName === 'WidgetError' ||
-                props['data-widget-card'] === true ||
-                props['data-widget-card'] === '';
-              const isDiagram =
-                t === DiagramEmbed ||
-                t === DiagramError ||
-                displayName === 'DiagramEmbed' ||
-                displayName === 'DiagramError' ||
-                props['data-diagram-embed'] === true ||
-                props['data-diagram-embed'] === '';
-              const isEmbedPending =
-                props['data-embed-pending'] === true ||
-                props['data-embed-pending'] === '';
-              if (isMap || isWidget || isDiagram || isEmbedPending) {
-                return <>{children}</>;
-              }
+            if (list.length === 1 && isChatEmbedMarkdownChild(list[0])) {
+              return <>{children}</>;
             }
             return <pre>{children}</pre>;
           },

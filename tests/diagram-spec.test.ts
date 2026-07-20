@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MERMAID_BODY_MAX_BYTES,
   parseMermaidFenceBody,
+  prepareMermaidSource,
   validateMermaidSource,
 } from '../web/src/diagrams/diagram-spec.js';
 
@@ -39,5 +40,30 @@ describe('validateMermaidSource', () => {
     const r = parseMermaidFenceBody('flowchart TD\r\n  A-->B\r\n');
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.source).not.toContain('\r');
+  });
+
+  it('keeps formatting tags agents use in labels', () => {
+    const r = validateMermaidSource(
+      'flowchart TD\n  A["<b>Introduction</b><br/>Hook"]',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.source).toContain('<b>Introduction</b>');
+      expect(r.source).toContain('<br/>');
+    }
+  });
+});
+
+describe('prepareMermaidSource', () => {
+  it('strips script tags and on* handlers', () => {
+    const out = prepareMermaidSource(
+      'flowchart TD\n  A["x<script>alert(1)</script>"]\n  B["y" onclick="evil()"]',
+    );
+    expect(out).not.toMatch(/script/i);
+    expect(out).not.toMatch(/onclick/i);
+  });
+
+  it('normalizes br variants', () => {
+    expect(prepareMermaidSource('A["a<br>b"]')).toContain('<br/>');
   });
 });

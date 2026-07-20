@@ -1,10 +1,13 @@
 /**
  * DiagramEmbed — inline Mermaid render + expand overlay (pan/zoom scroll).
- * Source is free ```mermaid fence body; securityLevel strict, no HTML labels.
+ * Source is free ```mermaid fence body.
+ * htmlLabels + securityLevel antiscript so agent labels like <b>Title</b> render;
+ * diagram-spec strips script/iframe/handlers first.
  */
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { Maximize2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { CHAT_EMBED_PROPS } from '../../embeds/chat-embed.js';
 import { validateMermaidSource } from '../../diagrams/diagram-spec.js';
 import { DiagramError } from './DiagramError.js';
 
@@ -28,18 +31,23 @@ function prefersDark(): boolean {
   );
 }
 
+function mermaidConfig() {
+  return {
+    startOnLoad: false as const,
+    // antiscript: allow formatting HTML in labels (<b>, <br/>, …) but not <script>.
+    // strict + htmlLabels:false showed raw "<b>…" text (agent-emitted labels).
+    securityLevel: 'antiscript' as const,
+    htmlLabels: true,
+    theme: prefersDark() ? ('dark' as const) : ('default' as const),
+    fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+  };
+}
+
 async function getMermaid(): Promise<typeof import('mermaid').default> {
   if (!mermaidInitPromise) {
     mermaidInitPromise = (async () => {
       const mermaid = (await import('mermaid')).default;
-      mermaid.initialize({
-        startOnLoad: false,
-        // Fail closed: no click callbacks, no HTML in labels.
-        securityLevel: 'strict',
-        htmlLabels: false,
-        theme: prefersDark() ? 'dark' : 'default',
-        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-      });
+      mermaid.initialize(mermaidConfig());
       return mermaid;
     })();
   }
@@ -61,7 +69,7 @@ function DiagramSvg({
   return (
     <div
       className={className}
-      // Mermaid output is SVG from securityLevel:strict + our validated source.
+      // Mermaid SVG (antiscript + prepared source).
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
@@ -170,13 +178,7 @@ export function DiagramEmbed({ source }: DiagramEmbedProps) {
       const id = `mermaid-${reactId}-${++renderSeq}`;
       try {
         const mermaid = await getMermaid();
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          htmlLabels: false,
-          theme: prefersDark() ? 'dark' : 'default',
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-        });
+        mermaid.initialize(mermaidConfig());
         const { svg } = await mermaid.render(id, safeSource);
         if (!cancelled) setState({ status: 'ok', svg });
       } catch (e) {
@@ -200,6 +202,7 @@ export function DiagramEmbed({ source }: DiagramEmbedProps) {
   if (state.status === 'loading') {
     return (
       <div
+        {...CHAT_EMBED_PROPS}
         data-diagram-embed
         className="my-3 w-full max-w-2xl rounded-lg border border-stone-200 bg-stone-50 px-3 py-8 text-center text-sm text-stone-500 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400"
       >
@@ -212,33 +215,34 @@ export function DiagramEmbed({ source }: DiagramEmbedProps) {
     return <DiagramError message={state.message} />;
   }
 
+  // Single root + CHAT_EMBED_PROPS: see web/src/embeds/chat-embed.ts
+  // (no Fragment — Fragment left the dark .prose-chat pre shell / black card).
   return (
-    <>
-      <div
-        data-diagram-embed
-        className="my-3 w-full max-w-3xl overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900"
-      >
-        <div className="flex items-center justify-between gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
-          <span className="truncate text-sm font-medium text-stone-800 dark:text-stone-100">
-            Diagram
-          </span>
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="inline-flex shrink-0 items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-400"
-          >
-            Expand
-            <Maximize2 className="h-3 w-3" />
-          </button>
-        </div>
-        <div className="overflow-x-auto p-3 [&_svg]:mx-auto [&_svg]:max-h-[420px] [&_svg]:w-auto [&_svg]:max-w-full">
-          <DiagramSvg svg={state.svg} />
-        </div>
+    <div
+      {...CHAT_EMBED_PROPS}
+      data-diagram-embed
+      className="my-3 w-full max-w-3xl overflow-hidden rounded-lg border border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-900"
+    >
+      <div className="flex items-center justify-between gap-2 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
+        <span className="truncate text-sm font-medium text-stone-800 dark:text-stone-100">
+          Diagram
+        </span>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-sky-700 hover:underline dark:text-sky-400"
+        >
+          Expand
+          <Maximize2 className="h-3 w-3" />
+        </button>
+      </div>
+      <div className="overflow-x-auto p-3 [&_svg]:mx-auto [&_svg]:max-h-[420px] [&_svg]:w-auto [&_svg]:max-w-full">
+        <DiagramSvg svg={state.svg} />
       </div>
       {expanded ? (
         <ExpandOverlay svg={state.svg} onClose={() => setExpanded(false)} />
       ) : null}
-    </>
+    </div>
   );
 }
 
