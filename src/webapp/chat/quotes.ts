@@ -9,7 +9,11 @@
  * Widget quotes: source=widget, messageId=instanceId, role=widget.
  */
 
-import type { Conversation, StoredQuote } from './conversation-types.js';
+import type {
+  Conversation,
+  StoredQuote,
+  StoredWidgetSubmit,
+} from './conversation-types.js';
 
 export const QUOTES_PER_MESSAGE_MAX = 1;
 export const QUOTE_TEXT_MAX = 2000;
@@ -82,17 +86,94 @@ export function formatQuotesForAgent(quotes: StoredQuote[]): string {
   );
 }
 
+/** Agent-only block for document Submit (not shown in the user bubble). */
+export function formatWidgetSubmitForAgent(ws: StoredWidgetSubmit): string {
+  const title = ws.title?.trim();
+  const titleBit = title ? ` title="${title}"` : '';
+  return (
+    `[User submitted the side-panel widget kind=${ws.kind}${titleBit}` +
+    ` (instanceId=${ws.instanceId}, revision=${ws.revision})` +
+    ` — call read_widget_state with this instanceId and process the submission` +
+    ` (review, grade, extract answer, continue the task, etc.).` +
+    ` Do not invent document content — load state first.` +
+    ` Prefer comments for feedback-only; edit markdown only if the task requires changing the document.]`
+  );
+}
+
+const UUID_RE_WIDGET =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const WIDGET_KIND_RE_SUBMIT = /^[a-z][a-z0-9-]{1,63}$/;
+
+export function validateWidgetSubmit(raw: unknown): StoredWidgetSubmit {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new QuoteValidationError(
+      'invalid_quotes',
+      'widgetSubmit must be an object with instanceId, kind, revision',
+    );
+  }
+  const o = raw as Record<string, unknown>;
+  if (typeof o.instanceId !== 'string' || !UUID_RE_WIDGET.test(o.instanceId)) {
+    throw new QuoteValidationError(
+      'invalid_quotes',
+      'widgetSubmit.instanceId must be a UUID',
+    );
+  }
+  if (typeof o.kind !== 'string' || !WIDGET_KIND_RE_SUBMIT.test(o.kind)) {
+    throw new QuoteValidationError(
+      'invalid_quotes',
+      'widgetSubmit.kind must be a kebab-case kind id',
+    );
+  }
+  if (typeof o.revision !== 'number' || !Number.isInteger(o.revision) || o.revision < 1) {
+    throw new QuoteValidationError(
+      'invalid_quotes',
+      'widgetSubmit.revision must be a positive integer',
+    );
+  }
+  let title: string | undefined;
+  if (o.title !== undefined) {
+    if (typeof o.title !== 'string' || !o.title.trim()) {
+      throw new QuoteValidationError(
+        'invalid_quotes',
+        'widgetSubmit.title must be a non-empty string when provided',
+      );
+    }
+    if (o.title.trim().length > 120) {
+      throw new QuoteValidationError(
+        'invalid_quotes',
+        'widgetSubmit.title exceeds 120 characters',
+      );
+    }
+    title = o.title.trim();
+  }
+  return {
+    instanceId: o.instanceId,
+    kind: o.kind,
+    revision: o.revision,
+    ...(title !== undefined ? { title } : {}),
+  };
+}
+
 /**
  * Text content for one user turn as seen by the agent (before/without channel hint).
  * - Live / steer: pass inbound.text (already enrichMessage'd) as `text`.
  * - Hydrate: pass stored m.text (clean human text; no enrich, no channel hint on disk).
+ * Quotes and widgetSubmit prefixes are agent-only — never stored in message.text.
  */
 export function userTurnTextForAgent(
   text: string,
   quotes?: StoredQuote[] | null,
+  widgetSubmit?: StoredWidgetSubmit | null,
 ): string {
-  if (!quotes || quotes.length === 0) return text;
-  return `${formatQuotesForAgent(quotes)}\n\n${text}`;
+  const parts: string[] = [];
+  if (quotes && quotes.length > 0) {
+    parts.push(formatQuotesForAgent(quotes));
+  }
+  if (widgetSubmit) {
+    parts.push(formatWidgetSubmitForAgent(widgetSubmit));
+  }
+  if (parts.length === 0) return text;
+  return `${parts.join('\n\n')}\n\n${text}`;
 }
 
 /**

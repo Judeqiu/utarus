@@ -51,6 +51,18 @@ export interface StoredMessageLlm {
   reason?: string;
 }
 
+/**
+ * Rich-document (or other widget) Submit — agent-only metadata.
+ * User bubble shows only `StoredChatMessage.text` (short label);
+ * agent prompt is rebuilt via formatWidgetSubmitForAgent on send/hydrate.
+ */
+export interface StoredWidgetSubmit {
+  instanceId: string;
+  kind: string;
+  revision: number;
+  title?: string;
+}
+
 export interface StoredChatMessage {
   id: string;
   role: StoredMessageRole;
@@ -61,6 +73,8 @@ export interface StoredChatMessage {
   attachments?: StoredAttachment[];
   /** Present on user turns when the client quoted a prior message span. */
   quotes?: StoredQuote[];
+  /** Present on user turns when the client submitted a side-panel document. */
+  widgetSubmit?: StoredWidgetSubmit;
   /** Present on assistant turns after multi-LLM routing. */
   llm?: StoredMessageLlm;
   tools?: Array<{

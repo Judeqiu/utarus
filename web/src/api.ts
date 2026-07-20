@@ -213,6 +213,13 @@ export async function sendMessage(
     conversationId?: string;
     attachments?: Array<{ id: string; name?: string }>;
     quotes?: ChatQuoteRef[];
+    /** Agent-only metadata for document Submit (not shown in the user bubble). */
+    widgetSubmit?: {
+      instanceId: string;
+      kind: string;
+      revision: number;
+      title?: string;
+    };
   },
 ): Promise<SendOutcome> {
   const res = await fetchWithRetry(
@@ -242,6 +249,18 @@ export async function sendMessage(
                 ...(q.widgetKind !== undefined ? { widgetKind: q.widgetKind } : {}),
                 ...(q.widgetTitle !== undefined ? { widgetTitle: q.widgetTitle } : {}),
               })),
+            }
+          : {}),
+        ...(opts?.widgetSubmit
+          ? {
+              widgetSubmit: {
+                instanceId: opts.widgetSubmit.instanceId,
+                kind: opts.widgetSubmit.kind,
+                revision: opts.widgetSubmit.revision,
+                ...(opts.widgetSubmit.title
+                  ? { title: opts.widgetSubmit.title }
+                  : {}),
+              },
             }
           : {}),
       }),

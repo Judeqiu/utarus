@@ -366,6 +366,12 @@ html[data-theme='dark'] .dirty {
   border-color: var(--focus);
 }
 
+.comment-card.is-active {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.25);
+  background: rgba(251, 191, 36, 0.12);
+}
+
 .comment-card .comment-meta {
   font-size: 10px;
   font-weight: 600;
@@ -393,6 +399,21 @@ html[data-theme='dark'] .dirty {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.4;
+}
+
+/* Anchored comment spans — highlight + underline (not stored in markdown). */
+.editor .ProseMirror .comment-anchor {
+  background: rgba(251, 191, 36, 0.28);
+  border-bottom: 2px solid #d97706;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  cursor: pointer;
+}
+
+html[data-theme='dark'] .editor .ProseMirror .comment-anchor {
+  background: rgba(251, 191, 36, 0.22);
+  border-bottom-color: #fbbf24;
 }
 
 .editor .ProseMirror mark.comment-flash,

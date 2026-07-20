@@ -157,24 +157,32 @@ View-only review (no Submit):
 | User action | What happens | Agent should |
 |-------------|--------------|--------------|
 | **Save** | BinDrive state updates; **no** new chat card; **no** agent turn | Nothing unless they ask |
-| **Submit** | Save + **chat message** with `[Widget submit — kind=… instanceId=… revision=…]` | `read_widget_state` → process (grade, feedback, next step) |
+| **Submit** | Save + short chat label; agent gets hidden `widgetSubmit` metadata | `read_widget_state` → process (grade, feedback, next step) |
 | **Quote** (select text → Quote) | Chip on next user message; quote has `source: widget`, `messageId` = **instanceId** | Edit that span **or** add a comment (see §6) |
 | **Edit without Save** | Only in panel memory | Don’t assume durable until Save/Submit or you wrote state |
 | **Export DOCX/PDF** | Download only | Ignore |
 | **Click link** | Host confirm → open URL | Ignore |
 
-### Submit message shape (user turn)
+### Submit message shape
+
+**User bubble (visible):**
 
 ```
 Submitted document: **Essay — draft**
-
-[Widget submit — kind=rich-document instanceId=<uuid> revision=<n>]
-Call read_widget_state with this instanceId and process the submission…
 ```
+
+**Agent prompt (hidden from the bubble)** — rebuilt from structured `widgetSubmit` on the stored message:
+
+```
+[User submitted the side-panel widget kind=rich-document title="Essay — draft"
+ (instanceId=<uuid>, revision=<n>) — call read_widget_state …]
+```
+
+Same pattern as quotes: clean `text` on disk; agent-only prefix at send/hydrate.
 
 **Normative agent response to Submit:**
 
-1. Parse `instanceId` from the message.  
+1. Use `instanceId` from the agent-only submit block (or user message context).  
 2. `read_widget_state({ instanceId })`.  
 3. Use `data.markdown` (and `data.comments` if useful).  
 4. Reply with feedback; optionally `update_widget` (comments and/or markdown).  
@@ -307,9 +315,8 @@ When the user needs an editable document, notes, draft, essay, or structured ans
 Tools: show_widget (first open), update_widget (full state replace, same instanceId),
 read_widget_state (before rewrite after user edits/submits).
 
-User Save = persist only. User Submit = persist + chat message with
-[Widget submit — kind=rich-document instanceId=… revision=…] — then you MUST
-read_widget_state and process the submission.
+User Save = persist only. User Submit = short chat line ("Submitted document: …")
+plus agent-only widgetSubmit metadata — then you MUST read_widget_state and process.
 
 User quote chip from the document: edit that markdown span OR append state.comments
 { id (hex UUID), body, quote, author: "agent", createdAt: ISO } without changing markdown.

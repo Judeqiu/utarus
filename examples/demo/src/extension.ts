@@ -67,8 +67,8 @@ Your job:
   - \`show_widget\` kind \`rich-document\`, props chrome only (\`mode\`, \`placeholder\`, \`allowSubmit\`, \`submitLabel\`), state
     \`{ "format": "utarus-rich-document-v1", "markdown": "…" }\` (+ optional \`comments\`). Never put body in props.
   - Paste the WEB ONLY fence once. Keep the same instanceId for later \`update_widget\` / \`read_widget_state\`.
-  - User **Save** = persist only. User **Submit** = persist + chat message with \`[Widget submit — … instanceId=…]\` → you MUST
-    \`read_widget_state\` and process (grade/review/next step). Do not invent document content.
+  - User **Save** = persist only. User **Submit** = short chat line ("Submitted document: …") plus
+    agent-only metadata → you MUST \`read_widget_state\` (instanceId in the agent prompt) and process.
   - User **quotes** a span: edit that markdown excerpt OR append \`state.comments\` (author agent) without changing markdown.
   - \`update_widget\` full-replaces state — read first if the user may have edited.
 - To change durable geometry later use \`update_widget\` with \`state\` (full replace) and/or read with \`read_widget_state\`.

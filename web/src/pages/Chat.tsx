@@ -477,6 +477,12 @@ export function ChatPage({ session }: ChatPageProps) {
       queue: boolean;
       attachments?: ChatAttachmentRef[];
       quotes?: ChatQuoteRef[];
+      widgetSubmit?: {
+        instanceId: string;
+        kind: string;
+        revision: number;
+        title?: string;
+      };
     },
   ) {
     if (isStreaming) return;
@@ -510,6 +516,7 @@ export function ChatPage({ session }: ChatPageProps) {
         conversationId: activeConversationId ?? undefined,
         attachments: opts.attachments,
         quotes: quoteForSend ? [quoteForSend] : undefined,
+        widgetSubmit: opts.widgetSubmit,
       });
       if (outcome.kind === 'reply') {
         setMessages((prev) =>
@@ -725,14 +732,17 @@ export function ChatPage({ session }: ChatPageProps) {
       throw new Error('Cannot submit while the agent is still responding');
     }
     const title = payload.title.trim() || 'Document';
-    const text = [
-      `Submitted document: **${title}**`,
-      '',
-      `[Widget submit — kind=${payload.kind} instanceId=${payload.instanceId} revision=${payload.revision}]`,
-      `Call read_widget_state with this instanceId and process the submission (review, grade, extract answer, continue the task, etc.).`,
-      `Do not invent document content — load state first. Prefer comments for feedback-only; edit markdown only if the task requires changing the document.`,
-    ].join('\n');
-    await handleSend(text, { queue: false });
+    // User bubble: short label only. Agent gets instructions via widgetSubmit metadata.
+    const text = `Submitted document: **${title}**`;
+    await handleSend(text, {
+      queue: false,
+      widgetSubmit: {
+        instanceId: payload.instanceId,
+        kind: payload.kind,
+        revision: payload.revision,
+        title,
+      },
+    });
   }
 
   if (bootLoading) {

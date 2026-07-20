@@ -4,8 +4,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   formatQuotesForAgent,
+  formatWidgetSubmitForAgent,
   userTurnTextForAgent,
   validateQuotesForConversation,
+  validateWidgetSubmit,
   QuoteValidationError,
   QUOTE_TEXT_MAX,
   QUOTES_PER_MESSAGE_MAX,
@@ -68,6 +70,56 @@ describe('quotes helpers', () => {
     expect(userTurnTextForAgent('hello')).toBe('hello');
     expect(userTurnTextForAgent('hello', null)).toBe('hello');
     expect(userTurnTextForAgent('hello', [])).toBe('hello');
+  });
+
+  it('userTurnTextForAgent prefixes widgetSubmit for agent only', () => {
+    const out = userTurnTextForAgent('Submitted document: **Essay**', null, {
+      instanceId: 'e2b4a7f6-9c3d-4e1f-8a5b-7d2c6f1e9a3b',
+      kind: 'rich-document',
+      revision: 3,
+      title: 'Essay draft',
+    });
+    expect(out.startsWith('[User submitted the side-panel widget')).toBe(true);
+    expect(out).toContain('instanceId=e2b4a7f6-9c3d-4e1f-8a5b-7d2c6f1e9a3b');
+    expect(out).toContain('read_widget_state');
+    expect(out.endsWith('Submitted document: **Essay**')).toBe(true);
+    // Agent block is separate from user-visible line
+    expect(out.indexOf('[User submitted')).toBeLessThan(
+      out.indexOf('Submitted document:'),
+    );
+  });
+
+  it('formatWidgetSubmitForAgent includes kind and revision', () => {
+    const block = formatWidgetSubmitForAgent({
+      instanceId: 'e2b4a7f6-9c3d-4e1f-8a5b-7d2c6f1e9a3b',
+      kind: 'rich-document',
+      revision: 2,
+      title: 'Notes',
+    });
+    expect(block).toContain('kind=rich-document');
+    expect(block).toContain('revision=2');
+    expect(block).toContain('title="Notes"');
+  });
+
+  it('validateWidgetSubmit accepts valid payload', () => {
+    const ws = validateWidgetSubmit({
+      instanceId: 'e2b4a7f6-9c3d-4e1f-8a5b-7d2c6f1e9a3b',
+      kind: 'rich-document',
+      revision: 1,
+      title: 'Essay',
+    });
+    expect(ws.kind).toBe('rich-document');
+    expect(ws.revision).toBe(1);
+  });
+
+  it('validateWidgetSubmit rejects bad instanceId', () => {
+    expect(() =>
+      validateWidgetSubmit({
+        instanceId: 'not-a-uuid',
+        kind: 'rich-document',
+        revision: 1,
+      }),
+    ).toThrow(QuoteValidationError);
   });
 });
 

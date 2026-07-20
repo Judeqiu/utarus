@@ -301,6 +301,7 @@ export function appendMessage(
     error: message.error,
     attachments: message.attachments,
     quotes: message.quotes,
+    widgetSubmit: message.widgetSubmit,
     tools: message.tools,
   };
   if (msg.role !== 'user' && msg.role !== 'assistant') {
@@ -340,6 +341,20 @@ export function appendMessage(
       );
     }
     if (msg.quotes.length === 0) delete msg.quotes;
+  }
+  if (msg.widgetSubmit !== undefined) {
+    const ws = msg.widgetSubmit;
+    if (
+      !ws ||
+      typeof ws !== 'object' ||
+      typeof ws.instanceId !== 'string' ||
+      typeof ws.kind !== 'string' ||
+      typeof ws.revision !== 'number'
+    ) {
+      throw new Error(
+        'message.widgetSubmit must be { instanceId, kind, revision, title? }',
+      );
+    }
   }
 
   // Temporary title from first user message (AI summary replaces it after first reply)

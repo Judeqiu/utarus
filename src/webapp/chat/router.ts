@@ -77,8 +77,9 @@ import {
   QuoteValidationError,
   userTurnTextForAgent,
   validateQuotesForConversation,
+  validateWidgetSubmit,
 } from './quotes.js';
-import type { StoredQuote } from './conversation-types.js';
+import type { StoredQuote, StoredWidgetSubmit } from './conversation-types.js';
 
 const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
@@ -314,6 +315,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       conversationId?: unknown;
       attachments?: unknown;
       quotes?: unknown;
+      widgetSubmit?: unknown;
     };
     if (typeof body.text !== 'string' || body.text.trim().length === 0) {
       res.status(400).json({ error: 'text required' });
@@ -500,6 +502,23 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       }
     }
 
+    // Document Submit metadata — agent-only (not inlined into user-visible text).
+    let storedWidgetSubmit: StoredWidgetSubmit | undefined;
+    if (body.widgetSubmit !== undefined) {
+      try {
+        storedWidgetSubmit = validateWidgetSubmit(body.widgetSubmit);
+      } catch (e) {
+        if (e instanceof QuoteValidationError) {
+          res.status(400).json({ error: e.code, message: e.message });
+          return;
+        }
+        res.status(500).json({
+          error: e instanceof Error ? e.message : String(e),
+        });
+        return;
+      }
+    }
+
     const agent = deps.framework.getOrCreateAgent(
       effectiveSlug,
       isAdmin,
@@ -523,8 +542,8 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
 
     // Persist the *user-visible* text only. inbound.text may include
     // domain enrichMessage context (playbook, portfolio) for the agent —
-    // that must never appear in the chat bubble on reload. Quotes are
-    // stored as structured metadata (not inlined into text).
+    // that must never appear in the chat bubble on reload. Quotes and
+    // widgetSubmit are stored as structured metadata (not inlined into text).
     const userVisibleText = text.trim();
     const userMsgId = randomUUID();
     try {
@@ -534,6 +553,7 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
         text: userVisibleText,
         attachments: storedAttachments,
         quotes: storedQuotes,
+        widgetSubmit: storedWidgetSubmit,
       });
     } catch (e) {
       res.status(500).json({
@@ -542,7 +562,11 @@ export function createChatRouter(deps: CreateChatRouterDeps): Router {
       return;
     }
 
-    const userTurn = userTurnTextForAgent(inbound.text, storedQuotes);
+    const userTurn = userTurnTextForAgent(
+      inbound.text,
+      storedQuotes,
+      storedWidgetSubmit,
+    );
     const hasImages = !!(images && images.length > 0);
 
     if (agent.state.isStreaming) {

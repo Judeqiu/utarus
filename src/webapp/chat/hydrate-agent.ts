@@ -40,7 +40,7 @@ export function hydrateAgentFromStoredMessages(
 
     if (m.role === 'user') {
       // Rebuild agent-facing quote prefix from stored quotes (no channel hint / enrich).
-      const bodyText = userTurnTextForAgent(m.text, m.quotes);
+      const bodyText = userTurnTextForAgent(m.text, m.quotes, m.widgetSubmit);
       if (slug && m.attachments?.length) {
         const parts: Array<
           { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }

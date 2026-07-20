@@ -3,10 +3,13 @@
  * Bridge: utarus-widget. Durable body: Markdown in state.data.
  */
 
-import { Editor } from '@tiptap/core';
+import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as PmNode } from '@tiptap/pm/model';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
 
@@ -250,6 +253,7 @@ function renderComments(): void {
     commentsList.appendChild(btn);
   }
   syncCommentsChrome();
+  refreshCommentHighlights();
 }
 
 /** Collapse whitespace and strip common markdown chrome for anchor matching. */
@@ -266,13 +270,12 @@ function normalizeAnchorText(s: string): string {
  * Map a range in concatenated plain text back to PM positions.
  * Returns null if the plain range cannot be resolved.
  */
-function findTextRangeInEditor(
+function findTextRangeInDoc(
+  doc: PmNode,
   needleRaw: string,
 ): { from: number; to: number } | null {
-  if (!editor || !needleRaw.trim()) return null;
-  const { doc } = editor.state;
+  if (!needleRaw.trim()) return null;
 
-  // Build plain text map: for each char offset in concatenated text, PM pos
   type MapEntry = { plainFrom: number; plainTo: number; pmFrom: number; text: string };
   const parts: MapEntry[] = [];
   let plainLen = 0;
@@ -286,10 +289,8 @@ function findTextRangeInEditor(
       text: t,
     });
     plainLen += t.length;
-    // soft separator between block text nodes for word boundaries
   });
 
-  // Also try with spaces between blocks for multi-block quotes
   const plainTight = parts.map((p) => p.text).join('');
   const candidates = [
     needleRaw.trim(),
@@ -304,9 +305,7 @@ function findTextRangeInEditor(
   ): { start: number; end: number } | null {
     if (!needle) return null;
     if (caseInsensitive) {
-      const hay = plain.toLowerCase();
-      const nd = needle.toLowerCase();
-      const i = hay.indexOf(nd);
+      const i = plain.toLowerCase().indexOf(needle.toLowerCase());
       if (i < 0) return null;
       return { start: i, end: i + needle.length };
     }
@@ -320,7 +319,6 @@ function findTextRangeInEditor(
       if (offset >= p.plainFrom && offset < p.plainTo) {
         return p.pmFrom + (offset - p.plainFrom);
       }
-      // allow end-of-part
       if (offset === p.plainTo) {
         return p.pmFrom + p.text.length;
       }
@@ -333,17 +331,7 @@ function findTextRangeInEditor(
   }
 
   for (const cand of candidates) {
-    // exact / first-line in tight concat
-    let hit = searchInPlain(plainTight, cand, false);
-    if (!hit && cand === normalizeAnchorText(needleRaw)) {
-      // normalized search against normalized plain
-      const plainNorm = normalizeAnchorText(plainTight);
-      const i = plainNorm.indexOf(cand);
-      if (i >= 0) {
-        // Map normalized index back poorly — fall through to per-node normalized search
-        hit = null;
-      }
-    }
+    const hit = searchInPlain(plainTight, cand, false);
     if (hit) {
       const from = plainOffsetToPm(hit.start);
       const to = plainOffsetToPm(hit.end);
@@ -352,7 +340,6 @@ function findTextRangeInEditor(
       }
     }
 
-    // Per-node search (exact and case-insensitive)
     let found: { from: number; to: number } | null = null;
     doc.descendants((node, pos) => {
       if (found || !node.isText || !node.text) return;
@@ -362,7 +349,6 @@ function findTextRangeInEditor(
         const nt = normalizeAnchorText(node.text);
         const nc = normalizeAnchorText(cand);
         if (nc && nt.includes(nc)) {
-          // approximate: select whole node text
           found = { from: pos, to: pos + node.text.length };
           return;
         }
@@ -373,6 +359,83 @@ function findTextRangeInEditor(
     if (found) return found;
   }
   return null;
+}
+
+function findTextRangeInEditor(needleRaw: string): { from: number; to: number } | null {
+  if (!editor) return null;
+  return findTextRangeInDoc(editor.state.doc, needleRaw);
+}
+
+const commentHighlightKey = new PluginKey('commentHighlight');
+
+function buildCommentDecorations(doc: PmNode, list: DocComment[]): DecorationSet {
+  const decos: Decoration[] = [];
+  const seen = new Set<string>();
+  for (const c of list) {
+    if (!c.quote?.trim()) continue;
+    const range = findTextRangeInDoc(doc, c.quote);
+    if (!range) continue;
+    // One decoration per unique range key (multiple comments can share an anchor)
+    const key = `${range.from}:${range.to}`;
+    if (seen.has(key)) {
+      // Still mark with data for the latest comment id
+      decos.push(
+        Decoration.inline(range.from, range.to, {
+          class: 'comment-anchor',
+          'data-comment-id': c.id,
+        }),
+      );
+      continue;
+    }
+    seen.add(key);
+    decos.push(
+      Decoration.inline(range.from, range.to, {
+        class: 'comment-anchor',
+        'data-comment-id': c.id,
+        title: c.body.length > 120 ? `${c.body.slice(0, 119)}…` : c.body,
+      }),
+    );
+  }
+  return DecorationSet.create(doc, decos);
+}
+
+/** TipTap extension: highlight / underline text that has comment anchors. */
+const CommentHighlight = Extension.create({
+  name: 'commentHighlight',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: commentHighlightKey,
+        state: {
+          init: (_cfg, state) => buildCommentDecorations(state.doc, comments),
+          apply(tr, old, _oldState, newState) {
+            const meta = tr.getMeta(commentHighlightKey) as
+              | { comments?: DocComment[] }
+              | undefined;
+            if (meta?.comments !== undefined) {
+              return buildCommentDecorations(newState.doc, meta.comments);
+            }
+            if (tr.docChanged) {
+              // Re-resolve anchors after user edits the body
+              return buildCommentDecorations(newState.doc, comments);
+            }
+            return old.map(tr.mapping, tr.doc);
+          },
+        },
+        props: {
+          decorations(state) {
+            return commentHighlightKey.getState(state);
+          },
+        },
+      }),
+    ];
+  },
+});
+
+function refreshCommentHighlights(): void {
+  if (!editor || editor.isDestroyed) return;
+  const tr = editor.state.tr.setMeta(commentHighlightKey, { comments });
+  editor.view.dispatch(tr);
 }
 
 function focusCommentAnchor(c: DocComment): void {
@@ -387,6 +450,38 @@ function focusCommentAnchor(c: DocComment): void {
   }
   editor.chain().focus().setTextSelection(found).scrollIntoView().run();
   setStatus(`comment on selection · rev ${revision}`);
+}
+
+/** Expand comments rail (if needed) and scroll/highlight the matching card. */
+function focusCommentInRail(commentId: string): void {
+  const c = comments.find((x) => x.id === commentId);
+  if (!c) {
+    setStatus('comment not found');
+    return;
+  }
+  if (comments.length === 0) return;
+  // Ensure expanded so the card is visible
+  if (commentsCollapsed) {
+    commentsCollapsed = false;
+    syncCommentsChrome();
+  }
+  if (!commentsList) return;
+  const card = commentsList.querySelector(
+    `[data-comment-id="${CSS.escape(commentId)}"]`,
+  ) as HTMLElement | null;
+  if (!card) {
+    setStatus(`comment · ${c.author}`);
+    return;
+  }
+  commentsList.querySelectorAll('.comment-card.is-active').forEach((el) => {
+    el.classList.remove('is-active');
+  });
+  card.classList.add('is-active');
+  card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  setStatus(`comment · ${c.author}`);
+  window.setTimeout(() => {
+    card.classList.remove('is-active');
+  }, 2000);
 }
 
 function toggleCommentsExpanded(): void {
@@ -632,6 +727,7 @@ function createEditor(initialMarkdown: string, placeholder: string): Editor {
       Placeholder.configure({
         placeholder: placeholder || 'Start writing…',
       }),
+      CommentHighlight,
     ],
     content: html,
     editable: mode === 'edit',
@@ -642,6 +738,16 @@ function createEditor(initialMarkdown: string, placeholder: string): Editor {
       },
       handleClick(_view, _pos, event) {
         const t = event.target as HTMLElement | null;
+        // Highlighted comment span → jump to the matching card in the rail
+        const anchor = t?.closest?.('.comment-anchor') as HTMLElement | null;
+        if (anchor) {
+          const id = anchor.getAttribute('data-comment-id');
+          if (id) {
+            event.preventDefault();
+            focusCommentInRail(id);
+            return true;
+          }
+        }
         const a = t?.closest?.('a') as HTMLAnchorElement | null;
         if (a && a.href) {
           event.preventDefault();
