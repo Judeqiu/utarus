@@ -8,8 +8,9 @@ How a **domain agent** registers interactive side-panel widgets (e.g. 3D floor p
 | **Status** | Shipped in Utarus ≥ **1.6.0** (rich-document ≥ **1.7.0**) |
 | **Architecture** | [webui-chat-widgets-design.md](./webui-chat-widgets-design.md) |
 | **Rich document (agents)** | [rich-document-agent-guide.md](./rich-document-agent-guide.md) |
+| **Info cards (agents)** | [info-cards-agent-guide.md](./info-cards-agent-guide.md) — inline `show_card` (not a panel widget) |
 | **WebUI boot** | [webui-integration.md](./webui-integration.md) |
-| **Reference demo** | [examples/demo](../examples/demo) (`floor-plan-3d`, `rich-document`) |
+| **Reference demo** | [examples/demo](../examples/demo) (`floor-plan-3d`, `rich-document`, `show_card`) |
 
 ---
 

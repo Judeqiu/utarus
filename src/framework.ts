@@ -17,6 +17,7 @@ import { createPostHtmlReportTool } from './tools/post-html-report.js';
 import { createBinDriveTools } from './tools/bindrive.js';
 import { createReportingTools } from './tools/reporting.js';
 import { createShowMapTool } from './tools/show-map.js';
+import { createShowCardTool } from './tools/show-card.js';
 import { createReadImageTool } from './tools/read-image.js';
 import { createShowWidgetTools } from './tools/show-widget.js';
 import { buildWidgetRegistry } from './widgets/registry.js';
@@ -231,6 +232,7 @@ Your output is displayed in Telegram. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as ugly code blocks).
 **NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as ugly code blocks).
+**NEVER paste \`\`\`card fences** — use only the summary lines from \`show_card\` (fences render as ugly code blocks).
 **Prefer plain-language structure over \`\`\`mermaid diagrams** on Telegram — Mermaid fences render as code blocks, not interactive diagrams.
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
@@ -250,6 +252,7 @@ Your output is displayed in Slack. Follow these rules:
 
 **NEVER paste \`\`\`map fences** — use only the map link from \`show_map\` (fences render as code blocks).
 **NEVER paste \`\`\`widget fences** — use only tool result text from widget tools (fences render as code blocks).
+**NEVER paste \`\`\`card fences** — use only the summary lines from \`show_card\` (fences render as code blocks).
 **Prefer plain-language structure over \`\`\`mermaid diagrams** on Slack — Mermaid fences render as code blocks, not interactive diagrams.
 
 **NEVER use markdown tables** — they render as garbage. Use structured text instead.
@@ -272,6 +275,8 @@ Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \
 When a flowchart, sequence diagram, state machine, ERD, or architecture sketch helps the user understand, put a **valid Mermaid** diagram in a fenced \`\`\`mermaid block in your final answer. The WebUI renders it inline. Keep diagrams focused (prefer one clear diagram over many). Do not invent map or widget fences — those still require tools.
 
 When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
+
+When \`show_card\` succeeds, include the summary and paste the WEB ONLY \`\`\`card fence once in your final answer so the WebUI can render designed information cards. **Do not invent** \`\`\`card fences — always call \`show_card\`. Prefer at most one deck per final answer.
 
 When a widget tool (\`show_widget\` / \`update_widget\`) succeeds, paste the WEB ONLY \`\`\`widget fence once in your final answer so the WebUI can show a card and open the side panel. **Do not invent** \`\`\`widget fences — always call the tool.
 
@@ -336,6 +341,7 @@ export function createFramework(opts: FrameworkOptions): Framework {
       ...createBinDriveTools(),
       ...createReportingTools(userSlug, isAdmin),
       createShowMapTool(),
+      createShowCardTool(),
       createReadImageTool(),
       ...createShowWidgetTools(widgetRegistry, {
         viewerSlug: userSlug,

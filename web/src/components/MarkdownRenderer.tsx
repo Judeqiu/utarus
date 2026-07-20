@@ -48,7 +48,9 @@ import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
 import { remarkMapFence } from '../remark/map-fence.js';
 import { remarkMermaidFence } from '../remark/mermaid-fence.js';
 import { remarkWidgetFence } from '../remark/widget-fence.js';
+import { remarkCardFence } from '../remark/card-fence.js';
 import { parseWidgetFenceBody } from '../widgets/widget-spec.js';
+import { parseCardFenceBody } from '../cards/card-spec.js';
 import { AssetLink } from './assets/AssetLink.js';
 import { AssetImage } from './assets/AssetImage.js';
 import { SandboxedIframe } from './assets/SandboxedIframe.js';
@@ -58,6 +60,9 @@ import { DiagramError } from './assets/DiagramError.js';
 import { MapEmbed } from './assets/MapEmbed.js';
 import { MapError } from './assets/MapError.js';
 import { WidgetCard, WidgetError } from './widgets/WidgetCard.js';
+import { InfoCard } from './cards/InfoCard.js';
+import { InfoCardDeck } from './cards/InfoCardDeck.js';
+import { InfoCardError } from './cards/InfoCardError.js';
 import type { WidgetSpec } from '../widgets/widget-spec.js';
 
 interface MarkdownRendererProps {
@@ -195,6 +200,17 @@ const DATA_DIAGRAM_ATTRS = [
   'dataDiagramError',
 ] as const;
 
+const DATA_CARD_ATTRS = [
+  'data-card',
+  'data-card-error',
+  'data-card-count',
+  'data-card-layout',
+  'dataCard',
+  'dataCardError',
+  'dataCardCount',
+  'dataCardLayout',
+] as const;
+
 function buildSchema(): typeof defaultSchema {
   const base = defaultSchema;
   return {
@@ -217,6 +233,7 @@ function buildSchema(): typeof defaultSchema {
         ...DATA_MAP_ATTRS,
         ...DATA_WIDGET_ATTRS,
         ...DATA_DIAGRAM_ATTRS,
+        ...DATA_CARD_ATTRS,
       ],
       pre: [...(base.attributes?.pre ?? []), 'className'],
       span: [...(base.attributes?.span ?? []), 'className'],
@@ -269,6 +286,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         // Tag embed fences while streaming; full render gated in code component.
         remarkMermaidFence,
         remarkWidgetFence,
+        remarkCardFence,
       ] as never,
     [viewerSlug],
   );
@@ -278,8 +296,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypeRaw,
         [rehypeSanitize, schema],
         rehypeKatex,
-        // Do not highlight ```map / ```widget / ```mermaid fences.
-        [rehypeHighlight, { plainText: ['map', 'widget', 'mermaid'] }],
+        // Do not highlight ```map / ```widget / ```mermaid / ```card fences.
+        [rehypeHighlight, { plainText: ['map', 'widget', 'mermaid', 'card'] }],
       ] as never,
     [schema],
   );
@@ -414,6 +432,42 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
                   : (rawChildren ?? ''),
               );
               return <DiagramEmbed source={body} />;
+            }
+            const cardFlag = pickDataProp(rec, 'data-card');
+            if (cardFlag === 'error' || cardFlag === '1') {
+              if (streaming) {
+                return (
+                  <EmbedFencePending
+                    label="Cards"
+                    language="card"
+                    codeProps={props}
+                  />
+                );
+              }
+              if (cardFlag === 'error') {
+                return (
+                  <InfoCardError
+                    message={
+                      pickDataProp(rec, 'data-card-error') ??
+                      'Invalid card block'
+                    }
+                  />
+                );
+              }
+              const rawChildren = props.children;
+              const body = String(
+                Array.isArray(rawChildren)
+                  ? rawChildren.join('')
+                  : (rawChildren ?? ''),
+              );
+              const parsed = parseCardFenceBody(body);
+              if (!parsed.ok) {
+                return <InfoCardError message={parsed.error} />;
+              }
+              if (parsed.spec.cards.length === 1) {
+                return <InfoCard card={parsed.spec.cards[0]!} />;
+              }
+              return <InfoCardDeck spec={parsed.spec} />;
             }
             return <CodeBlock {...props} />;
           },

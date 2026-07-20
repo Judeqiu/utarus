@@ -338,6 +338,8 @@ Demo: `examples/demo` (`floor-plan-3d`)
 
 Maps (inline Google Embed) remain separate — see [webui-chat-maps-design.md](webui-chat-maps-design.md).
 
+**Info cards** (inline designed presentation, tool `show_card`) are also platform-built-in — not a panel widget. Agent guide: [info-cards-agent-guide.md](info-cards-agent-guide.md). Design: [webui-chat-info-cards-design.md](webui-chat-info-cards-design.md).
+
 ---
 
 ## 10. Pinning Utarus

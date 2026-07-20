@@ -112,4 +112,73 @@
   .prose-chat hr {
     @apply my-3 border-stone-200;
   }
+
+  /*
+   * Info cards — portrait poker-card face; body fills remaining height + scrolls.
+   */
+  .info-card {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .info-card--portrait {
+    /* Geometry set inline (CARD_WIDTH_PX × CARD_HEIGHT_PX); keep flex fill. */
+    flex-shrink: 0;
+  }
+
+  .info-card-face {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .info-card-body-scroll {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    max-height: 8rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    scrollbar-width: thin;
+  }
+
+  /* Portrait face: body grows into leftover height instead of a small cap. */
+  .info-card-body-scroll--fill {
+    flex: 1 1 auto;
+    min-height: 5.5rem;
+    max-height: none;
+    height: 100%;
+  }
+
+  .info-card-body-scroll p {
+    margin: 0 0 0.4rem;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .info-card-body-scroll p:last-child {
+    margin-bottom: 0;
+  }
+
+  .info-card-body-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .info-card-body-scroll::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: rgb(214 211 209); /* stone-300 */
+  }
+
+  .dark .info-card-body-scroll::-webkit-scrollbar-thumb {
+    background: rgb(87 83 78); /* stone-600 */
+  }
 }
