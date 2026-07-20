@@ -84,9 +84,23 @@ console.log(`[build:platform-widgets] main.js ${size} bytes`);
 cpSync(join(pkgDir, 'src/index.html'), join(outDir, 'index.html'));
 cpSync(join(pkgDir, 'src/styles.css'), join(outDir, 'styles.css'));
 
+// KaTeX CSS + fonts (rich-document math). Paths must stay relative for opaque iframe.
+const katexDist = join(pkgDir, 'node_modules/katex/dist');
+if (!existsSync(join(katexDist, 'katex.min.css'))) {
+  fail('katex not installed in platform-widgets/rich-document (npm install)');
+}
+let katexCss = readFileSync(join(katexDist, 'katex.min.css'), 'utf8');
+// Default url(fonts/…) → url(./fonts/…) so CSS resolves next to index.html
+katexCss = katexCss.replace(/url\((['"]?)fonts\//g, 'url($1./fonts/');
+writeFileSync(join(outDir, 'katex.min.css'), katexCss, 'utf8');
+cpSync(join(katexDist, 'fonts'), join(outDir, 'fonts'), { recursive: true });
+
 const html = readFileSync(join(outDir, 'index.html'), 'utf8');
 if (!html.includes('src="./main.js"') || html.includes('type="module"')) {
   fail('index.html must load classic IIFE main.js (not type=module)');
+}
+if (!html.includes('href="./katex.min.css"')) {
+  fail('index.html must link ./katex.min.css for math fonts');
 }
 
 writeFileSync(

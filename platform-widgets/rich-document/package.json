@@ -9,6 +9,7 @@
     "@tiptap/extension-placeholder": "^2.11.7",
     "@tiptap/pm": "^2.11.7",
     "@tiptap/starter-kit": "^2.11.7",
+    "katex": "^0.16.47",
     "marked": "^15.0.7",
     "turndown": "^7.2.0"
   },

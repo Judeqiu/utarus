@@ -16,10 +16,20 @@ This document is the **how to use** guide. Copy the **Purpose / skill snippet** 
 
 `rich-document` is a **side-panel rich-text document**:
 
-- User edits in the WebUI panel (headings, lists, bold/italic, code, auto-linked URLs).
+- User edits in the WebUI panel (headings, lists, bold/italic, code, auto-linked URLs, **math**).
 - Body is **Markdown** in durable BinDrive state (not chat history).
 - Agent opens / updates / reads it through the same widget tools as other kinds.
 - **WebUI only** for interactive use. Other channels: use tool result text; never invent ` ```widget ` fences on Telegram/Slack.
+
+### Math (equations)
+
+Same delimiter contract as WebUI chat:
+
+| Use | Don't |
+|-----|--------|
+| `$$…$$`, `\[…\]` (display), `\(...\)` (inline) | Single `$…$` (not math — currency-safe) |
+
+Seed practice sheets and worked solutions with real LaTeX. The panel renders KaTeX; double-click an equation in edit mode to change the LaTeX source. Export DOCX/PDF still stores LaTeX as text (pretty math in export is not v1).
 
 **Not for:** freeform HTML reports (`post_html_report`), maps (`show_map`), or domain 3D/custom kinds.
 

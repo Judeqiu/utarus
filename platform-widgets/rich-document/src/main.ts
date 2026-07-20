@@ -12,6 +12,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { marked } from 'marked';
 import TurndownService from 'turndown';
+import { prepareMarkdownForHtml, unescapeHtmlAttr } from './math-markdown.js';
+import { MathDisplay, MathInline } from './math-nodes.js';
 
 const CHANNEL = 'utarus-widget';
 const FORMAT = 'utarus-rich-document-v1';
@@ -83,6 +85,27 @@ turndown.addRule('noImages', {
   filter: 'img',
   replacement: () => '',
 });
+// Math atoms → $$…$$ (display keeps block newlines)
+turndown.addRule('mathInline', {
+  filter: (node) =>
+    node.nodeName === 'SPAN' &&
+    (node as HTMLElement).getAttribute('data-type') === 'math-inline',
+  replacement: (_content, node) => {
+    const el = node as HTMLElement;
+    const latex = unescapeHtmlAttr(el.getAttribute('data-latex') ?? '').trim();
+    return `$$${latex}$$`;
+  },
+});
+turndown.addRule('mathDisplay', {
+  filter: (node) =>
+    node.nodeName === 'DIV' &&
+    (node as HTMLElement).getAttribute('data-type') === 'math-display',
+  replacement: (_content, node) => {
+    const el = node as HTMLElement;
+    const latex = unescapeHtmlAttr(el.getAttribute('data-latex') ?? '').trim();
+    return `\n\n$$\n${latex}\n$$\n\n`;
+  },
+});
 
 function setStatus(t: string): void {
   if (statusEl) statusEl.textContent = t;
@@ -118,8 +141,10 @@ function sendReady(): void {
 
 function markdownToHtml(md: string): string {
   marked.setOptions({ gfm: true, breaks: false });
+  // \[ \] / \( \) → $$ → <span|div data-type=math-*> so TipTap math nodes parse.
+  const prepared = prepareMarkdownForHtml(md);
   // marked returns string when async:false (default in v15 for sync API)
-  const html = marked.parse(md, { async: false }) as string;
+  const html = marked.parse(prepared, { async: false }) as string;
   return html || '<p></p>';
 }
 
@@ -700,6 +725,8 @@ function createEditor(initialMarkdown: string, placeholder: string): Editor {
         // Keep schema tight: no raw HTML extension
         heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
+      MathInline,
+      MathDisplay,
       // No manual link UI — URLs are auto-linked on type/paste (autolink + linkOnPaste).
       // Clicks go through host open_external (sandbox has no navigation).
       Link.configure({

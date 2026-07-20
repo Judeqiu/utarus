@@ -509,3 +509,41 @@ html[data-theme='dark'] .editor .ProseMirror .comment-anchor {
 .editor.readonly .ProseMirror {
   caret-color: transparent;
 }
+
+/* Math atoms (KaTeX) — source is data-latex, rendered by TipTap node views */
+.editor .ProseMirror .math-node {
+  cursor: default;
+  border-radius: 4px;
+  transition: background 0.12s ease;
+}
+
+.editor .ProseMirror .math-inline {
+  display: inline-block;
+  padding: 0 0.15em;
+  vertical-align: middle;
+}
+
+.editor .ProseMirror .math-display {
+  display: block;
+  margin: 0.75em 0;
+  padding: 0.4em 0.5em;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.editor .ProseMirror .math-node-selected,
+.editor .ProseMirror .math-node:hover {
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+}
+
+.editor .ProseMirror .math-node .katex-error {
+  color: var(--err-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+/* Prefer readable math color in both themes */
+.editor .ProseMirror .math-node .katex {
+  color: var(--fg);
+  font-size: 1.05em;
+}
