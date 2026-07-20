@@ -5,10 +5,11 @@ How a **domain agent** registers interactive side-panel widgets (e.g. 3D floor p
 | | |
 |--|--|
 | **Audience** | Domain authors (Binary, Marie, Invage, demos, forks) |
-| **Status** | Shipped in Utarus ≥ **1.6.0** |
+| **Status** | Shipped in Utarus ≥ **1.6.0** (rich-document ≥ **1.7.0**) |
 | **Architecture** | [webui-chat-widgets-design.md](./webui-chat-widgets-design.md) |
+| **Rich document (agents)** | [rich-document-agent-guide.md](./rich-document-agent-guide.md) |
 | **WebUI boot** | [webui-integration.md](./webui-integration.md) |
-| **Reference demo** | [examples/demo](../examples/demo) (`floor-plan-3d`) |
+| **Reference demo** | [examples/demo](../examples/demo) (`floor-plan-3d`, `rich-document`) |
 
 ---
 
@@ -197,8 +198,10 @@ Editable Markdown document in the side panel. Always registered by Utarus (no do
 - **Export** DOCX / PDF from the panel (host-mediated download; exports **current editor content**, including unsaved edits)  
 - **Quote to chat**: select text in the document → floating **Quote** → chip above the composer (same path as conversation quotes; agent sees widget provenance)  
 - **Comments** (optional `state.comments[]`): agent/user annotations that do **not** change `markdown`. Shape: `{ id, body, quote?, author: "agent"|"user", createdAt }`. Shown in a Comments rail; click jumps to the quoted span when found.  
+- **Submit** (toolbar): saves durable state, then posts a chat turn so the agent can process the submission (`read_widget_state`). Props: `allowSubmit` (default true), `submitLabel` (default `"Submit"`). **Save** only persists (no agent turn).  
 - Agent reads user edits with `read_widget_state`  
 - **Never** put document body or comments in `props`  
+- **Agent workflow guide:** [rich-document-agent-guide.md](./rich-document-agent-guide.md) (purpose snippet, submit/quote/comment decision trees)  
 - Design: [webui-chat-widgets-rich-document-design.md](./webui-chat-widgets-rich-document-design.md)
 
 ---

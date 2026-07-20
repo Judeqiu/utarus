@@ -39,6 +39,13 @@ export interface RichDocumentStateV1 {
 export type RichDocumentProps = {
   mode?: 'edit' | 'view';
   placeholder?: string;
+  /**
+   * When false, hide the Submit button (default: show in edit mode).
+   * Submit = save + post a chat message for the agent to process.
+   */
+  allowSubmit?: boolean;
+  /** Label for the Submit button (default "Submit"), max 40 chars. */
+  submitLabel?: string;
 };
 
 export type ValidateResult<T> =
@@ -238,7 +245,7 @@ export function validateRichDocumentProps(
     return { ok: false, error: 'rich-document props must be a plain object' };
   }
   const o = props;
-  const allowed = new Set(['mode', 'placeholder']);
+  const allowed = new Set(['mode', 'placeholder', 'allowSubmit', 'submitLabel']);
   for (const k of Object.keys(o)) {
     if (!allowed.has(k)) {
       if (
@@ -275,11 +282,36 @@ export function validateRichDocumentProps(
       return { ok: false, error: 'rich-document props.placeholder contains control characters' };
     }
   }
+  if (o.allowSubmit !== undefined && typeof o.allowSubmit !== 'boolean') {
+    return { ok: false, error: 'rich-document props.allowSubmit must be a boolean' };
+  }
+  if (o.submitLabel !== undefined) {
+    if (typeof o.submitLabel !== 'string') {
+      return { ok: false, error: 'rich-document props.submitLabel must be a string' };
+    }
+    const label = o.submitLabel.trim();
+    if (!label) {
+      return { ok: false, error: 'rich-document props.submitLabel must be non-empty when present' };
+    }
+    if (label.length > 40) {
+      return { ok: false, error: 'rich-document props.submitLabel exceeds 40 characters' };
+    }
+    if (CONTROL_CHARS.test(label)) {
+      return {
+        ok: false,
+        error: 'rich-document props.submitLabel contains control characters',
+      };
+    }
+  }
   return {
     ok: true,
     value: {
       ...(o.mode !== undefined ? { mode: o.mode as 'edit' | 'view' } : {}),
       ...(typeof o.placeholder === 'string' ? { placeholder: o.placeholder } : {}),
+      ...(typeof o.allowSubmit === 'boolean' ? { allowSubmit: o.allowSubmit } : {}),
+      ...(typeof o.submitLabel === 'string'
+        ? { submitLabel: o.submitLabel.trim() }
+        : {}),
     },
   };
 }

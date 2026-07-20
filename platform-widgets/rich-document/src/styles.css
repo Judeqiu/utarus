@@ -93,6 +93,11 @@ body {
   border-color: var(--accent);
 }
 
+.toolbar button.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .toolbar button:disabled {
   opacity: 0.45;
   cursor: not-allowed;

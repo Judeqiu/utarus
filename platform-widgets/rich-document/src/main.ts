@@ -41,6 +41,7 @@ const errEl = document.getElementById('err');
 const dirtyEl = document.getElementById('dirty');
 const toolbarEl = document.getElementById('toolbar');
 const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement | null;
+const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
 const editorEl = document.getElementById('editor');
 const exportBar = document.getElementById('exportBar');
 const exportDocxBtn = document.getElementById('exportDocx') as HTMLButtonElement | null;
@@ -58,6 +59,10 @@ const commentsRailBadge = document.getElementById('commentsRailBadge');
 /** Panel title from last init (for export filenames). */
 let documentTitle = 'Document';
 let exporting = false;
+/** After successful save, notify host to post a chat turn for the agent. */
+let pendingSubmit = false;
+let allowSubmit = true;
+let submitLabel = 'Submit';
 /** Frozen selection text for Quote action (pointerdown preventDefault collapses selection otherwise). */
 let pendingQuoteText: string | null = null;
 /** Session UI: comments rail shrunk to sidebar strip (still has comments). */
@@ -390,10 +395,23 @@ function toggleCommentsExpanded(): void {
   syncCommentsChrome();
 }
 
-function saveState(): void {
+function syncSubmitChrome(): void {
+  if (!submitBtn) return;
+  // Submit only in edit mode when allowed by props.
+  const show = mode === 'edit' && allowSubmit;
+  submitBtn.hidden = !show;
+  submitBtn.textContent = submitLabel;
+  submitBtn.disabled = pendingSubmit || exporting;
+}
+
+function saveState(opts?: { submitAfter?: boolean }): void {
   if (!instanceId || !editor) return;
   if (mode === 'view') {
     setError('Document is view-only');
+    return;
+  }
+  if (opts?.submitAfter && !allowSubmit) {
+    setError('Submit is disabled for this document');
     return;
   }
   const markdown = currentMarkdown();
@@ -409,7 +427,9 @@ function saveState(): void {
     return;
   }
   setError(null);
-  setStatus('saving…');
+  pendingSubmit = opts?.submitAfter === true;
+  syncSubmitChrome();
+  setStatus(pendingSubmit ? 'saving for submit…' : 'saving…');
   // Preserve comments layer — Save must not wipe agent annotations.
   const data: Record<string, unknown> = { format: FORMAT, markdown };
   if (comments.length > 0) data.comments = comments;
@@ -419,6 +439,25 @@ function saveState(): void {
     instanceId,
     expectedRevision: revision,
     data,
+  });
+}
+
+function submitDocument(): void {
+  saveState({ submitAfter: true });
+}
+
+function finishSubmitAfterSave(rev: number): void {
+  if (!instanceId || !pendingSubmit) return;
+  pendingSubmit = false;
+  syncSubmitChrome();
+  setStatus(`submitting · rev ${rev}`);
+  post({
+    channel: CHANNEL,
+    type: 'document_submit',
+    instanceId,
+    kind: 'rich-document',
+    title: documentTitle,
+    revision: rev,
   });
 }
 
@@ -438,6 +477,18 @@ function applyMode(m: 'edit' | 'view'): void {
     if (m === 'view') editorEl.classList.add('readonly');
     else editorEl.classList.remove('readonly');
   }
+  if (saveBtn) saveBtn.hidden = m === 'view';
+  syncSubmitChrome();
+}
+
+function applySubmitProps(props: Record<string, unknown>): void {
+  if (props.allowSubmit === false) allowSubmit = false;
+  else if (props.allowSubmit === true) allowSubmit = true;
+  // omit → keep current (default true on first open)
+  if (typeof props.submitLabel === 'string' && props.submitLabel.trim()) {
+    submitLabel = props.submitLabel.trim();
+  }
+  syncSubmitChrome();
 }
 
 function requestExport(format: 'docx' | 'pdf'): void {
@@ -636,6 +687,9 @@ function wireToolbar(): void {
   if (saveBtn) {
     saveBtn.addEventListener('click', () => saveState());
   }
+  if (submitBtn) {
+    submitBtn.addEventListener('click', () => submitDocument());
+  }
   if (exportDocxBtn) {
     exportDocxBtn.addEventListener('click', () => requestExport('docx'));
   }
@@ -681,6 +735,9 @@ function onInit(msg: {
   applyTheme(msg.theme);
 
   const props = msg.props ?? {};
+  allowSubmit = true;
+  submitLabel = 'Submit';
+  applySubmitProps(props);
   if (props.mode === 'view' || props.mode === 'edit') {
     applyMode(props.mode);
   } else {
@@ -736,6 +793,9 @@ function onUpdate(msg: {
   props: Record<string, unknown>;
   state?: { revision: number; data: Record<string, unknown> };
 }): void {
+  if (msg.props && typeof msg.props === 'object') {
+    applySubmitProps(msg.props);
+  }
   if (msg.props?.mode === 'view' || msg.props?.mode === 'edit') {
     applyMode(msg.props.mode);
   }
@@ -789,16 +849,37 @@ window.addEventListener('message', (event: MessageEvent) => {
     if (instanceId && o.instanceId === instanceId && typeof o.revision === 'number') {
       revision = o.revision;
       setDirty(false);
-      setStatus(`saved · rev ${revision}`);
       setError(null);
+      if (pendingSubmit) {
+        finishSubmitAfterSave(revision);
+      } else {
+        setStatus(`saved · rev ${revision}`);
+      }
     }
     return;
   }
   if (o.type === 'state_error') {
     if (instanceId && o.instanceId === instanceId) {
+      pendingSubmit = false;
+      syncSubmitChrome();
       const message = typeof o.message === 'string' ? o.message : 'save failed';
       setError(message);
       setStatus(`error · rev ${revision}`);
+    }
+    return;
+  }
+  if (o.type === 'document_submit_result') {
+    if (instanceId && o.instanceId === instanceId) {
+      pendingSubmit = false;
+      syncSubmitChrome();
+      if (o.ok === true) {
+        setError(null);
+        setStatus(`submitted · rev ${revision}`);
+      } else {
+        const message = typeof o.error === 'string' ? o.error : 'submit failed';
+        setError(message);
+        setStatus(`submit error · rev ${revision}`);
+      }
     }
     return;
   }

@@ -711,6 +711,30 @@ export function ChatPage({ session }: ChatPageProps) {
     setBanner(message);
   }
 
+  /**
+   * Rich-document Submit: document already saved to BinDrive. Post a user chat
+   * turn so the agent loads state and continues (grade, review, next step).
+   */
+  async function handleDocumentSubmit(payload: {
+    instanceId: string;
+    kind: string;
+    title: string;
+    revision: number;
+  }): Promise<void> {
+    if (isStreaming) {
+      throw new Error('Cannot submit while the agent is still responding');
+    }
+    const title = payload.title.trim() || 'Document';
+    const text = [
+      `Submitted document: **${title}**`,
+      '',
+      `[Widget submit — kind=${payload.kind} instanceId=${payload.instanceId} revision=${payload.revision}]`,
+      `Call read_widget_state with this instanceId and process the submission (review, grade, extract answer, continue the task, etc.).`,
+      `Do not invent document content — load state first. Prefer comments for feedback-only; edit markdown only if the task requires changing the document.`,
+    ].join('\n');
+    await handleSend(text, { queue: false });
+  }
+
   if (bootLoading) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center bg-white text-sm text-stone-500">
@@ -848,6 +872,7 @@ export function ChatPage({ session }: ChatPageProps) {
                 }}
                 onQuote={handleQuote}
                 onQuoteError={handleQuoteError}
+                onDocumentSubmit={handleDocumentSubmit}
                 onArtifactMessage={(msg) => {
                   setMessages((prev) => {
                     if (prev.some((m) => m.id === msg.id)) return prev;

@@ -97,6 +97,22 @@ describe('rich-document state', () => {
     expect(r.ok).toBe(false);
   });
 
+  it('accepts submit props', () => {
+    const r = validateRichDocumentProps({
+      allowSubmit: true,
+      submitLabel: 'Turn in',
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.allowSubmit).toBe(true);
+      expect(r.value.submitLabel).toBe('Turn in');
+    }
+  });
+
+  it('rejects empty submitLabel', () => {
+    expect(validateRichDocumentProps({ submitLabel: '   ' }).ok).toBe(false);
+  });
+
   it('rejects control characters in markdown', () => {
     const r = validateRichDocumentState({
       format: RICH_DOCUMENT_FORMAT,

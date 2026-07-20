@@ -20,7 +20,17 @@
         <button type="button" data-cmd="hr" title="Horizontal rule">―</button>
         <span class="spacer"></span>
         <span id="dirty" class="dirty" hidden>Unsaved changes</span>
-        <button type="button" id="saveBtn" class="primary" title="Save (Cmd/Ctrl+S)">Save</button>
+        <button type="button" id="saveBtn" title="Save without notifying the agent (Cmd/Ctrl+S)">
+          Save
+        </button>
+        <button
+          type="button"
+          id="submitBtn"
+          class="primary"
+          title="Save and send to the agent for processing"
+        >
+          Submit
+        </button>
       </div>
       <div id="exportBar" class="export-bar" hidden>
         <span class="export-label">Export</span>

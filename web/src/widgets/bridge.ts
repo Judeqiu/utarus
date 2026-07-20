@@ -52,6 +52,13 @@ export type WidgetHostToGuest =
       format?: 'docx' | 'pdf';
       filename?: string;
       error?: string;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'document_submit_result';
+      instanceId: string;
+      ok: boolean;
+      error?: string;
     };
 
 export type WidgetGuestToHost =
@@ -86,6 +93,15 @@ export type WidgetGuestToHost =
       kind: string;
       title: string;
       text: string;
+    }
+  | {
+      /** Save already completed; host should post a chat turn for the agent. */
+      channel: typeof WIDGET_CHANNEL;
+      type: 'document_submit';
+      instanceId: string;
+      kind: string;
+      title: string;
+      revision: number;
     };
 
 export function isWidgetGuestMessage(data: unknown): data is WidgetGuestToHost {
@@ -101,7 +117,8 @@ export function isWidgetGuestMessage(data: unknown): data is WidgetGuestToHost {
     o.type === 'state_save' ||
     o.type === 'open_external' ||
     o.type === 'export' ||
-    o.type === 'quote'
+    o.type === 'quote' ||
+    o.type === 'document_submit'
   );
 }
 

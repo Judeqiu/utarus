@@ -45,6 +45,16 @@ interface WidgetPanelHostProps {
   /** Quote selected widget text into the composer (rich-document). */
   onQuote?: (quote: ChatQuoteRef) => void;
   onQuoteError?: (message: string) => void;
+  /**
+   * Document Submit: guest already saved; host should post a chat turn so the
+   * agent can process the submission (answer, assignment, etc.).
+   */
+  onDocumentSubmit?: (payload: {
+    instanceId: string;
+    kind: string;
+    title: string;
+    revision: number;
+  }) => void | Promise<void>;
 }
 
 interface StateDoc {
@@ -82,6 +92,7 @@ export function WidgetPanelHost({
   onArtifactMessage,
   onQuote,
   onQuoteError,
+  onDocumentSubmit,
 }: WidgetPanelHostProps) {
   const registry = useWidgetRegistry();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -383,6 +394,69 @@ export function WidgetPanelHost({
         });
         return;
       }
+      if (msg.type === 'document_submit') {
+        if (spec.kind !== 'rich-document') {
+          postToGuest({
+            channel: WIDGET_CHANNEL,
+            type: 'document_submit_result',
+            instanceId: spec.instanceId,
+            ok: false,
+            error: `document_submit not supported for kind '${spec.kind}'`,
+          });
+          return;
+        }
+        if (!onDocumentSubmit) {
+          postToGuest({
+            channel: WIDGET_CHANNEL,
+            type: 'document_submit_result',
+            instanceId: spec.instanceId,
+            ok: false,
+            error: 'document submit is not available in this view',
+          });
+          return;
+        }
+        if (typeof msg.revision !== 'number' || !Number.isInteger(msg.revision)) {
+          postToGuest({
+            channel: WIDGET_CHANNEL,
+            type: 'document_submit_result',
+            instanceId: spec.instanceId,
+            ok: false,
+            error: 'document_submit requires integer revision',
+          });
+          return;
+        }
+        void (async () => {
+          try {
+            await onDocumentSubmit({
+              instanceId: spec.instanceId,
+              kind:
+                typeof msg.kind === 'string' && msg.kind.trim()
+                  ? msg.kind.trim()
+                  : spec.kind,
+              title:
+                typeof msg.title === 'string' && msg.title.trim()
+                  ? msg.title.trim()
+                  : spec.title,
+              revision: msg.revision,
+            });
+            postToGuest({
+              channel: WIDGET_CHANNEL,
+              type: 'document_submit_result',
+              instanceId: spec.instanceId,
+              ok: true,
+            });
+          } catch (e) {
+            postToGuest({
+              channel: WIDGET_CHANNEL,
+              type: 'document_submit_result',
+              instanceId: spec.instanceId,
+              ok: false,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
+        })();
+        return;
+      }
       if (msg.type === 'export') {
         if (spec.kind !== 'rich-document') {
           postToGuest({
@@ -530,6 +604,7 @@ export function WidgetPanelHost({
     onArtifactMessage,
     onQuote,
     onQuoteError,
+    onDocumentSubmit,
   ]);
 
   const openPendingExternal = () => {
