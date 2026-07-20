@@ -1,6 +1,6 @@
 {
   "name": "utarus",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Generic pi-agent-core based agent framework — CLI + Telegram, per-user YAML state, invite/onboard flow, skill-driven knowledge, tool-enforced rules.",
   "type": "module",
   "main": "dist/index.js",
@@ -15,15 +15,17 @@
     "dist",
     "src",
     "web",
+    "platform-widgets",
     "scripts",
     "README.md"
   ],
   "scripts": {
     "dev": "NODE_OPTIONS=--no-deprecation npx tsx src/index.ts",
-    "build": "tsc && npm run build:web",
+    "build": "tsc && npm run build:platform-widgets && npm run build:web",
+    "build:platform-widgets": "node platform-widgets/scripts/build.mjs",
     "build:web": "npm --prefix web install --include=dev && npm --prefix web run build",
     "prepare": "npm run build",
-    "prepack": "npm run build:web",
+    "prepack": "npm run build",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest"

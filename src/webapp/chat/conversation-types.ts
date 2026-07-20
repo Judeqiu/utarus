@@ -27,11 +27,20 @@ export interface StoredAttachment {
   mimeType: string;
 }
 
-/** Quote reference attached to a user message (ChatGPT-style selection). */
+/**
+ * Quote reference attached to a user message (ChatGPT-style selection).
+ * - Chat message quote: `source` omitted or `'message'`; `messageId` is a conversation message UUID; `role` is user|assistant.
+ * - Widget quote: `source: 'widget'`; `messageId` is the widget **instanceId** (UUID); `role` is `'widget'`.
+ */
 export interface StoredQuote {
   messageId: string;
-  role: StoredMessageRole;
+  role: StoredMessageRole | 'widget';
   text: string;
+  /** Defaults to message when omitted (back-compat). */
+  source?: 'message' | 'widget';
+  /** Present when source is widget. */
+  widgetKind?: string;
+  widgetTitle?: string;
 }
 
 /** LLM route that produced an assistant turn (audit / hydrate). */

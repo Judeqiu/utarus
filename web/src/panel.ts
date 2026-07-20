@@ -15,6 +15,11 @@ export interface PanelFileAsset {
 export interface PanelWidgetInstance {
   type: 'widget';
   spec: WidgetSpec;
+  /**
+   * Bumped when the agent writes widget state (update fence) so the host can
+   * soft-refresh the open guest without a full iframe remount.
+   */
+  contentEpoch?: number;
 }
 
 export type PanelContent = PanelFileAsset | PanelWidgetInstance;

@@ -30,11 +30,17 @@ export interface ChatAttachmentRef {
 
 /** Quote reference attached to the next user turn (ChatGPT-style selection). */
 export interface ChatQuoteRef {
-  /** Server UUID of the source message. */
+  /**
+   * Source id: conversation message UUID, or widget instanceId when source is widget.
+   */
   messageId: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'widget';
   /** Selected excerpt (plain text from Selection.toString()). */
   text: string;
+  /** Defaults to message when omitted. */
+  source?: 'message' | 'widget';
+  widgetKind?: string;
+  widgetTitle?: string;
 }
 
 /** Client-side max for quote selection (mirrors server QUOTE_TEXT_MAX). */

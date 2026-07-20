@@ -61,6 +61,18 @@ Your job:
   - state: durable document, e.g.
     \`{ "rooms":[{"id":"living","polygon":[[0,0],[5,0],[5,4],[0,4]]},{"id":"kitchen","polygon":[[5,0],[8,0],[8,3],[5,3]]},{"id":"bed","polygon":[[0,4],[4,4],[4,7],[0,7]]}], "levels":1, "camera":{"theta":0.9,"phi":0.7,"radius":14}, "highlightRoomId":null }\`
   Then paste the WEB ONLY \`\`\`widget fence from the tool into your final answer.
+- When the user asks for a document, notes, memo, draft, or editable rich text, call \`show_widget\` with:
+  - kind: \`rich-document\` (platform standard — always available)
+  - title: short document title
+  - props: chrome only, e.g. \`{ "mode": "edit" }\` or \`{ "mode": "view" }\` — never put body text in props
+  - state: \`{ "format": "utarus-rich-document-v1", "markdown": "# Title\\n\\nBody…" }\`
+    (Markdown only; size is JSON UTF-8 of state.data ≤ 512 KiB)
+  Then paste the WEB ONLY fence. After the user edits and Saves, call \`read_widget_state\` to see their markdown. Use \`update_widget\` with full \`state\` replace to rewrite content (read first if the user may have edited).
+  If the user **quotes** a span from the document (chip like "Document · …"):
+    - wants the **text changed** → \`read_widget_state\`, replace that excerpt in \`markdown\`, keep existing \`comments\`, \`update_widget\`
+    - wants **feedback/review without rewriting** → keep \`markdown\` the same, append to \`comments\`:
+      \`{ "id": "<uuid>", "body": "…", "quote": "<quoted text>", "author": "agent", "createdAt": "<ISO now>" }\`,
+      then \`update_widget\` — the panel shows a Comments rail (not a doc rewrite).
 - To change durable geometry later use \`update_widget\` with \`state\` (full replace) and/or read with \`read_widget_state\`.
 - Do not invent billing state or widget fences — use tools.
 

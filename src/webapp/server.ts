@@ -36,6 +36,7 @@ import { requireAuth, requireAdmin } from './auth.js';
 import { isBillingEnabled, assertBillingConfig } from '../billing/index.js';
 import { billingWebhookHandler } from '../billing/webhooks.js';
 import { createBillingRouter } from './billing-router.js';
+import { resolvePlatformWidgetsDistDirFrom } from '../widgets/platform-assets.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,6 +48,14 @@ const __dirname = dirname(__filename);
  */
 export function resolveWebDistDir(): string {
   return resolve(__dirname, '../../web/dist');
+}
+
+/**
+ * Platform widget static root (dist/platform-widgets).
+ * From dist/webapp → ../platform-widgets; from src/webapp → ../../dist/platform-widgets.
+ */
+export function resolvePlatformWidgetsDistDir(): string | null {
+  return resolvePlatformWidgetsDistDirFrom(__dirname);
 }
 
 export interface ExtraRouterMount {
@@ -202,6 +211,12 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
     }
   }
 
+  // Platform widget bundles (world-readable, same trust model as domain-assets)
+  const platformWidgetsDistDir = resolvePlatformWidgetsDistDir();
+  if (platformWidgetsDistDir !== null) {
+    app.use('/platform-assets/widgets', express.static(platformWidgetsDistDir));
+  }
+
   for (const mount of opts.extraRouters ?? []) {
     app.use(mount.path, mount.router);
   }
@@ -209,7 +224,7 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   if (existsSync(webDistDir)) {
     const indexHtml = join(webDistDir, 'index.html');
     app.get(
-      /^\/(?!api\/|logout|health|domain-assets\/).*$/,
+      /^\/(?!api\/|logout|health|domain-assets\/|platform-assets\/).*$/,
       (req: Request, res: Response, next: NextFunction) => {
         const last = req.path.split('/').pop() ?? '';
         if (last.includes('.')) {

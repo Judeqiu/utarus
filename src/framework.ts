@@ -271,6 +271,8 @@ When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \
 
 When a widget tool (\`show_widget\` / \`update_widget\`) succeeds, paste the WEB ONLY \`\`\`widget fence once in your final answer so the WebUI can show a card and open the side panel. **Do not invent** \`\`\`widget fences — always call the tool.
 
+Platform kind \`rich-document\` is always available for editable notes/docs in the side panel. Seed with state \`{ "format": "utarus-rich-document-v1", "markdown": "…" }\` and props chrome only (\`mode\`, \`placeholder\`). Never put the body in props. Optional durable annotations: \`state.comments\` array of \`{ id (any 8-4-4-4-12 hex UUID), body, quote?, author: "agent"|"user", createdAt (ISO) }\` — comments do **not** rewrite markdown. Comment ids need not be RFC v4 (any hex UUID shape is accepted). After user Save, use \`read_widget_state\`. When the user quotes a document excerpt: if they want the text changed, replace the span in markdown (keep existing comments); if they want review/feedback only, keep markdown and append a comment with \`quote\` set to the excerpt, then \`update_widget\` so the panel Comments rail updates.
+
 ## User reporting (framework-owned)
 
 Users can file reports for admin review (bugs, abuse, product feedback, anything they want operators to see).

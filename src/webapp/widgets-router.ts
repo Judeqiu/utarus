@@ -6,6 +6,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuth, type AuthUser } from './auth.js';
 import type { WidgetStateStore } from '../widgets/state-store.js';
 import type { WidgetRegistry } from '../widgets/registry.js';
+import { validateKindState } from '../widgets/kind-validators.js';
 import {
   toFence,
   validateStateData,
@@ -85,6 +86,11 @@ export function createWidgetsRouter(deps: {
       res.status(413).json({ error: sc.error, code: 'too_large' });
       return;
     }
+    const kindState = validateKindState(body.kind, body.data);
+    if (!kindState.ok) {
+      res.status(400).json({ error: kindState.error, code: 'invalid' });
+      return;
+    }
 
     const result = await store.save(
       { backend: 'bindrive', ownerSlug: user.slug, instanceId },
@@ -114,8 +120,17 @@ export function createWidgetsRouter(deps: {
       return;
     }
 
+    // Artifact chat cards (K38): emit only when the kind is *not* a single-document
+    // surface. rich-document is not versioned in chat — every Save overwrites the
+    // same instanceId in BinDrive; the original open card always reloads latest.
+    // Emitting a new card per Save falsely looks like version history.
     let message: StoredChatMessage | undefined;
-    if (typeof body.conversationId === 'string' && body.conversationId.trim()) {
+    const emitChatCard = body.kind !== 'rich-document';
+    if (
+      emitChatCard &&
+      typeof body.conversationId === 'string' &&
+      body.conversationId.trim()
+    ) {
       const convId = body.conversationId.trim();
       try {
         getConversation(user.slug, convId);

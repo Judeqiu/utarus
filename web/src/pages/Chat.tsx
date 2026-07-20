@@ -46,6 +46,7 @@ import {
 } from '../panel.js';
 import {
   lastOpenInAssistantText,
+  lastWidgetFenceInAssistantText,
   resolveWidgetInstance,
 } from '../widgets/resolve-instance.js';
 import type { WidgetSpec } from '../widgets/widget-spec.js';
@@ -257,10 +258,22 @@ export function ChatPage({ session }: ChatPageProps) {
               : m,
           ),
         );
-        // Auto-open last action:open widget in this assistant message (K8).
+        // Panel widgets after this turn:
+        // - action:open → open/replace panel (K8)
+        // - action:update → auto-open if closed, or soft-refresh if same instance open
+        //   so agent refinements (e.g. quoted title edit) show without clicking a card
         const openSpec = lastOpenInAssistantText(ev.text);
+        const lastFence = lastWidgetFenceInAssistantText(ev.text);
+        const epoch = Date.now();
         if (openSpec) {
-          setPanelContent({ type: 'widget', spec: openSpec });
+          setPanelContent({ type: 'widget', spec: openSpec, contentEpoch: epoch });
+          setPanelAsset(null);
+        } else if (lastFence?.action === 'update') {
+          setPanelContent({
+            type: 'widget',
+            spec: lastFence,
+            contentEpoch: epoch,
+          });
           setPanelAsset(null);
         }
         void refreshList();
@@ -827,11 +840,14 @@ export function ChatPage({ session }: ChatPageProps) {
             {panelContent?.type === 'widget' ? (
               <WidgetPanelHost
                 spec={panelContent.spec}
+                contentEpoch={panelContent.contentEpoch}
                 conversationId={activeConversationId}
                 onClose={() => {
                   setPanelContent(null);
                   setPanelAsset(null);
                 }}
+                onQuote={handleQuote}
+                onQuoteError={handleQuoteError}
                 onArtifactMessage={(msg) => {
                   setMessages((prev) => {
                     if (prev.some((m) => m.id === msg.id)) return prev;

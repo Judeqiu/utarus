@@ -6,6 +6,11 @@ import { existsSync, statSync } from 'fs';
 import { join } from 'path';
 import type { DomainExtension } from '../extension.js';
 import {
+  PLATFORM_KIND_PROPS_VALIDATORS,
+  PLATFORM_KIND_STATE_VALIDATORS,
+} from './kind-validators.js';
+import { resolvePlatformWidgetsDistDir } from './platform-assets.js';
+import {
   PLATFORM_WIDGET_KIND_IDS,
   WIDGET_KIND_RE,
   WIDGET_PROPS_MAX_BYTES,
@@ -35,6 +40,31 @@ export const PLATFORM_HTML_BUNDLE_KIND: WidgetKindRegistration = {
   supportsPersistence: false,
 };
 
+export const PLATFORM_RICH_DOCUMENT_KIND: WidgetKindRegistration = {
+  id: 'rich-document',
+  label: 'Rich document',
+  runtime: 'iframe-bundle',
+  entryHtml: 'rich-document/index.html',
+  sandboxProfile: 'strict',
+  supportsUpdate: true,
+  supportsPersistence: true,
+  propsSchema: {
+    type: 'object',
+    description: 'Chrome only. Content lives in state.markdown.',
+    properties: {
+      mode: { type: 'string', enum: ['edit', 'view'] },
+      placeholder: { type: 'string', maxLength: 200 },
+    },
+    additionalProperties: false,
+  },
+};
+
+/** Product-registered platform kinds (seeded into every process registry). */
+export const PLATFORM_WIDGET_KINDS: readonly WidgetKindRegistration[] = [
+  PLATFORM_HTML_BUNDLE_KIND,
+  PLATFORM_RICH_DOCUMENT_KIND,
+];
+
 export interface WidgetRegistry {
   byId: ReadonlyMap<string, WidgetKindRegistration>;
   agentKey: string | null;
@@ -61,12 +91,75 @@ function assertEntryHtmlSafe(entryHtml: string): void {
 }
 
 /**
+ * Fail-fast boot validation for platform product kinds + their assets/validators.
+ */
+export function assertPlatformWidgetIntegrity(): void {
+  const p = PLATFORM_HTML_BUNDLE_KIND;
+  if (
+    p.id !== 'html-bundle' ||
+    p.supportsUpdate !== false ||
+    p.supportsPersistence !== false ||
+    p.entryHtml !== undefined ||
+    p.sandboxProfile !== 'strict'
+  ) {
+    throw new Error('PLATFORM_HTML_BUNDLE_KIND is misconfigured');
+  }
+
+  const rd = PLATFORM_RICH_DOCUMENT_KIND;
+  if (
+    rd.id !== 'rich-document' ||
+    rd.supportsUpdate !== true ||
+    rd.supportsPersistence !== true ||
+    rd.sandboxProfile !== 'strict' ||
+    rd.runtime !== 'iframe-bundle' ||
+    rd.entryHtml !== 'rich-document/index.html'
+  ) {
+    throw new Error('PLATFORM_RICH_DOCUMENT_KIND is misconfigured');
+  }
+
+  for (const kind of PLATFORM_WIDGET_KINDS) {
+    if (!(PLATFORM_WIDGET_KIND_IDS as readonly string[]).includes(kind.id)) {
+      throw new Error(
+        `platform kind '${kind.id}' is not in PLATFORM_WIDGET_KIND_IDS (reserved list)`,
+      );
+    }
+    if (kind.supportsPersistence) {
+      if (!PLATFORM_KIND_STATE_VALIDATORS[kind.id]) {
+        throw new Error(`platform kind '${kind.id}' missing state validator`);
+      }
+      if (!PLATFORM_KIND_PROPS_VALIDATORS[kind.id]) {
+        throw new Error(`platform kind '${kind.id}' missing props validator`);
+      }
+    }
+    if (kind.entryHtml) {
+      assertEntryHtmlSafe(kind.entryHtml);
+      const dist = resolvePlatformWidgetsDistDir();
+      if (dist === null) {
+        throw new Error(
+          `platform kind '${kind.id}' requires dist/platform-widgets but resolvePlatformWidgetsDistDir() returned null. ` +
+            `Run: npm run build:platform-widgets`,
+        );
+      }
+      const full = join(dist, kind.entryHtml);
+      if (!existsSync(full) || !statSync(full).isFile()) {
+        throw new Error(
+          `platform kind '${kind.id}': entryHtml file missing: ${full}. Run: npm run build:platform-widgets`,
+        );
+      }
+    }
+  }
+}
+
+/**
  * Fail-fast boot validation for domain widget registrations.
  */
 export function assertWidgetRegistrations(ext: DomainExtension): void {
   const webUi = ext.webUi;
   const widgets = webUi?.widgets;
-  if (widgets === undefined) return;
+  if (widgets === undefined) {
+    assertPlatformWidgetIntegrity();
+    return;
+  }
   if (!Array.isArray(widgets)) {
     throw new Error('DomainWebUiExtension.widgets must be an array');
   }
@@ -148,23 +241,15 @@ export function assertWidgetRegistrations(ext: DomainExtension): void {
     }
   }
 
-  // Platform constant integrity
-  const p = PLATFORM_HTML_BUNDLE_KIND;
-  if (
-    p.id !== 'html-bundle' ||
-    p.supportsUpdate !== false ||
-    p.supportsPersistence !== false ||
-    p.entryHtml !== undefined ||
-    p.sandboxProfile !== 'strict'
-  ) {
-    throw new Error('PLATFORM_HTML_BUNDLE_KIND is misconfigured');
-  }
+  assertPlatformWidgetIntegrity();
 }
 
 export function buildWidgetRegistry(ext: DomainExtension): WidgetRegistry {
   assertWidgetRegistrations(ext);
   const map = new Map<string, WidgetKindRegistration>();
-  map.set(PLATFORM_HTML_BUNDLE_KIND.id, { ...PLATFORM_HTML_BUNDLE_KIND });
+  for (const k of PLATFORM_WIDGET_KINDS) {
+    map.set(k.id, { ...k });
+  }
   for (const w of ext.webUi?.widgets ?? []) {
     map.set(w.id, { ...w });
   }

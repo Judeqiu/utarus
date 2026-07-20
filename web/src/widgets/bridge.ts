@@ -10,6 +10,8 @@ export type WidgetHostToGuest =
       type: 'init';
       instanceId: string;
       kind: string;
+      /** Panel chrome title — used for export filenames. */
+      title: string;
       props: Record<string, unknown>;
       theme: { colorScheme: 'light' | 'dark' };
       state: { revision: number; data: Record<string, unknown> } | null;
@@ -34,6 +36,22 @@ export type WidgetHostToGuest =
       code: string;
       message: string;
       currentRevision?: number;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'open_external_result';
+      instanceId: string;
+      ok: boolean;
+      error?: string;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'export_result';
+      instanceId: string;
+      ok: boolean;
+      format?: 'docx' | 'pdf';
+      filename?: string;
+      error?: string;
     };
 
 export type WidgetGuestToHost =
@@ -46,6 +64,28 @@ export type WidgetGuestToHost =
       instanceId: string;
       expectedRevision: number;
       data: Record<string, unknown>;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'open_external';
+      instanceId: string;
+      url: string;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'export';
+      instanceId: string;
+      format: 'docx' | 'pdf';
+      markdown: string;
+      title: string;
+    }
+  | {
+      channel: typeof WIDGET_CHANNEL;
+      type: 'quote';
+      instanceId: string;
+      kind: string;
+      title: string;
+      text: string;
     };
 
 export function isWidgetGuestMessage(data: unknown): data is WidgetGuestToHost {
@@ -58,7 +98,10 @@ export function isWidgetGuestMessage(data: unknown): data is WidgetGuestToHost {
     o.type === 'ready' ||
     o.type === 'error' ||
     o.type === 'resize' ||
-    o.type === 'state_save'
+    o.type === 'state_save' ||
+    o.type === 'open_external' ||
+    o.type === 'export' ||
+    o.type === 'quote'
   );
 }
 
