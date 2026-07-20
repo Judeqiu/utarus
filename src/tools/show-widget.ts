@@ -7,6 +7,7 @@ import { Type } from 'typebox';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import type { WidgetRegistry } from '../widgets/registry.js';
 import type { WidgetStateStore } from '../widgets/state-store.js';
+import { validateKindProps, validateKindState } from '../widgets/kind-validators.js';
 import {
   isAllowedWidgetEntryUrl,
   toFence,
@@ -16,6 +17,7 @@ import {
   WIDGET_PROPS_MAX_BYTES,
   type WidgetSpec,
 } from '../widgets/widget-spec.js';
+import { RICH_DOCUMENT_FORMAT } from '../widgets/kinds/rich-document-state.js';
 
 function ok(text: string, details: Record<string, unknown>): AgentToolResult<Record<string, unknown>> {
   return { content: [{ type: 'text' as const, text }], details };
@@ -52,6 +54,8 @@ function fenceBlock(spec: WidgetSpec): string {
   return ['```widget', toFence(spec), '```'].join('\n');
 }
 
+const RICH_DOCUMENT_PREVIEW_CHARS = 500;
+
 function successText(opts: {
   instanceId: string;
   revision: number | null;
@@ -59,6 +63,8 @@ function successText(opts: {
   kind: string;
   summary?: string;
   fence: string;
+  /** Optional markdown body preview for rich-document (all channels). */
+  markdownPreview?: string;
 }): string {
   const lines = [
     '[Widget — all channels]',
@@ -68,6 +74,9 @@ function successText(opts: {
     `kind: ${opts.kind}`,
   ];
   if (opts.summary) lines.push(opts.summary);
+  if (opts.markdownPreview !== undefined) {
+    lines.push('', 'markdown preview:', opts.markdownPreview);
+  }
   lines.push(
     '',
     '---',
@@ -76,6 +85,13 @@ function successText(opts: {
     opts.fence,
   );
   return lines.join('\n');
+}
+
+function richDocumentMarkdownPreview(state: Record<string, unknown> | undefined): string | undefined {
+  if (!state || typeof state.markdown !== 'string') return undefined;
+  const md = state.markdown;
+  if (md.length <= RICH_DOCUMENT_PREVIEW_CHARS) return md;
+  return `${md.slice(0, RICH_DOCUMENT_PREVIEW_CHARS)}…`;
 }
 
 export function createShowWidgetTools(
@@ -146,6 +162,9 @@ export function createShowWidgetTools(
         const sizeErr = enforcePropsSize(p.props, p.kind, reg.propsMaxBytes);
         if (sizeErr) return fail(sizeErr);
 
+        const propsKind = validateKindProps(p.kind, p.props);
+        if (!propsKind.ok) return fail(propsKind.error);
+
         let instanceId = p.instanceId;
         if (instanceId !== undefined) {
           if (typeof instanceId !== 'string' || !WIDGET_INSTANCE_ID_RE.test(instanceId)) {
@@ -156,6 +175,7 @@ export function createShowWidgetTools(
         }
 
         let revision: number | null = null;
+        let stateForPreview: Record<string, unknown> | undefined;
         if (reg.supportsPersistence) {
           if (!ctx.viewerSlug) {
             return fail('Cannot persist widget state: no authenticated user slug');
@@ -166,6 +186,8 @@ export function createShowWidgetTools(
           if (!isPlainObject(p.state)) return fail('state must be a plain object');
           const sc = validateStateData(p.state);
           if (!sc.ok) return fail(sc.error);
+          const kindState = validateKindState(p.kind, p.state);
+          if (!kindState.ok) return fail(kindState.error);
           const saved = await ctx.store.save(
             { backend: 'bindrive', ownerSlug: ctx.viewerSlug, instanceId },
             { kind: p.kind, data: p.state, expectedRevision: 0 },
@@ -174,6 +196,7 @@ export function createShowWidgetTools(
             return fail(`state save failed (${saved.code}): ${saved.error}`);
           }
           revision = saved.doc.revision;
+          stateForPreview = p.state;
         } else if (p.state !== undefined) {
           return fail(`Widget kind '${p.kind}' does not support state`);
         }
@@ -193,6 +216,8 @@ export function createShowWidgetTools(
         if (!validated.ok) return fail(`Invalid widget: ${validated.error}`);
 
         const fence = fenceBlock(validated.spec);
+        const markdownPreview =
+          p.kind === 'rich-document' ? richDocumentMarkdownPreview(stateForPreview) : undefined;
         return ok(
           successText({
             instanceId: validated.spec.instanceId,
@@ -201,12 +226,16 @@ export function createShowWidgetTools(
             kind: validated.spec.kind,
             summary: validated.spec.summary,
             fence,
+            markdownPreview,
           }),
           {
             instanceId: validated.spec.instanceId,
             kind: validated.spec.kind,
             revision,
             fence: toFence(validated.spec),
+            ...(stateForPreview?.format === RICH_DOCUMENT_FORMAT
+              ? { format: RICH_DOCUMENT_FORMAT }
+              : {}),
           },
         );
       } catch (e) {
@@ -266,7 +295,11 @@ export function createShowWidgetTools(
         const sizeErr = enforcePropsSize(props, p.kind, reg.propsMaxBytes);
         if (sizeErr) return fail(sizeErr);
 
+        const propsKind = validateKindProps(p.kind, props);
+        if (!propsKind.ok) return fail(propsKind.error);
+
         let revision: number | null = null;
+        let stateForPreview: Record<string, unknown> | undefined;
         if (p.state !== undefined) {
           if (!reg.supportsPersistence) {
             return fail(`Widget kind '${p.kind}' does not support state`);
@@ -277,6 +310,8 @@ export function createShowWidgetTools(
           if (!isPlainObject(p.state)) return fail('state must be a plain object');
           const sc = validateStateData(p.state);
           if (!sc.ok) return fail(sc.error);
+          const kindState = validateKindState(p.kind, p.state);
+          if (!kindState.ok) return fail(kindState.error);
           const loaded = await ctx.store.load({
             backend: 'bindrive',
             ownerSlug: ctx.viewerSlug,
@@ -306,6 +341,7 @@ export function createShowWidgetTools(
             return fail(`state save failed (${saved.code}): ${saved.error}${extra}`);
           }
           revision = saved.doc.revision;
+          stateForPreview = p.state;
         }
 
         const specInput: Record<string, unknown> = {
@@ -322,6 +358,8 @@ export function createShowWidgetTools(
         if (!validated.ok) return fail(`Invalid widget: ${validated.error}`);
 
         const fence = fenceBlock(validated.spec);
+        const markdownPreview =
+          p.kind === 'rich-document' ? richDocumentMarkdownPreview(stateForPreview) : undefined;
         return ok(
           successText({
             instanceId: validated.spec.instanceId,
@@ -330,6 +368,7 @@ export function createShowWidgetTools(
             kind: validated.spec.kind,
             summary: validated.spec.summary,
             fence,
+            markdownPreview,
           }),
           {
             instanceId: validated.spec.instanceId,

@@ -24,7 +24,16 @@ interface QuoteChipProps {
 export function QuoteChip({ quote, onRemove, className = '' }: QuoteChipProps) {
   const preview = truncate(quote.text, CHIP_PREVIEW);
   const title = truncate(quote.text, TOOLTIP_PREVIEW);
-  const roleLabel = quote.role === 'assistant' ? 'Assistant' : 'You';
+  const roleLabel =
+    quote.role === 'widget' || quote.source === 'widget'
+      ? quote.widgetTitle?.trim()
+        ? `Document · ${quote.widgetTitle.trim()}`
+        : quote.widgetKind
+          ? `Widget · ${quote.widgetKind}`
+          : 'Document'
+      : quote.role === 'assistant'
+        ? 'Assistant'
+        : 'You';
 
   return (
     <div

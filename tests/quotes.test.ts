@@ -32,6 +32,27 @@ describe('quotes helpers', () => {
     expect(block).toContain('---\nRevenue grew 12% YoY.\n---');
   });
 
+  it('formatQuotesForAgent describes widget source and edit path', () => {
+    const block = formatQuotesForAgent([
+      {
+        messageId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+        role: 'widget',
+        source: 'widget',
+        widgetKind: 'rich-document',
+        widgetTitle: 'Notes',
+        text: 'Ship the export bar',
+      },
+    ]);
+    expect(block).toContain('side-panel widget kind=rich-document');
+    expect(block).toContain('title="Notes"');
+    expect(block).toContain('instanceId=3fa85f64-5717-4562-b3fc-2c963f66afa6');
+    expect(block).toContain('Ship the export bar');
+    expect(block).toContain('read_widget_state');
+    expect(block).toContain('update_widget');
+    expect(block).toContain('comments');
+    expect(block).toContain('author: "agent"');
+  });
+
   it('formatQuotesForAgent fails fast on empty array', () => {
     expect(() => formatQuotesForAgent([])).toThrow(/at least one quote/);
   });
@@ -97,8 +118,53 @@ describe('validateQuotesForConversation', () => {
         messageId: '22222222-2222-2222-2222-222222222222',
         role: 'assistant',
         text: 'Revenue grew 12% YoY.',
+        source: 'message',
       },
     ]);
+  });
+
+  it('accepts widget quote without conversation membership', () => {
+    const conv = seed();
+    const out = validateQuotesForConversation(
+      [
+        {
+          messageId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+          role: 'widget',
+          source: 'widget',
+          widgetKind: 'rich-document',
+          widgetTitle: 'Notes',
+          text: '  paragraph from doc  ',
+        },
+      ],
+      conv,
+    );
+    expect(out).toEqual([
+      {
+        messageId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+        role: 'widget',
+        source: 'widget',
+        widgetKind: 'rich-document',
+        widgetTitle: 'Notes',
+        text: 'paragraph from doc',
+      },
+    ]);
+  });
+
+  it('rejects widget quote without widgetKind', () => {
+    const conv = seed();
+    expect(() =>
+      validateQuotesForConversation(
+        [
+          {
+            messageId: '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+            role: 'widget',
+            source: 'widget',
+            text: 'x',
+          },
+        ],
+        conv,
+      ),
+    ).toThrow(QuoteValidationError);
   });
 
   it('rejects null and empty array', () => {

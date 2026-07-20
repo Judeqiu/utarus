@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rich document</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="toolbar" class="toolbar" hidden>
+        <button type="button" data-cmd="bold" title="Bold">B</button>
+        <button type="button" data-cmd="italic" title="Italic"><em>I</em></button>
+        <button type="button" data-cmd="h1" title="Heading 1">H1</button>
+        <button type="button" data-cmd="h2" title="Heading 2">H2</button>
+        <button type="button" data-cmd="bullet" title="Bullet list">•</button>
+        <button type="button" data-cmd="ordered" title="Ordered list">1.</button>
+        <button type="button" data-cmd="code" title="Code block">&lt;/&gt;</button>
+        <button type="button" data-cmd="quote" title="Quote">“</button>
+        <button type="button" data-cmd="hr" title="Horizontal rule">―</button>
+        <span class="spacer"></span>
+        <span id="dirty" class="dirty" hidden>Unsaved changes</span>
+        <button type="button" id="saveBtn" class="primary" title="Save (Cmd/Ctrl+S)">Save</button>
+      </div>
+      <div id="exportBar" class="export-bar" hidden>
+        <span class="export-label">Export</span>
+        <button type="button" id="exportDocx" title="Download Word (.docx)">DOCX</button>
+        <button type="button" id="exportPdf" title="Download PDF (.pdf)">PDF</button>
+      </div>
+      <div id="mainRow" class="main-row">
+        <div id="editor" class="editor"></div>
+        <!-- Present only when comments exist: expanded rail or collapsed sidebar strip -->
+        <aside id="commentsPane" class="comments-pane" hidden aria-label="Document comments">
+          <button
+            type="button"
+            id="commentsExpandBtn"
+            class="comments-rail-toggle"
+            title="Collapse comments"
+            aria-expanded="true"
+            aria-controls="commentsBody"
+          >
+            <span class="chevron" aria-hidden="true">›</span>
+            <span id="commentsRailBadge" class="rail-badge" hidden></span>
+            <span class="rail-label">Comments</span>
+          </button>
+          <div id="commentsBody" class="comments-body">
+            <div class="comments-head">
+              <span class="comments-title">Comments</span>
+              <span id="commentsCount" class="comments-count"></span>
+            </div>
+            <div id="commentsList" class="comments-list"></div>
+          </div>
+        </aside>
+      </div>
+      <!-- Status / errors at bottom (status bar) -->
+      <div id="err" class="err" hidden></div>
+      <div id="status" class="status" role="status">Waiting for host…</div>
+      <!-- Floating quote control (selection lives inside this opaque iframe). -->
+      <div id="quoteToolbar" class="quote-toolbar" hidden role="toolbar" aria-label="Quote selection">
+        <button type="button" id="quoteBtn" title="Quote selection into chat">Quote</button>
+      </div>
+    </div>
+    <script src="./main.js"></script>
+  </body>
+</html>

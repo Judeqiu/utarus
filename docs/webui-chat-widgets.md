@@ -163,7 +163,9 @@ On `init`, hydrate from `state.data` (+ `props` for chrome). Call `ready` after 
 
 ---
 
-## 6. Platform kind: `html-bundle`
+## 6. Platform kinds
+
+### `html-bundle`
 
 For static HTML already published to BinDrive/`/reports/`:
 
@@ -172,6 +174,32 @@ For static HTML already published to BinDrive/`/reports/`:
 - No bridge / no `update_widget`  
 
 Prefer domain kinds for interactive apps.
+
+### `rich-document` (platform standard)
+
+Editable Markdown document in the side panel. Always registered by Utarus (no domain `staticDir`).
+
+```ts
+// show_widget args
+{
+  kind: 'rich-document',
+  title: 'Meeting notes',
+  props: { mode: 'edit' }, // optional: mode 'edit'|'view', placeholder ≤200 chars
+  state: {
+    format: 'utarus-rich-document-v1',
+    markdown: '# Notes\n\n- **Ship** it\n',
+  },
+}
+```
+
+- User edits in the panel → **Save** (or Cmd/Ctrl+S) → durable BinDrive state (revision bumps in store only)  
+- **No new chat card on each Save** — documents are not versioned in history; the original open card always reloads the latest state  
+- **Export** DOCX / PDF from the panel (host-mediated download; exports **current editor content**, including unsaved edits)  
+- **Quote to chat**: select text in the document → floating **Quote** → chip above the composer (same path as conversation quotes; agent sees widget provenance)  
+- **Comments** (optional `state.comments[]`): agent/user annotations that do **not** change `markdown`. Shape: `{ id, body, quote?, author: "agent"|"user", createdAt }`. Shown in a Comments rail; click jumps to the quoted span when found.  
+- Agent reads user edits with `read_widget_state`  
+- **Never** put document body or comments in `props`  
+- Design: [webui-chat-widgets-rich-document-design.md](./webui-chat-widgets-rich-document-design.md)
 
 ---
 

@@ -41,7 +41,12 @@ export const WIDGET_INSTANCE_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Platform-reserved kind ids — domain may not register these. */
-export const PLATFORM_WIDGET_KIND_IDS = ['html-bundle'] as const;
+export const PLATFORM_WIDGET_KIND_IDS = ['html-bundle', 'rich-document'] as const;
+
+/** True if kind id is a platform-reserved id (may or may not be product-registered yet). */
+export function isPlatformWidgetKindId(kind: string): boolean {
+  return (PLATFORM_WIDGET_KIND_IDS as readonly string[]).includes(kind);
+}
 
 const CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/
 const KEY_RE = /^[a-zA-Z][a-zA-Z0-9]*$/;
@@ -259,6 +264,17 @@ export function isAllowedWidgetEntryUrl(
   }
   const path = u.pathname;
   if (path.includes('..') || path.includes('\\')) return false;
+
+  if (path.startsWith('/platform-assets/widgets/')) {
+    if (path.includes('..') || path.includes('\\')) return false;
+    if (u.search && u.search !== '') return false;
+    if (u.hash) return false;
+    // iframe entry must be an html file under the platform widgets root
+    if (!path.endsWith('.html')) return false;
+    const rest = path.slice('/platform-assets/widgets/'.length);
+    if (!rest || rest.includes('..') || rest.startsWith('/')) return false;
+    return true;
+  }
 
   if (path.startsWith('/domain-assets/')) {
     if (!ctx.agentKey) return false;

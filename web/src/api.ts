@@ -238,6 +238,9 @@ export async function sendMessage(
                 messageId: q.messageId,
                 role: q.role,
                 text: q.text,
+                ...(q.source !== undefined ? { source: q.source } : {}),
+                ...(q.widgetKind !== undefined ? { widgetKind: q.widgetKind } : {}),
+                ...(q.widgetTitle !== undefined ? { widgetTitle: q.widgetTitle } : {}),
               })),
             }
           : {}),

@@ -1,0 +1,485 @@
+/* System fonts only — no remote @font-face (opaque-origin sandbox). */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1c1917;
+  --muted: #78716c;
+  --border: #e7e5e4;
+  --accent: #1c1917;
+  --accent-fg: #fafaf9;
+  --err-bg: #fef2f2;
+  --err-fg: #b91c1c;
+  --toolbar-bg: #fafaf9;
+  --prose-code-bg: #f5f5f4;
+  --focus: #3b82f6;
+}
+
+html[data-theme='dark'] {
+  --bg: #0c0a09;
+  --fg: #fafaf9;
+  --muted: #a8a29e;
+  --border: #292524;
+  --accent: #fafaf9;
+  --accent-fg: #1c1917;
+  --err-bg: #450a0a;
+  --err-fg: #fca5a5;
+  --toolbar-bg: #1c1917;
+  --prose-code-bg: #292524;
+  --focus: #60a5fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  flex-shrink: 0;
+}
+
+.toolbar button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.toolbar button:hover {
+  border-color: var(--muted);
+}
+
+.toolbar button.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar .spacer {
+  flex: 1;
+}
+
+.dirty {
+  font-size: 11px;
+  color: #b45309;
+  margin-right: 6px;
+}
+
+html[data-theme='dark'] .dirty {
+  color: #fbbf24;
+}
+
+/* Bottom status bar — revision, save/export/quote feedback */
+.status {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.err {
+  padding: 8px 12px;
+  background: var(--err-bg);
+  color: var(--err-fg);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.export-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.export-bar .export-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.export-bar button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  min-height: 26px;
+}
+
+.export-bar button:hover {
+  border-color: var(--muted);
+}
+
+.export-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.quote-toolbar {
+  position: fixed;
+  z-index: 50;
+  transform: translate(-50%, calc(-100% - 8px));
+  pointer-events: auto;
+}
+
+.quote-toolbar button {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.quote-toolbar button:hover {
+  filter: brightness(1.08);
+}
+
+.main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 16px 32px;
+}
+
+.comments-pane {
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  transition: width 0.15s ease;
+}
+
+/* Expanded: full comments section */
+.comments-pane:not(.collapsed) {
+  width: 220px;
+  max-width: 42%;
+}
+
+/* Collapsed: narrow sidebar strip */
+.comments-pane.collapsed {
+  width: 36px;
+}
+
+.comments-rail-toggle {
+  appearance: none;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: var(--toolbar-bg);
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  width: 36px;
+  padding: 10px 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+}
+
+.comments-rail-toggle:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.comments-rail-toggle .chevron {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  transition: transform 0.15s ease;
+  /* expanded: points right (collapse toward edge) — use « feel via rotate */
+  transform: rotate(0deg);
+}
+
+.comments-pane.collapsed .comments-rail-toggle .chevron {
+  /* collapsed: point left to expand */
+  transform: rotate(180deg);
+}
+
+.comments-rail-toggle .rail-badge {
+  min-width: 1.25em;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.comments-rail-toggle .rail-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* Expanded: hide vertical label/badge on the strip (head has title/count) */
+.comments-pane:not(.collapsed) .comments-rail-toggle .rail-label,
+.comments-pane:not(.collapsed) .comments-rail-toggle .rail-badge {
+  display: none;
+}
+
+.comments-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.comments-pane.collapsed .comments-body {
+  display: none;
+}
+
+.comments-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.comments-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.comments-count {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+}
+
+.comments-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.comment-card {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 8px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+.comment-card:hover {
+  border-color: var(--focus);
+}
+
+.comment-card .comment-meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.comment-card .comment-quote {
+  font-size: 11px;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: 6px;
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 3.6em;
+  overflow: hidden;
+}
+
+.comment-card .comment-body {
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.editor .ProseMirror mark.comment-flash,
+.editor .ProseMirror .comment-flash {
+  background: rgba(251, 191, 36, 0.45);
+  border-radius: 2px;
+}
+
+.editor .ProseMirror {
+  outline: none;
+  min-height: 100%;
+}
+
+.editor .ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.editor .ProseMirror h1 {
+  font-size: 1.75rem;
+  margin: 0.6em 0 0.35em;
+  font-weight: 700;
+}
+
+.editor .ProseMirror h2 {
+  font-size: 1.35rem;
+  margin: 0.7em 0 0.3em;
+  font-weight: 650;
+}
+
+.editor .ProseMirror h3,
+.editor .ProseMirror h4,
+.editor .ProseMirror h5,
+.editor .ProseMirror h6 {
+  font-size: 1.1rem;
+  margin: 0.7em 0 0.25em;
+  font-weight: 600;
+}
+
+.editor .ProseMirror p {
+  margin: 0.4em 0;
+}
+
+.editor .ProseMirror ul,
+.editor .ProseMirror ol {
+  padding-left: 1.4em;
+  margin: 0.4em 0;
+}
+
+.editor .ProseMirror blockquote {
+  margin: 0.5em 0;
+  padding-left: 0.9em;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+
+.editor .ProseMirror code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--prose-code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+
+.editor .ProseMirror pre {
+  background: var(--prose-code-bg);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0.6em 0;
+}
+
+.editor .ProseMirror pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.editor .ProseMirror a {
+  color: var(--focus);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1em 0;
+}
+
+.editor.readonly .ProseMirror {
+  caret-color: transparent;
+}

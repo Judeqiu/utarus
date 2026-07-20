@@ -81,3 +81,9 @@ export function lastOpenInAssistantText(text: string): WidgetSpec | null {
   const specs = extractWidgetFences(text).filter((s) => s.action === 'open');
   return specs.length ? specs[specs.length - 1]! : null;
 }
+
+/** Last widget fence of any action (open or update) in a single assistant message. */
+export function lastWidgetFenceInAssistantText(text: string): WidgetSpec | null {
+  const specs = extractWidgetFences(text);
+  return specs.length ? specs[specs.length - 1]! : null;
+}

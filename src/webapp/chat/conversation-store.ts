@@ -331,7 +331,7 @@ export function appendMessage(
         q =>
           !q ||
           typeof q.messageId !== 'string' ||
-          (q.role !== 'user' && q.role !== 'assistant') ||
+          (q.role !== 'user' && q.role !== 'assistant' && q.role !== 'widget') ||
           typeof q.text !== 'string',
       )
     ) {
