@@ -305,10 +305,10 @@ app.listen(3001);
 | Do | Don't |
 |---|---|
 | Use GFM tables, lists, fenced code | Rely on Slack/Telegram table flattening for web |
-| Currency as `$1.2M` or `**$1.2M**` | Wrap prose in `$…$` (KaTeX will eat spaces) |
-| Real equations as `$$…$$` | Nested broken `**` markup |
+| Currency as `$1.2M` or `**$1.2M**` | Wrap prose in `$…$` (not math; would also break finance agents) |
+| Real equations as `$$…$$`, `\[…\]`, or `\(...\)` | Nested broken `**` markup |
 
-SPA config: `remark-math` with `singleDollarTextMath: false`.
+SPA: `normalizeMathDelimiters` → `remark-math` with `singleDollarTextMath: false`. LaTeX bracket delimiters are accepted; single `$` is not.
 
 ---
 

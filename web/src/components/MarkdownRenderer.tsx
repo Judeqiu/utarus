@@ -1,13 +1,13 @@
 /**
  * react-markdown pipeline configured per docs/webui-chat-design.md §8.5.
  *
- * Pipeline: remark-gfm + remark-math + remark-bindrive-assets (custom)
+ * Pipeline: normalizeMathDelimiters → remark-gfm + remark-math + remark-bindrive-assets
  * followed by rehype-katex + rehype-highlight + rehype-sanitize + rehype-raw.
  *
- * Math uses $$...$$ only (singleDollarTextMath: false). Domain agents often
- * emit currency amounts ($1.675T, $14.7B); default single-$ math would treat
- * spans between dollar signs as KaTeX, collapse word spaces, and leave ** as
- * literal asterisks — the chat "garbled finance text" bug.
+ * Math: remark-math with singleDollarTextMath: false (only $$…$$). Domain agents
+ * often emit currency ($1.675T); single-$ math would garble finance text.
+ * LLMs still emit standard LaTeX \[…\] / \(…\); normalizeMathDelimiters maps
+ * those to $$ before parse (outside code spans/fences).
  *
  * Components map:
  *   a       → <AssetLink>
@@ -43,6 +43,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Root } from 'hast';
 
 import { CHAT_EMBED_ATTR, CHAT_EMBED_PROPS } from '../embeds/chat-embed.js';
+import { normalizeMathDelimiters } from '../lib/normalize-math-delimiters.js';
 import { remarkBinDriveAssets } from '../remark/bindrive-assets.js';
 import { remarkMapFence } from '../remark/map-fence.js';
 import { remarkMermaidFence } from '../remark/mermaid-fence.js';
@@ -255,6 +256,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   streaming = false,
 }: MarkdownRendererProps) {
   const schema = useMemo(() => buildSchema(), []);
+  // Map \[…\] / \(…\) → $$ so remark-math can parse (single $ stays currency).
+  const markdown = useMemo(() => normalizeMathDelimiters(text), [text]);
   const remarkPlugins = useMemo(
     () =>
       [
@@ -447,7 +450,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
           },
         }}
       >
-        {text}
+        {markdown}
       </ReactMarkdown>
     </div>
   );

@@ -15,7 +15,7 @@ title: WebUI Chat — Architecture
 
 1. Browser channel alongside Telegram/Slack, **isolated conversation** (`web:<slug>:<conversationId>`).
 2. Token streaming (SSE), tool chips, errors surface.
-3. First-class GFM (tables, code); currency `$` does not trigger KaTeX (`singleDollarTextMath: false`).
+3. First-class GFM (tables, code); currency `$` does not trigger KaTeX (`singleDollarTextMath: false`). LaTeX `\[…\]` / `\(...\)` are normalized to `$$` before parse.
 4. Same Framework / agent pool / invite gate / BinDrive auth.
 5. One process for chat + agents (`framework.startWebApp`).
 6. **Persisted multi-chat** (Claude-style list + titles).
@@ -130,8 +130,9 @@ SSE event types: `ack`, `tool_start`, `tool_end`, `delta`, `heartbeat`, `done`, 
 ## Math / markdown
 
 - GFM via `remark-gfm`.
-- Math: `$$…$$` only (`singleDollarTextMath: false`) so `$1.675T` stays currency.
-- Domain system prompts should say the same for the web channel hint.
+- Math parse: `remark-math` with `singleDollarTextMath: false` so `$1.675T` stays currency.
+- Before parse, `normalizeMathDelimiters` maps standard LaTeX `\[…\]` (display) and `\(...\)` (inline) to `$$…$$`. Incomplete pairs (streaming) are left unchanged; fenced/inline code is not rewritten.
+- Authoring contract: `$$…$$`, `\[…\]`, `\(...\)` all render; single `$…$` does not.
 
 ---
 
