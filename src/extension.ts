@@ -84,12 +84,37 @@ export interface DomainWebRoute {
   title?: string;
 }
 
+/**
+ * Empty-chat hero on WebUI only (new conversation / cleared thread).
+ * Domains supply product-specific getting-started guidance.
+ */
+export interface ChatEmptyState {
+  /** Headline under the chat header. */
+  title: string;
+  /** One or more short paragraphs (plain text). */
+  body: string[];
+  /** Optional bullet list of essentials. */
+  bullets?: string[];
+  /**
+   * Optional starter chips. Clicking sends `message` as the user's first turn
+   * (WebUI only). `label` is the button text (keep short).
+   */
+  starters?: Array<{ label: string; message: string }>;
+  /** Optional small footer (defaults to framework quote/tables note when omitted). */
+  footer?: string;
+}
+
 export interface DomainWebUiExtension {
   /** URL namespace, e.g. "binary" → /api/domain/binary */
   agentKey: string;
   productName?: string;
   /** Default path after login (e.g. /notifications). Default "/" (chat). */
   defaultPath?: string;
+  /**
+   * WebUI chat empty-state copy (new conversation). When omitted, the SPA uses
+   * a generic framework default.
+   */
+  chatEmptyState?: ChatEmptyState;
   nav?: DomainWebNavItem[];
   routes?: DomainWebRoute[];
   apiRouters?: Array<{

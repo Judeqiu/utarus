@@ -25,6 +25,7 @@ How a **domain agent** enables the Utarus browser chat (Claude-style multi-chat,
 | Domain `webCommands` (`/name …`) | **Domain** | Server intercept on `POST /messages`; no LLM |
 | Landing `POST /api/onboard/register` (QR → BIND) | **Domain (optional)** | Mount via `extraRouters` |
 | Domain tools / skills / purpose | **Domain** | Unchanged by WebUI |
+| Chat empty-state copy | **Domain** (`webUi.chatEmptyState`) | WebUI new-conversation hero; optional starter chips |
 
 **Rule:** Do not copy the SPA or chat routers into your domain repo. Depend on a pinned Utarus commit that includes `web/dist` and call `framework.startWebApp()`.
 

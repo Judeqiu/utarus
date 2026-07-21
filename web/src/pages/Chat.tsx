@@ -33,7 +33,7 @@ import type {
   SessionUser,
   ToolChip,
 } from '../types.js';
-import { ThreadView } from '../components/ThreadView.js';
+import { ThreadView, type ChatEmptyStateView } from '../components/ThreadView.js';
 import { Composer } from '../components/Composer.js';
 import { ConversationSidebar } from '../components/ConversationSidebar.js';
 import { AssetPanel } from '../components/AssetPanel.js';
@@ -54,6 +54,8 @@ import { Menu, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
   session: SessionUser;
+  /** Domain empty-chat guidance from WebUI manifest (Web only). */
+  emptyState?: ChatEmptyStateView | null;
 }
 
 const ACTIVE_CONV_KEY = 'utarus_active_conversation';
@@ -85,7 +87,7 @@ function storedMessagesToUi(
   }));
 }
 
-export function ChatPage({ session }: ChatPageProps) {
+export function ChatPage({ session, emptyState = null }: ChatPageProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -850,6 +852,11 @@ export function ChatPage({ session }: ChatPageProps) {
                 now={now}
                 agentName={agentName}
                 serverKnownMessageIds={serverKnownMessageIds}
+                emptyState={emptyState}
+                onStarter={(message) => {
+                  if (isStreaming) return;
+                  handleSend(message, { queue: false });
+                }}
                 onQuote={handleQuote}
                 onQuoteError={handleQuoteError}
                 onOpenWidget={handleOpenWidget}

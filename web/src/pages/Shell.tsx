@@ -45,6 +45,14 @@ export interface ManifestRoute {
   title?: string;
 }
 
+export interface ChatEmptyStateManifest {
+  title: string;
+  body: string[];
+  bullets?: string[];
+  starters?: Array<{ label: string; message: string }>;
+  footer?: string;
+}
+
 export interface WebUiManifest {
   agentKey: string | null;
   productName: string;
@@ -52,6 +60,7 @@ export interface WebUiManifest {
   nav: ManifestNavItem[];
   routes: ManifestRoute[];
   widgets?: WidgetKindRegistration[];
+  chatEmptyState?: ChatEmptyStateManifest | null;
 }
 
 interface ShellProps {
@@ -115,6 +124,7 @@ export function Shell({ session, path, navigate }: ShellProps) {
         ],
         routes: [],
         widgets: undefined,
+        chatEmptyState: null,
       });
     }
   }, []);
@@ -271,7 +281,9 @@ export function Shell({ session, path, navigate }: ShellProps) {
 
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         <WidgetRegistryContext.Provider value={widgetRegistry}>
-          {showChat && <ChatPage session={session} />}
+          {showChat && (
+            <ChatPage session={session} emptyState={manifest.chatEmptyState ?? null} />
+          )}
         </WidgetRegistryContext.Provider>
         {!showChat && route?.pageKind === 'notifications' && (
           <NotificationsPage

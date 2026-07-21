@@ -17,6 +17,22 @@ import {
 } from '../lib/quote-selection.js';
 import type { WidgetSpec } from '../widgets/widget-spec.js';
 
+export interface ChatEmptyStateView {
+  title: string;
+  body: string[];
+  bullets?: string[];
+  starters?: Array<{ label: string; message: string }>;
+  footer?: string;
+}
+
+const DEFAULT_EMPTY: ChatEmptyStateView = {
+  title: 'How can I help you today?',
+  body: [
+    'Send a message to start. Tables, code, and BinDrive reports render inline here.',
+  ],
+  footer: 'Select text to quote it into your next message.',
+};
+
 interface ThreadViewProps {
   messages: ChatMessage[];
   viewerSlug: string;
@@ -24,6 +40,10 @@ interface ThreadViewProps {
   agentName: string;
   /** Message ids known to exist on the server (load + run ack). */
   serverKnownMessageIds: ReadonlySet<string>;
+  /** Domain/product empty-state from WebUI manifest (Web only). */
+  emptyState?: ChatEmptyStateView | null;
+  /** Starter chip → send as first user message. */
+  onStarter?: (message: string) => void;
   onQuote?: (quote: ChatQuoteRef) => void;
   onQuoteError?: (message: string) => void;
   onOpenWidget?: (spec: WidgetSpec) => void;
@@ -35,6 +55,8 @@ export function ThreadView({
   now,
   agentName,
   serverKnownMessageIds,
+  emptyState,
+  onStarter,
   onQuote,
   onQuoteError,
   onOpenWidget,
@@ -130,15 +152,45 @@ export function ThreadView({
   }
 
   if (messages.length === 0) {
+    const empty = emptyState ?? DEFAULT_EMPTY;
+    const footer =
+      empty.footer ??
+      'Select text to quote it into your next message. Tables, code, and BinDrive reports render inline.';
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center sm:px-6 sm:py-12">
-        <div className="mb-2 font-serif text-2xl font-semibold text-stone-900 sm:text-3xl">
-          How can I help you today?
+      <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8 text-center sm:px-6 sm:py-10">
+        <div className="mb-3 max-w-xl font-serif text-2xl font-semibold text-stone-900 sm:text-3xl">
+          {empty.title}
         </div>
-        <p className="max-w-md text-sm text-stone-500">
-          Send a message to start. Tables, code, and BinDrive reports render
-          inline here. Select text to quote it into your next message.
-        </p>
+        <div className="max-w-xl space-y-2 text-sm leading-relaxed text-stone-600">
+          {empty.body.map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+        </div>
+        {empty.bullets && empty.bullets.length > 0 && (
+          <ul className="mt-4 max-w-xl list-none space-y-1.5 text-left text-sm text-stone-700">
+            {empty.bullets.map((b, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-stone-400" />
+                <span>{b}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {empty.starters && empty.starters.length > 0 && onStarter && (
+          <div className="mt-5 flex max-w-xl flex-wrap items-center justify-center gap-2">
+            {empty.starters.map((s) => (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => onStarter(s.message)}
+                className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-left text-xs font-medium text-stone-800 shadow-sm transition hover:border-stone-400 hover:bg-stone-50"
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="mt-5 max-w-md text-xs text-stone-400">{footer}</p>
       </div>
     );
   }

@@ -14,6 +14,7 @@ export type {
   DomainWebNavItem,
   DomainWebRoute,
   DomainWebPageKind,
+  ChatEmptyState,
   EnrichMessageContext,
   Skill,
   LoadedSkill,
