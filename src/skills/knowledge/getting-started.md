@@ -59,6 +59,21 @@ Every state mutation (`init_user`, `update_profile`, `link_telegram`, invite red
 
 When a user wants to **report** something to admins (feedback, bug, abuse, etc.), call `submit_report` with their text. Entries go to the global `data/reporting.yaml` file. Admins use `list_reports` or the WebUI Admin console.
 
+## Knowledge base (framework-owned)
+
+Durable notes and facts live under `data/kb/` — **not** profile, skills, or BinDrive. This is **cross-session memory** (preferred name, preferences, facts). `profile.display_name` is only the account label — do **not** treat it as the preferred name if the KB has one.
+
+| Scope | File | Who writes |
+| --- | --- | --- |
+| private | `data/kb/users/<slug>.yaml` | Current user only |
+| shared | `data/kb/shared.yaml` | Admins only (all users can read) |
+
+Tools: `list_kb`, `search_kb`, `get_kb`, `create_kb`, `update_kb`, `delete_kb`.
+
+**Recall is mandatory tool use:** for “what is my name / what should you call me / what do you know about me / my preferences / do you remember…”, call `search_kb` or `list_kb` **before** answering. Preferred name in KB wins over `profile.display_name`. Never answer from profile alone for those questions.
+
+`scope` is required on create. Never invent ids or timestamps.
+
 ## Channel context
 
 Telegram and Slack message context always includes the sender’s user ID. Never ask for it. Pass it to tools that need it.

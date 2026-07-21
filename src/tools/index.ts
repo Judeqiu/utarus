@@ -6,6 +6,7 @@ export { createFirecrawlTool } from './firecrawl.js';
 export { createWriteReportTool } from './write-report.js';
 export { createBinDriveTools } from './bindrive.js';
 export { createReportingTools } from './reporting.js';
+export { createKbTools } from './kb.js';
 export { createShowMapTool } from './show-map.js';
 export { createShowCardTool } from './show-card.js';
 export { createShowWidgetTools } from './show-widget.js';

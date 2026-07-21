@@ -35,6 +35,8 @@ process.env.UTARUS_LOADED_BY_HOST = '1';
 function seedDataRoot(root: string): void {
   mkdirSync(resolve(root, 'users'), { recursive: true });
   mkdirSync(resolve(root, 'config'), { recursive: true });
+  // KB dirs optional at boot — private/shared files are created on first write
+  mkdirSync(resolve(root, 'kb', 'users'), { recursive: true });
   for (const f of ['invites.yaml', 'admin_codes.yaml', 'admin_ids.yaml', 'reporting.yaml']) {
     const p = resolve(root, f);
     if (!existsSync(p)) writeFileSync(p, '[]\n', 'utf-8');

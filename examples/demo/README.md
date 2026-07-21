@@ -30,6 +30,18 @@ No domain tools required. On WebUI the agent can emit free ` ```mermaid ` fences
 2. Ask: *Draw a flowchart of free vs Pro plan access for this demo agent*
 3. Expect: a diagram card in the assistant message (not a side-panel widget)
 
+### Knowledge base (framework-owned)
+
+No domain setup. Tools are always present after Utarus ships KB.
+
+1. Same login (**demo** / **demo1234**)
+2. Ask: *Remember that I prefer bullet-point answers*
+3. Expect: `create_kb` with `scope: private` → entry under `data/kb/users/demo.yaml`
+4. New chat or later: *What do you know about my preferences?* → `search_kb` / `list_kb`
+5. Admin session: can also create **shared** entries in `data/kb/shared.yaml`
+
+Design: [`docs/knowledge-base-design.md`](../../docs/knowledge-base-design.md).
+
 ---
 
 ## Prerequisites

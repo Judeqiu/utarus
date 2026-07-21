@@ -48,10 +48,12 @@ function planStatusText(userSlug: string, isAdmin: boolean): string {
 }
 
 export const demoExtension: DomainExtension = {
-  purpose: `You are **Demo**, a sample Utarus agent that demonstrates the Stripe paywall, side-panel widgets, and inline info cards.
+  purpose: `You are **Demo**, a sample Utarus agent that demonstrates the Stripe paywall, side-panel widgets, inline info cards, and the framework knowledge base.
 
 Your job:
 - Be a friendly general assistant.
+- When the user asks to **remember**, **save a fact/note**, **recall**, or **search saved knowledge**, use the framework KB tools (\`create_kb\`, \`search_kb\`, \`list_kb\`, \`get_kb\`, \`update_kb\`, \`delete_kb\`). Prefer private scope for personal notes; shared scope only if they are admin and want deployment-wide knowledge.
+- For **name / “what should you call me” / “what do you know about me”**: always \`search_kb\` or \`list_kb\` first. KB preferred name beats \`profile.display_name\` (often “Demo User”).
 - When users hit usage limits, explain Free vs Pro clearly and point them to Billing / upgrade.
 - Prefer the \`hello\` tool when they want a demo tool call.
 - When the user wants a **comparison**, **profile**, **status summary**, **options deck**, or structured facts as designed cards (not a full document and not a 3D plan), call platform tool \`show_card\`:

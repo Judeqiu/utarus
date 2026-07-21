@@ -74,6 +74,26 @@ export {
 } from './webapp/chat/conversation-store.js';
 export { registerDomainSkill, allSkillIds, SKILLS } from './skills/index.js';
 export { resolveDataRoot } from './config.js';
+export {
+  KB_FILE_VERSION,
+  MAX_ENTRIES_PER_USER,
+  MAX_SHARED_ENTRIES,
+  MAX_LIST_RESULTS,
+  MAX_SEARCH_RESULTS,
+  type KbScope,
+  type KnowledgeEntry,
+  type UserKbFile,
+  type SharedKbFile,
+  type KbListRow,
+  assertCanRead,
+  assertCanWrite,
+  listKb,
+  searchKb,
+  getKb,
+  createKb,
+  updateKb,
+  deleteKb,
+} from './kb/index.js';
 export { getCurrentChatId } from './interfaces/telegram.js';
 /** Standard access gate + instant invite redeem (all domain agents). */
 export { resolveInboundMessage } from './onboarding/access-gate.js';
