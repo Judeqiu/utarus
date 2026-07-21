@@ -63,7 +63,8 @@ describe('normalizeMathDelimiters', () => {
     const out = normalizeMathDelimiters(input);
     expect(out).toContain('$1.675T');
     expect(out).toContain('$x^2$');
-    expect(out).toContain('$$\na+b\n$$');
+    // Mid-line \[…\] cannot be block math — degrades to inline $$…$$.
+    expect(out).toContain('$$a+b$$');
     expect(out).toContain('$$c$$');
   });
 
@@ -83,14 +84,16 @@ describe('normalizeMathDelimiters', () => {
     expect(out).toContain('$$x$$');
     // Fence body preserved with original \[ \]
     expect(out).toMatch(/```tex\n\\\[\na = b\n\\\]\n```/);
-    expect(out).toContain('$$\nc\n$$');
+    // 'After \[c\]' is mid-line → inline math.
+    expect(out).toContain('After $$c$$');
   });
 
   it('does not rewrite delimiters inside inline code', () => {
     const input = 'Use `\\[x\\]` in docs, not \\[x\\] bare.';
     const out = normalizeMathDelimiters(input);
     expect(out).toContain('`\\[x\\]`');
-    expect(out).toContain('$$\nx\n$$');
+    // Mid-line \[…\] degrades to inline math (see currency test).
+    expect(out).toContain('$$x$$');
   });
 
   it('leaves incomplete pairs unchanged (streaming)', () => {
@@ -114,5 +117,47 @@ describe('normalizeMathDelimiters', () => {
     const out = normalizeMathDelimiters(input);
     expect(out.startsWith('Before $$a$$\n\n```js\n')).toBe(true);
     expect(out).toContain('\\[not math\\]');
+  });
+
+  it('keeps the closing $$ fence inside a list item (nolex02 hint bug)', () => {
+    // Exact shape from mathteacher chat on nolex02
+    // (8651253f-aeb4-4e0c-a530-a9b139decc5a.json): display math inside a
+    // list item. The closing fence used to land at column 0, break out of
+    // the list, and shift $$ pairing for the rest of the message — all
+    // later text rendered as raw red KaTeX-error output.
+    const input = [
+      '- Section formula (internal division): ',
+      '  \\[',
+      '  P = \\frac{2 \\cdot \\mathbf{a} + 1 \\cdot \\mathbf{b}}{3}',
+      '  \\]',
+      '  — weight the **opposite** endpoint. So \\(P\\) closer to \\(A\\).',
+    ].join('\n');
+    const out = normalizeMathDelimiters(input);
+    // Closing fence must carry the list-item indent, not column 0.
+    expect(out).toContain('\n  $$\n');
+    expect(out).not.toMatch(/\n\$\$\n/);
+    // Total $$ count stays balanced: 2 for the block + 2 inline pairs.
+    expect(out.match(/\$\$/g)?.length).toBe(6);
+    expect(out).toContain('$$P$$');
+    expect(out).toContain('$$A$$');
+  });
+
+  it('keeps the closing $$ fence inside a blockquote', () => {
+    const input = '> hint:\n> \\[\n> x = 1\n> \\]\n> after \\(y\\) text';
+    const out = normalizeMathDelimiters(input);
+    expect(out).toContain('> $$\n> x = 1\n> $$');
+    expect(out).toContain('$$y$$');
+  });
+
+  it('degrades mid-line \\[…\\] to inline math instead of a broken block', () => {
+    const input = 'The formula \\[a^2 + b^2 = c^2\\] holds here.';
+    const out = normalizeMathDelimiters(input);
+    expect(out).toBe('The formula $$a^2 + b^2 = c^2$$ holds here.');
+  });
+
+  it('collapses newlines when a mid-line \\[…\\] spans lines', () => {
+    const input = 'text \\[a +\nb\\] more';
+    const out = normalizeMathDelimiters(input);
+    expect(out).toBe('text $$a + b$$ more');
   });
 });

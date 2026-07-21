@@ -11,6 +11,14 @@
  *   \[ … \]  →  $$\n…\n$$   (display)
  *   \( … \)  →  $$…$$       (inline; same-line $$ is inline under remark-math)
  *
+ * Display-math indentation matters: when `\[…\]` sits inside a container
+ * (list item, blockquote), the closing `$$` fence must carry the same line
+ * prefix. A closing fence emitted at column 0 breaks out of the container,
+ * becomes a NEW math opener, and shifts `$$` pairing for the rest of the
+ * message — every later paragraph renders as raw red KaTeX-error text.
+ * A `\[…\]` that starts mid-line cannot be block math at all; it degrades
+ * to same-line `$$…$$` (inline) instead of a broken block.
+ *
  * Incomplete pairs (streaming) are left unchanged.
  */
 
@@ -130,7 +138,7 @@ function transformMathInText(text: string): string {
         break;
       }
       const body = text.slice(i + 2, end);
-      out += wrapDisplay(body);
+      out += wrapDisplay(body, linePrefixOf(out));
       i = end + 2;
       continue;
     }
@@ -177,9 +185,33 @@ function indexOfUnescapedClose(s: string, from: number, close: '\\]' | '\\)'): n
   return -1;
 }
 
-function wrapDisplay(body: string): string {
-  const trimmed = body.replace(/^\n+/, '').replace(/\n+$/, '');
-  return `$$\n${trimmed}\n$$`;
+/**
+ * Line prefix (indent / blockquote markers) already emitted for the line the
+ * `\[…\]` opener sits on. Only whitespace and `>` count — anything else means
+ * the opener is mid-line and cannot start block math.
+ */
+function linePrefixOf(emitted: string): string | null {
+  const lineStart = emitted.lastIndexOf('\n') + 1;
+  const prefix = emitted.slice(lineStart);
+  return /^[ \t>]*$/.test(prefix) ? prefix : null;
+}
+
+function wrapDisplay(body: string, linePrefix: string | null): string {
+  if (linePrefix === null) {
+    // Mid-line \[…\]: block math is impossible here. Degrade to same-line
+    // inline $$…$$ so no stray block fence can corrupt later $$ pairing.
+    return `$$${body.trim().replace(/\s+/g, ' ')}$$`;
+  }
+  // Strip trailing whitespace-only lines (and a lone trailing blockquote
+  // marker) so the closing fence is not pushed onto an over-indented line;
+  // keep content-line indentation intact.
+  const trimmed = body
+    .replace(/^\n+/, '')
+    .replace(/[ \t\n]+$/, '')
+    .replace(/\n[ \t>]*$/, '');
+  // The opener `$$` follows the already-emitted prefix; the closing fence
+  // must repeat it to stay inside the same list/blockquote container.
+  return `$$\n${trimmed}\n${linePrefix}$$`;
 }
 
 function wrapInline(body: string): string {
