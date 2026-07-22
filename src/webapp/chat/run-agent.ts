@@ -14,7 +14,13 @@
 
 import { emit, markEnded } from './stream-registry.js';
 import { extractAssets } from './extract-assets.js';
+import {
+  ensureWidgetFencesInText,
+  fenceBodyFromWidgetToolResult,
+} from './widget-fences.js';
 import type { WebAgent, WebImageContent } from './types.js';
+
+const WIDGET_TOOLS = new Set(['show_widget', 'update_widget']);
 
 /** Default WebUI / Slack agent run watchdog (10 minutes). */
 export const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -83,6 +89,8 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   let aborted = false;
   let lastStopReason: string | undefined;
   const activeTools = new Map<string, ActiveTool>();
+  /** Fence bodies from successful show_widget / update_widget (order preserved). */
+  const widgetFenceBodies: string[] = [];
 
   async function finish(result: {
     text: string;
@@ -144,6 +152,10 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
       const entry = activeTools.get(event.toolCallId);
       const durMs = entry ? Date.now() - entry.startedAt : 0;
       const ok = !event.isError;
+      const toolName =
+        typeof event.toolName === 'string'
+          ? event.toolName
+          : entry?.name ?? 'unknown';
       activeTools.delete(event.toolCallId);
       emit(messageId, {
         type: 'tool_end',
@@ -151,6 +163,20 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
         ok,
         durationMs: durMs,
       });
+      // Live panel open + fence collection (independent of model paste).
+      if (ok && WIDGET_TOOLS.has(toolName)) {
+        try {
+          const fence = fenceBodyFromWidgetToolResult(toolName, event.result);
+          widgetFenceBodies.push(fence);
+          emit(messageId, { type: 'widget', fence });
+        } catch (e) {
+          console.error(
+            `[Agent/web] user=${userSlug} ${toolName} fence extract failed: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        }
+      }
       return;
     }
   });
@@ -242,16 +268,37 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   }
 
   const stopReason = lastStopReason ?? 'stop';
+  // If the model forgot to paste ```widget fences, inject tool-returned ones
+  // so history + WidgetCard + done auto-open stay consistent.
+  let finalText = cumulative;
+  if (widgetFenceBodies.length > 0) {
+    try {
+      finalText = ensureWidgetFencesInText(cumulative, widgetFenceBodies);
+      if (finalText !== cumulative) {
+        console.log(
+          `[Agent/web] user=${userSlug} injected missing widget fence(s) into final text ` +
+            `(tools=${widgetFenceBodies.length})`,
+        );
+      }
+    } catch (e) {
+      console.error(
+        `[Agent/web] user=${userSlug} ensureWidgetFencesInText failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      finalText = cumulative;
+    }
+  }
   // Emit done first so the client renders the reply; then persist + AI title
   // (title event) before end so the SSE stream still carries the new title.
-  const assets = extractAssets(cumulative || '', userSlug);
+  const assets = extractAssets(finalText || '', userSlug);
   emit(messageId, {
     type: 'done',
-    text: cumulative,
+    text: finalText,
     stopReason,
     assets,
   });
-  await finish({ text: cumulative, stopReason });
+  await finish({ text: finalText, stopReason });
   emit(messageId, { type: 'end' });
   markEnded(messageId);
 }

@@ -49,7 +49,7 @@ import {
   lastWidgetFenceInAssistantText,
   resolveWidgetInstance,
 } from '../widgets/resolve-instance.js';
-import type { WidgetSpec } from '../widgets/widget-spec.js';
+import { parseWidgetFenceBody, type WidgetSpec } from '../widgets/widget-spec.js';
 import { Menu, Sparkles, X } from 'lucide-react';
 
 interface ChatPageProps {
@@ -212,6 +212,21 @@ export function ChatPage({ session, emptyState = null }: ChatPageProps) {
               : m,
           ),
         );
+        break;
+      }
+      case 'widget': {
+        // Tool-success path: open side panel even when the model omits the fence.
+        const parsed = parseWidgetFenceBody(ev.fence);
+        if (!parsed.ok) {
+          console.error(`[chat] invalid widget SSE fence: ${parsed.error}`);
+          break;
+        }
+        setPanelContent({
+          type: 'widget',
+          spec: parsed.spec,
+          contentEpoch: Date.now(),
+        });
+        setPanelAsset(null);
         break;
       }
       case 'delta': {
@@ -851,6 +866,7 @@ export function ChatPage({ session, emptyState = null }: ChatPageProps) {
                 viewerSlug={session.slug}
                 now={now}
                 agentName={agentName}
+                conversationId={activeConversationId}
                 serverKnownMessageIds={serverKnownMessageIds}
                 emptyState={emptyState}
                 onStarter={(message) => {

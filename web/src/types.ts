@@ -50,6 +50,11 @@ export type ChatEvent =
   | { type: 'ack'; messageId: string; slug: string; agentName: string }
   | { type: 'tool_start'; toolCallId: string; name: string; startedAt: number }
   | { type: 'tool_end'; toolCallId: string; ok: boolean; durationMs: number }
+  /**
+   * Successful show_widget / update_widget — fence body (no outer ```).
+   * Client opens the side panel even if the model forgets to paste the fence.
+   */
+  | { type: 'widget'; fence: string }
   | { type: 'delta'; text: string; cumulative: string }
   | { type: 'heartbeat'; elapsedMs: number; activeTools: string[] }
   | { type: 'done'; text: string; stopReason: string; assets: AssetRef[] }
