@@ -85,7 +85,7 @@ const WEB_CHANNEL_HINT =
   '[Channel: web — render full GFM markdown. Tables are welcome. Code blocks use fenced syntax.\n' +
   'For BinDrive assets, write standard markdown links/images using the URLs your tools returned.\n' +
   'For equations: use $$…$$ or standard LaTeX \\[…\\] (display) / \\(…\\) (inline). Single $ is currency only — never wrap prose or formulas in $…$.\n' +
-  'For diagrams: when a flowchart/sequence/state/ER/architecture sketch helps, emit a valid ```mermaid fence in your answer (WebUI renders it inline). Prefer one focused diagram.\n' +
+  'For diagrams: when a flowchart/sequence/state/ER/architecture sketch helps, emit a valid ```mermaid fence in your answer (WebUI renders it inline). Prefer one focused diagram. Always double-quote node labels that contain parentheses or math (B{"g(x) ≥ 0?"}, A["f(x)"]) — bare B{g(x)} / A[g(x)] fails parse.\n' +
   'For maps: call show_map when a place map helps; paste the WEB ONLY ```map fence once; never invent map fences.\n' +
   'For information cards: call show_card when structured facts benefit from a designed card/deck; paste the WEB ONLY ```card fence once; never invent card fences.\n' +
   'For side-panel widgets: call show_widget / update_widget; paste the WEB ONLY ```widget fence once; never invent widget fences.\n' +

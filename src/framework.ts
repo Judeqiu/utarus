@@ -307,6 +307,8 @@ Currency amounts use a single dollar sign (\`$1.2M\`) — do not wrap prose in \
 
 When a flowchart, sequence diagram, state machine, ERD, or architecture sketch helps the user understand, put a **valid Mermaid** diagram in a fenced \`\`\`mermaid block in your final answer. The WebUI renders it inline. Keep diagrams focused (prefer one clear diagram over many). Do not invent map or widget fences — those still require tools.
 
+**Mermaid label rule (critical):** always double-quote node labels that contain parentheses or math, e.g. \`B{"g(x) ≥ 0?"}\` and \`A["f(x)"]\` — never bare \`B{g(x) ≥ 0?}\` or \`A[g(x)]\`. Unquoted \`(\` breaks the flowchart parser (error: got 'PS'). Prefer \`-->\` edges (not Unicode arrows). Edge labels use \`-->|yes|\`; keep node text free of raw edge-pipe abuse when possible.
+
 When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
 
 When \`show_card\` succeeds, include the summary and paste the WEB ONLY \`\`\`card fence once in your final answer so the WebUI can render designed information cards. **Do not invent** \`\`\`card fences — always call \`show_card\`. Prefer at most one deck per final answer.

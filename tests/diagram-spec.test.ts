@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MERMAID_BODY_MAX_BYTES,
+  mermaidLabelNeedsQuotes,
   parseMermaidFenceBody,
   prepareMermaidSource,
   validateMermaidSource,
@@ -65,5 +66,45 @@ describe('prepareMermaidSource', () => {
 
   it('normalizes br variants', () => {
     expect(prepareMermaidSource('A["a<br>b"]')).toContain('<br/>');
+  });
+
+  it('auto-quotes unquoted diamond labels with parentheses (math agent pitfall)', () => {
+    // Real failure from mathteacher: B{g(x) ≥ 0?} → lexer got 'PS'
+    const out = prepareMermaidSource(
+      'flowchart TD\n    A["|f(x)| < g(x)"] --> B{g(x) ≥ 0?}\n    B -->|Yes| D["Square"]',
+    );
+    expect(out).toContain('B{"g(x) ≥ 0?"}');
+    expect(out).not.toMatch(/B\{g\(x\)/);
+  });
+
+  it('auto-quotes unquoted rectangle labels with parentheses', () => {
+    const out = prepareMermaidSource('flowchart TD\n  A[g(x)] --> B[ok]');
+    expect(out).toContain('A["g(x)"]');
+  });
+
+  it('does not re-quote already quoted labels', () => {
+    const src = 'flowchart TD\n  A["g(x)"] --> B{"h(x) ≥ 0?"}';
+    expect(prepareMermaidSource(src)).toContain('A["g(x)"]');
+    expect(prepareMermaidSource(src)).toContain('B{"h(x) ≥ 0?"}');
+  });
+
+  it('does not touch labels without parentheses', () => {
+    const src = 'flowchart TD\n  A[Integral messy] --> B{Product?}';
+    expect(prepareMermaidSource(src)).toContain('A[Integral messy]');
+    expect(prepareMermaidSource(src)).toContain('B{Product?}');
+  });
+
+  it('does not corrupt edge labels', () => {
+    const src = 'flowchart TD\n  A --> B\n  B -->|No| C\n  B -->|Yes| D';
+    const out = prepareMermaidSource(src);
+    expect(out).toContain('-->|No|');
+    expect(out).toContain('-->|Yes|');
+  });
+});
+
+describe('mermaidLabelNeedsQuotes', () => {
+  it('flags parentheses only', () => {
+    expect(mermaidLabelNeedsQuotes('g(x) ≥ 0?')).toBe(true);
+    expect(mermaidLabelNeedsQuotes('Product of functions?')).toBe(false);
   });
 });
