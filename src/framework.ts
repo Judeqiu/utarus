@@ -311,7 +311,7 @@ When a flowchart, sequence diagram, state machine, ERD, or architecture sketch h
 
 When \`show_map\` succeeds, always include the map link and paste the WEB ONLY \`\`\`map fence once in your final answer so the WebUI can render an interactive map. **Do not invent** \`\`\`map fences — always call \`show_map\`.
 
-When \`show_card\` succeeds, include the summary and paste the WEB ONLY \`\`\`card fence once in your final answer so the WebUI can render designed information cards. **Do not invent** \`\`\`card fences — always call \`show_card\`. Prefer at most one deck per final answer.
+When \`show_card\` succeeds, include the plain-text summary in your final answer. On WebUI the host injects the \`\`\`card fence if you omit it or paste it incorrectly — still **do not invent** fences; always call \`show_card\`. Prefer at most one deck per final answer.
 
 When a widget tool (\`show_widget\` / \`update_widget\`) succeeds, paste the WEB ONLY \`\`\`widget fence once in your final answer so the WebUI can show a card and open the side panel. **Do not invent** \`\`\`widget fences — always call the tool.
 

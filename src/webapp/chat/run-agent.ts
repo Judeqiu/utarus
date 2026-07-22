@@ -15,12 +15,17 @@
 import { emit, markEnded } from './stream-registry.js';
 import { extractAssets } from './extract-assets.js';
 import {
+  ensureCardFencesInText,
+  fenceBodyFromCardToolResult,
+} from './card-fences.js';
+import {
   ensureWidgetFencesInText,
   fenceBodyFromWidgetToolResult,
 } from './widget-fences.js';
 import type { WebAgent, WebImageContent } from './types.js';
 
 const WIDGET_TOOLS = new Set(['show_widget', 'update_widget']);
+const CARD_TOOLS = new Set(['show_card']);
 
 /** Default WebUI / Slack agent run watchdog (10 minutes). */
 export const DEFAULT_AGENT_RUN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -91,6 +96,8 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   const activeTools = new Map<string, ActiveTool>();
   /** Fence bodies from successful show_widget / update_widget (order preserved). */
   const widgetFenceBodies: string[] = [];
+  /** Fence bodies from successful show_card (order preserved). */
+  const cardFenceBodies: string[] = [];
 
   async function finish(result: {
     text: string;
@@ -169,6 +176,19 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
           const fence = fenceBodyFromWidgetToolResult(toolName, event.result);
           widgetFenceBodies.push(fence);
           emit(messageId, { type: 'widget', fence });
+        } catch (e) {
+          console.error(
+            `[Agent/web] user=${userSlug} ${toolName} fence extract failed: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        }
+      }
+      // Info-card fence collection (injected into final text if model omits/mangles).
+      if (ok && CARD_TOOLS.has(toolName)) {
+        try {
+          const fence = fenceBodyFromCardToolResult(toolName, event.result);
+          cardFenceBodies.push(fence);
         } catch (e) {
           console.error(
             `[Agent/web] user=${userSlug} ${toolName} fence extract failed: ${
@@ -268,25 +288,43 @@ export async function runAgent(params: RunAgentParams): Promise<void> {
   }
 
   const stopReason = lastStopReason ?? 'stop';
-  // If the model forgot to paste ```widget fences, inject tool-returned ones
-  // so history + WidgetCard + done auto-open stay consistent.
+  // If the model forgot to paste ```widget / ```card fences (or mangled them),
+  // inject tool-returned ones so history + WebUI cards stay consistent.
   let finalText = cumulative;
   if (widgetFenceBodies.length > 0) {
     try {
-      finalText = ensureWidgetFencesInText(cumulative, widgetFenceBodies);
-      if (finalText !== cumulative) {
+      const next = ensureWidgetFencesInText(finalText, widgetFenceBodies);
+      if (next !== finalText) {
         console.log(
           `[Agent/web] user=${userSlug} injected missing widget fence(s) into final text ` +
             `(tools=${widgetFenceBodies.length})`,
         );
       }
+      finalText = next;
     } catch (e) {
       console.error(
         `[Agent/web] user=${userSlug} ensureWidgetFencesInText failed: ${
           e instanceof Error ? e.message : String(e)
         }`,
       );
-      finalText = cumulative;
+    }
+  }
+  if (cardFenceBodies.length > 0) {
+    try {
+      const next = ensureCardFencesInText(finalText, cardFenceBodies);
+      if (next !== finalText) {
+        console.log(
+          `[Agent/web] user=${userSlug} injected/repaired card fence(s) into final text ` +
+            `(tools=${cardFenceBodies.length})`,
+        );
+      }
+      finalText = next;
+    } catch (e) {
+      console.error(
+        `[Agent/web] user=${userSlug} ensureCardFencesInText failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
     }
   }
   // Emit done first so the client renders the reply; then persist + AI title

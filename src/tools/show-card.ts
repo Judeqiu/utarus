@@ -71,7 +71,8 @@ export function createShowCardTool(): AgentTool {
     description:
       'Show one or more designed information cards inline in WebUI chat (profile, comparison, status, short options). ' +
       'Pass either `cards` (1–8 items) OR single-card convenience fields (`title` + optional fields) — not both. ' +
-      'On WebUI, paste the WEB ONLY fence once into your final answer so cards render. ' +
+      'Always include the plain-text summary lines in your final answer. ' +
+      'On WebUI the host injects the ```card fence if missing or mangled — you may paste the WEB ONLY fence once, but never invent fences. ' +
       'On Telegram/Slack, use only the summary lines — do not paste the fence (it renders as an ugly code block). ' +
       'Never invent ```card fences yourself — always call this tool. Prefer at most one deck fence per final answer. ' +
       'Not for large documents (use rich-document / reports) or interactive 3D (use widgets).',
