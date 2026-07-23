@@ -3,33 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0d1117">
+  <meta name="theme-color" content="#f8fafc">
   <meta name="robots" content="noindex">
   <title>Sign up</title>
   <link rel="stylesheet" href="/signup/styles.css">
 </head>
 <body>
   <main>
-    <header>
-      <h1 id="agent-name">Agent</h1>
-      <p class="tagline" id="tagline">Sign up to chat with your agent.</p>
-    </header>
+    <div class="card">
+      <header>
+        <h1 id="agent-name">Agent</h1>
+        <p class="tagline" id="tagline">Create an account to chat with your agent.</p>
+      </header>
 
-    <section id="info">
-      <ul class="features">
-        <li>Chat in the browser with your AI agent</li>
-        <li>Secure account with email and password</li>
-        <li>Pick up where you left off anytime</li>
-      </ul>
-    </section>
-
-    <section id="form-section" aria-live="polite">
       <form id="signup-form" novalidate autocomplete="on">
         <label for="display_name">Display name</label>
         <input id="display_name" name="display_name" type="text"
                maxlength="60" required
                placeholder="Your name"
-               autocomplete="name">
+               autocomplete="name"
+               autofocus>
 
         <label for="email">Email</label>
         <input id="email" name="email" type="email"
@@ -53,12 +46,11 @@
         <button type="submit" id="submit-btn">Create account</button>
         <p id="form-error" class="error" hidden></p>
       </form>
-    </section>
 
-    <footer>
-      <p>Already have an account? <a id="login-link" href="/login">Log in</a></p>
-      <p class="legal">By signing up you create an account for this agent. Usage may be subject to a trial or plan.</p>
-    </footer>
+      <footer>
+        <p>Already have an account? <a id="login-link" href="/login">Sign in</a></p>
+      </footer>
+    </div>
   </main>
   <script src="/signup/app.js" defer></script>
 </body>

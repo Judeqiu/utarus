@@ -76,6 +76,8 @@ onboardRedeemRouter.get('/demo', (_req, res) => {
     agentName: config.agent.name ?? 'Agent',
     version: UTARUS_VERSION,
     openSignupEnabled: isOpenSignupEnabled(),
+    /** Show Auth token / Redeem invite tabs when true (UTARUS_LOGIN_SHOW_ADVANCED=true). */
+    showAdvancedLogin: process.env.UTARUS_LOGIN_SHOW_ADVANCED === 'true',
   });
 });
 

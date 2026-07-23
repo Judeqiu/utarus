@@ -1,38 +1,37 @@
 :root {
-  --bg: #ffffff;
-  --fg: #0d1117;
-  --muted: #6b7280;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --fg: #0f172a;
+  --muted: #64748b;
   --accent: #2563eb;
   --accent-fg: #ffffff;
   --error: #b91c1c;
   --error-bg: #fef2f2;
-  --border: #d1d5db;
-  --code-bg: #f3f4f6;
-  --radius: 10px;
-  --max-width: 420px;
+  --border: #e2e8f0;
+  --radius: 12px;
+  --max-width: 28rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0d1117;
-    --fg: #f3f4f6;
-    --muted: #9ca3af;
+    --bg: #0f172a;
+    --card: #1e293b;
+    --fg: #f1f5f9;
+    --muted: #94a3b8;
     --accent: #3b82f6;
     --accent-fg: #ffffff;
     --error: #fca5a5;
-    --error-bg: #2a1414;
-    --border: #30363d;
-    --code-bg: #161b22;
+    --error-bg: #451a1a;
+    --border: #334155;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   padding: 0;
+  min-height: 100%;
 }
 
 body {
@@ -45,62 +44,67 @@ body {
 }
 
 main {
-  max-width: var(--max-width);
-  margin: 0 auto;
-  padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
   min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+}
+
+.card {
+  width: 100%;
+  max-width: var(--max-width);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+
+header {
+  text-align: center;
+  margin-bottom: 1.25rem;
 }
 
 header h1 {
-  font-size: 32px;
-  font-weight: 700;
-  margin: 0 0 4px 0;
-  letter-spacing: -0.5px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .tagline {
   color: var(--muted);
-  margin: 0;
-  font-size: 16px;
-}
-
-.features {
-  margin: 0;
-  padding-left: 20px;
-  color: var(--fg);
-}
-
-.features li {
-  margin-bottom: 6px;
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
 }
 
 form {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.35rem;
 }
 
 label {
-  font-size: 14px;
+  font-size: 0.75rem;
   font-weight: 500;
-  color: var(--fg);
+  color: var(--muted);
+  margin-top: 0.5rem;
 }
 
-form label:not(:first-child) {
-  margin-top: 8px;
+label:first-of-type {
+  margin-top: 0;
 }
 
 input[type="text"],
 input[type="email"],
 input[type="password"] {
   font: inherit;
-  padding: 12px 14px;
+  font-size: 0.875rem;
+  padding: 0.625rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
+  border-radius: 0.5rem;
+  background: var(--card);
   color: var(--fg);
   width: 100%;
   -webkit-appearance: none;
@@ -108,67 +112,58 @@ input[type="password"] {
 }
 
 input:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -1px;
+  outline: none;
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 #submit-btn {
   font: inherit;
+  font-size: 0.875rem;
   font-weight: 600;
-  padding: 14px 20px;
-  border-radius: var(--radius);
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
   border: none;
   cursor: pointer;
-  text-align: center;
-  min-height: 48px;
+  min-height: 2.75rem;
   background: var(--accent);
   color: var(--accent-fg);
-  margin-top: 16px;
+  margin-top: 1rem;
 }
 
 #submit-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
 .error {
   background: var(--error-bg);
   color: var(--error);
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  font-size: 14px;
-  margin: 8px 0 0;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 14px;
-  margin: 8px 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  margin: 0.5rem 0 0;
 }
 
 footer {
-  margin-top: auto;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: center;
 }
 
 footer p {
-  margin: 4px 0;
-}
-
-footer .legal {
-  font-size: 12px;
-  margin-top: 12px;
+  margin: 0;
 }
 
 footer a {
   color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
 }
 
-@media (max-width: 360px) {
-  main { padding: 16px 14px; }
-  header h1 { font-size: 28px; }
-  .features { padding-left: 18px; }
+footer a:hover {
+  text-decoration: underline;
 }

@@ -20,9 +20,13 @@ UTARUS_PUBLIC_BASE_URL=https://chat.example.com
 # UTARUS_POST_SIGNUP_REDIRECT=https://chat.example.com/login
 # UTARUS_SESSION_COOKIE_DOMAIN=.example.com
 # UTARUS_SIGNUP_TAGLINE=Your agent tagline.
+# Show Auth token / Redeem invite tabs on /login (default: hidden)
+# UTARUS_LOGIN_SHOW_ADVANCED=true
 ```
 
 Opt-in is required: open registration is a product/security choice per agent.
+
+Login shows **password only** by default, with a **Create an account** link when open signup is on.
 
 ## Domain agents
 

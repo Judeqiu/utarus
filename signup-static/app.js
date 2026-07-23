@@ -5,15 +5,11 @@ const agentNameEl = document.getElementById('agent-name');
 const taglineEl = document.getElementById('tagline');
 const loginLink = document.getElementById('login-link');
 
-/**
- * On land: sign out any existing WebUI session immediately.
- * Clears HTTP cookie (server) and SPA localStorage (utarus_session_user).
- */
 async function signOutOnLand() {
   try {
     localStorage.removeItem('utarus_session_user');
   } catch {
-    /* private mode */
+    /* ignore */
   }
   try {
     await fetch('/api/onboard/signup-reset', {
@@ -28,12 +24,14 @@ async function signOutOnLand() {
 
 async function loadBranding() {
   try {
-    const res = await fetch('/api/onboard/signup-config', { credentials: 'same-origin' });
+    const res = await fetch('/api/onboard/signup-config', {
+      credentials: 'same-origin',
+    });
     if (!res.ok) return;
     const cfg = await res.json();
     if (cfg.agentName) {
       agentNameEl.textContent = cfg.agentName;
-      document.title = `${cfg.agentName} — Sign up`;
+      document.title = `${cfg.agentName} · Sign up`;
     }
     if (cfg.tagline) taglineEl.textContent = cfg.tagline;
     if (!cfg.enabled) {
@@ -44,6 +42,13 @@ async function loadBranding() {
     /* keep defaults */
   }
 }
+
+// Prefer chat-host login when signup is on a separate host
+function defaultLoginHref() {
+  return '/login';
+}
+
+loginLink.href = defaultLoginHref();
 
 const boot = Promise.all([signOutOnLand(), loadBranding()]);
 
@@ -113,7 +118,6 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  // Prefer server redirect (usually chat host /login). Fallback: relative login.
   const redirect =
     typeof body.redirect === 'string' && body.redirect
       ? body.redirect

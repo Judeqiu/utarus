@@ -80,9 +80,14 @@ if (!Number.isFinite(webPort) || webPort <= 0) {
 
 framework.startWebApp({ port: webPort });
 console.log(`[Demo] WebUI + billing on http://localhost:${webPort}`);
+console.log(`[Demo] login:  http://localhost:${webPort}/login`);
+console.log(`[Demo] signup: http://localhost:${webPort}/signup`);
 console.log(`[Demo] data root: ${process.env.UTARUS_DATA_ROOT}`);
 console.log(
   `[Demo] billing: ${process.env.UTARUS_BILLING_ENABLED === 'true' ? 'ON' : 'off'}`,
+);
+console.log(
+  `[Demo] open signup: ${process.env.UTARUS_OPEN_SIGNUP_ENABLED === 'true' ? 'ON' : 'off'}`,
 );
 console.log(
   `[Demo] login as normal user: ${DEMO_USER.slug} / ${DEMO_USER.password}`,
