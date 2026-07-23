@@ -76,6 +76,7 @@ export async function fetchAgentStatus(signal?: AbortSignal): Promise<AgentStatu
 }
 
 export async function logout(): Promise<void> {
+  clearStoredSession();
   // The /logout endpoint clears the cookie and redirects; we just navigate.
   window.location.href = '/logout';
 }

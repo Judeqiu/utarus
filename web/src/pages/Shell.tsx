@@ -106,6 +106,13 @@ export function Shell({ session, path, navigate }: ShellProps) {
   const loadManifest = useCallback(async () => {
     try {
       const res = await fetch('/api/webui/manifest', { credentials: 'include' });
+      if (res.status === 401) {
+        // Cookie gone / session dead — force re-login (do not soft-fallback).
+        const { clearStoredSession } = await import('../auth.js');
+        clearStoredSession();
+        window.location.assign('/login');
+        return;
+      }
       if (!res.ok) throw new Error(`manifest ${res.status}`);
       const data = (await res.json()) as WebUiManifest;
       setManifest(data);
@@ -114,7 +121,7 @@ export function Shell({ session, path, navigate }: ShellProps) {
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
       setManifestFetchOk(false);
-      // Fallback: chat only (widgets unavailable)
+      // Fallback: chat only (widgets unavailable) — only for non-auth failures
       setManifest({
         agentKey: null,
         productName: 'Agent',

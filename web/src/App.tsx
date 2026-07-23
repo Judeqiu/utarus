@@ -35,39 +35,35 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     const abort = new AbortController();
+    // Always validate against the server cookie. Never trust localStorage alone —
+    // signup/logout can clear the cookie while leaving utarus_session_user set,
+    // which produced "logged in" UI with manifest/chat 401s.
     fetchAgentStatus(abort.signal)
-      .then(() => {
+      .then((status) => {
         if (cancelled) return;
-        const stored = getStoredSession();
-        if (stored) {
-          setState({ kind: 'auth', session: stored });
-        } else {
-          fetchAgentStatus()
-            .then((status) => {
-              if (cancelled) return;
-              const session: SessionUser = {
-                type: 'user',
-                slug: status.slug,
-                displayName: status.displayName,
-              };
-              setStoredSession(session);
-              setState({ kind: 'auth', session });
-            })
-            .catch(() => {
-              if (cancelled) return;
-              setState({ kind: 'unauth' });
-            });
+        if (!status.slug?.trim()) {
+          clearStoredSession();
+          setState({ kind: 'unauth' });
+          return;
         }
+        const stored = getStoredSession();
+        const session: SessionUser = {
+          type:
+            stored?.type === 'admin' && stored.slug === status.slug
+              ? 'admin'
+              : 'user',
+          slug: status.slug,
+          displayName: status.displayName || status.slug,
+        };
+        setStoredSession(session);
+        setState({ kind: 'auth', session });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.toLowerCase().includes('unauthorized')) {
-          clearStoredSession();
-          setState({ kind: 'unauth' });
-        } else {
-          setState({ kind: 'unauth' });
-        }
+        if (abort.signal.aborted) return;
+        clearStoredSession();
+        setState({ kind: 'unauth' });
+        void err;
       });
     return () => {
       cancelled = true;
@@ -97,14 +93,9 @@ export function App() {
     return (
       <Login
         onSuccess={() => {
-          const stored = getStoredSession();
-          if (stored) {
-            setState({ kind: 'auth', session: stored });
-            // Start at chat; domain may advertise defaultPath in manifest for later use
-            go('/');
-          } else {
-            setState({ kind: 'boot' });
-          }
+          // Full navigation so the session cookie is definitely attached and
+          // boot re-validates via /api/chat/agent (avoids stale client state).
+          window.location.assign('/');
         }}
       />
     );
