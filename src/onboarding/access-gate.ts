@@ -36,6 +36,32 @@ function stripInviteCodes(text: string): string {
   return text.replace(/\bINV-[A-F0-9]{8}\b/gi, '').trim();
 }
 
+/**
+ * enrichMessage **replaces** the inbound text for the agent.
+ * Domains must return `${domainPrefix}\n\n${ctx.text}` (or rewrite while still
+ * including the human content). Returning only a prefix → model never sees the ask.
+ *
+ * REPLY: short-circuits are checked before this runs.
+ * Empty user text (rare) skips the check.
+ */
+export function assertEnrichMessageKeepsUserText(
+  enrichResult: string,
+  userText: string,
+): void {
+  const original = userText;
+  if (!original) return;
+  if (enrichResult.includes(original)) return;
+  // Allow trim-only mismatch (domains often trim).
+  const trimmed = original.trim();
+  if (trimmed && enrichResult.includes(trimmed)) return;
+  throw new Error(
+    'Domain enrichMessage dropped the user message. ' +
+      'Utarus replaces the inbound text with enrichMessage output — always append ctx.text ' +
+      '(pattern: `${prefix}\\n\\n${ctx.text}`), or return `REPLY:…` for a deterministic short-circuit. ' +
+      'See docs/integration-guide.md §5.5 and docs/webui-integration.md §5.',
+  );
+}
+
 function defaultLinkedContext(
   user: UserState,
   text: string,
@@ -205,6 +231,10 @@ export async function resolveInboundMessage(params: {
     if (result.startsWith('REPLY:')) {
       return { kind: 'reply', text: result.slice('REPLY:'.length).trim() };
     }
+    // Fail fast if the domain dropped the human message. enrichMessage *replaces*
+    // the inbound text for the agent — returning only a context prefix makes the
+    // model answer from stale domain state and ignore what the user just typed.
+    assertEnrichMessageKeepsUserText(result, text);
     if (justOnboarded) {
       const note =
         justOnboarded.kind === 'demo'

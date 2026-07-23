@@ -150,6 +150,7 @@ Slug: kebab-case from display name; if non-Latin-only, `user-<channel-id>`; coll
 1. Re-implement invite matching, multi-turn “what is your display name / email?”, or hard `REPLY: need invite` for unlinked users in the domain.
 2. Assume `enrichMessage` replaces the entire access gate. The interfaces call **`resolveInboundMessage` first** (framework), then domain enrich for linked context.
 3. Treat `@invite.local` / `@demo.local` as real mailbox addresses without an explicit product decision to collect email later.
+4. Return only a domain context prefix from `enrichMessage` (e.g. company/portfolio summary without `` `${prefix}\n\n${ctx.text}` ``). That **replaces** the user turn; the model never sees the ask. Use `REPLY:…` only when intentionally short-circuiting. See [integration-guide.md §5.5](integration-guide.md).
 
 ### Optional public API
 

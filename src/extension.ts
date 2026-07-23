@@ -36,7 +36,15 @@ export interface EnrichMessageContext {
   telegramUserId?: number;
   slackUserId?: string;
   isAdmin: boolean;
-  /** The raw inbound message text (invite codes may already be handled by the framework gate). */
+  /**
+   * The raw inbound message text (invite codes may already be handled by the framework gate).
+   *
+   * **CRITICAL:** `enrichMessage` *replaces* what the agent sees. Always include this
+   * string in your return value (typical pattern: `` `${prefix}\n\n${ctx.text}` ``).
+   * Returning only a domain context prefix drops the user's words — the model then
+   * answers from stale metadata only. Framework fails fast if you drop it
+   * (unless you short-circuit with `REPLY:…`).
+   */
   text: string;
   /**
    * Display name from the channel when available (Slack profile / Telegram first name).
@@ -204,12 +212,23 @@ export interface DomainExtension {
 
   /**
    * Optional: enrich the inbound message with domain context before it is
-   * handed to the agent. Use this to prepend seller/campaign state, inject a
-   * linked entity slug, or short-circuit fully (return empty string to skip
-   * the agent and reply directly).
+   * handed to the agent. Use this to prepend portfolio/seller/campaign state
+   * or inject a linked entity slug.
    *
-   * Return the (possibly modified) text to send to the agent, or a string
-   * starting with "REPLY:" to skip the agent and send the rest as the reply.
+   * **CRITICAL contract — read this when scaffolding a new agent:**
+   *
+   * - The return value **replaces** the inbound text for the agent (Web, Telegram, Slack).
+   * - Always append the human message: `` return `${prefix}\n\n${ctx.text}` ``.
+   * - **Never** return only a context prefix (e.g. company name / portfolio summary).
+   *   That bug makes the model 答非所问 — it never sees "what is my company name?" /
+   *   "setup my company: Acme/SGD" and answers from stale domain state alone.
+   * - Handle all three channels: `telegramUserId` | `slackUserId` | `userSlug` (web).
+   * - Short-circuit without the LLM: return `"REPLY:" + userFacingText`.
+   * - Do **not** put enrich output into chat history user bubbles (framework stores
+   *   the raw user string for display).
+   *
+   * The framework asserts that non-`REPLY:` results still contain `ctx.text`
+   * (or its trim); dropping the user message throws with a pointer to the docs.
    */
   enrichMessage?: (ctx: EnrichMessageContext) => string | Promise<string>;
 

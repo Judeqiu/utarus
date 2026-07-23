@@ -97,7 +97,10 @@ export {
 } from './kb/index.js';
 export { getCurrentChatId } from './interfaces/telegram.js';
 /** Standard access gate + instant invite redeem (all domain agents). */
-export { resolveInboundMessage } from './onboarding/access-gate.js';
+export {
+  resolveInboundMessage,
+  assertEnrichMessageKeepsUserText,
+} from './onboarding/access-gate.js';
 export {
   redeemInviteInstantly,
   ensureChannelUser,

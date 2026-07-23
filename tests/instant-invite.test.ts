@@ -110,6 +110,49 @@ describe('framework instant invite (all agents)', () => {
       expect(r.text).toMatch(/\[Domain\] user=dana/);
     }
   });
+
+  it('fails fast when enrichMessage drops the user text', async () => {
+    await redeemInviteInstantly({
+      code: 'INV-91B6F805',
+      displayName: 'Drop',
+      slackUserId: 'U_DROP',
+    });
+    const linked = resolveUserBySlackUser('U_DROP');
+    expect(linked).not.toBeNull();
+
+    await expect(
+      resolveInboundMessage({
+        text: 'setup my company: Acme/SGD',
+        linkedUser: linked,
+        isAdmin: false,
+        slackUserId: 'U_DROP',
+        enrichMessage: async () => {
+          // Classic bug: domain prefix only — agent never sees the ask.
+          return `[Domain] company="Old Co" (MYR). Pull statements before diagnosing.]`;
+        },
+      }),
+    ).rejects.toThrow(/dropped the user message/);
+  });
+
+  it('allows REPLY short-circuit without embedding user text', async () => {
+    await redeemInviteInstantly({
+      code: 'INV-91B6F805',
+      displayName: 'Reply',
+      slackUserId: 'U_REPLY',
+    });
+    const linked = resolveUserBySlackUser('U_REPLY');
+    const r = await resolveInboundMessage({
+      text: 'what is the name of my company?',
+      linkedUser: linked,
+      isAdmin: false,
+      slackUserId: 'U_REPLY',
+      enrichMessage: async () => 'REPLY:Your company is Acme Trading (SGD).',
+    });
+    expect(r).toEqual({
+      kind: 'reply',
+      text: 'Your company is Acme Trading (SGD).',
+    });
+  });
 });
 
 describe('demo mode access', () => {

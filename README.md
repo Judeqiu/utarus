@@ -168,7 +168,7 @@ if (process.env.WEBAPP_PORT) {
 }
 ```
 
-SPA is shipped in the package (`web/dist`). Branding = `UTARUS_AGENT_NAME`. Conversations persist under `data/chats/<slug>/`. Domain `enrichMessage` must handle `userSlug` for web (do not store enrich text as the user message).
+SPA is shipped in the package (`web/dist`). Branding = `UTARUS_AGENT_NAME`. Conversations persist under `data/chats/<slug>/`. Domain `enrichMessage` must handle `userSlug` for web (do not store enrich text as the user message). **`enrichMessage` replaces the inbound turn** — always append `ctx.text` (`` `${prefix}\n\n${ctx.text}` ``) or return `REPLY:…`; returning only a context prefix drops the user message (framework fails fast). See [docs/integration-guide.md §5.5](docs/integration-guide.md).
 
 On startup you'll see:
 

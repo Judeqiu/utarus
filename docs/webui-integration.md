@@ -249,8 +249,24 @@ User types:  "Study undervalued tech companies"
 
 Web has **no** Telegram/Slack user id. The gate passes `userSlug` from the session. Your enrich hook **must** resolve by slug or the agent will re-onboard.
 
+### CRITICAL: enrich **replaces** inbound text (all channels, not only web)
+
+The string you return is the **entire** user turn the model sees. Utarus does not re-attach the original message afterward.
+
 ```ts
-// domain extension — required web branch
+// ✅ correct
+return `${domainContextPrefix(state)}\n\n${ctx.text}`;
+
+// ❌ wrong — agent never sees "setup my company…" / "what is my cash?"
+return domainContextPrefix(state);
+```
+
+If you only return a prefix (company name, portfolio, playbook), the model will answer from that metadata alone — classic 答非所问. Clear setup/identity/FAQ lines can short-circuit with `REPLY:…` instead of calling the LLM.
+
+The access gate **throws** if a non-`REPLY:` enrich result omits `ctx.text` (see `assertEnrichMessageKeepsUserText`).
+
+```ts
+// domain extension — required web branch + keep user text
 async enrichMessage(ctx: EnrichMessageContext): Promise<string> {
   let state = null;
   if (ctx.telegramUserId != null) {
@@ -263,7 +279,7 @@ async enrichMessage(ctx: EnrichMessageContext): Promise<string> {
 
   if (!state) return ctx.text;
 
-  // Prefix is for the model only. Return `${prefix}\n\n${ctx.text}`.
+  // Prefix is for the model only. Always end with original ctx.text.
   return `${domainContextPrefix(state)}\n\n${ctx.text}`;
 }
 ```
@@ -272,7 +288,9 @@ Checklist:
 
 - [ ] Handle `userSlug` for web  
 - [ ] Prefix + blank line + **original** `ctx.text` (do not drop user text)  
+- [ ] Or `REPLY:…` for deterministic short-circuits (no LLM)  
 - [ ] Tools still accept channel ids **or** slug so web-created sessions work  
+- [ ] Smoke: send a unique phrase and confirm the agent / logs still see that phrase after enrich
 
 ---
 

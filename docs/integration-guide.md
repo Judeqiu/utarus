@@ -423,10 +423,24 @@ webCommands: [
 
 ### 5.5 `enrichMessage` *(optional but recommended)*
 
-Per-turn context injection. Receives `EnrichMessageContext`, returns the (possibly modified) text the agent sees.
+Per-turn context injection. Receives `EnrichMessageContext`, returns the text the agent sees for this turn.
+
+#### CRITICAL: return value **replaces** the inbound message
+
+Utarus does **not** append your prefix to the user text for you. Whatever `enrichMessage` returns is what the model gets as the user turn (plus channel packaging).
+
+| Do | Don't |
+|----|--------|
+| `` return `${prefix}\n\n${ctx.text}` `` | `return prefix` only (drops the ask) |
+| `return ctx.text` when there is no domain state | Assume the framework still injects the original message |
+| `return 'REPLY:' + answer` for deterministic short-circuits | Store enrich text as the user chat bubble |
+
+**Symptom of dropping `ctx.text`:** user asks "what is the name of my company?" / "setup my company: Acme/SGD" and the agent answers only from stale context (e.g. an old company name in the prefix) — 答非所问. This bit CFO Agent until the domain always appended `ctx.text` and short-circuited clear setup/identity lines with `REPLY:`.
+
+**Framework guard:** for non-`REPLY:` results, Utarus fails fast if the return value does not contain `ctx.text` (or its trim). Fix the domain — do not catch-and-ignore that error.
 
 ```ts
-// invage: src/extension.ts
+// invage: src/extension.ts — correct shape
 async enrichMessage(ctx) {
   let investor: InvestorState | null = null;
   if (ctx.telegramUserId != null) {
@@ -444,7 +458,7 @@ async enrichMessage(ctx) {
     `Saved holdings: ${Object.keys(investor.portfolio ?? {}).length}. ` +
     channelHint(ctx) + ']\n\n' +
     playbookAgentGuidance(getPlaybook(investor)) + '\n\n' +
-    ctx.text
+    ctx.text   // ← required; never omit
   );
 }
 ```
@@ -452,8 +466,8 @@ async enrichMessage(ctx) {
 **Must handle all three channel families** (telegram / slack / web) — see §3.2.
 
 **Special return values:**
-- Empty string `''` → framework skips the agent entirely (use sparingly; better to return `REPLY: <text>`).
-- `REPLY: <text>` → framework sends `<text>` as the reply without invoking the agent. Useful for cheap short-circuits, but the framework gate already handles the common cases (invite codes, demo mode, unlinked denial).
+- `REPLY: <text>` → framework sends `<text>` as the reply **without** invoking the agent (deterministic apply / FAQ / cheap short-circuit). No need to include `ctx.text` in that case.
+- Returning only a context prefix (no user text, no `REPLY:`) → **throws** at the access gate.
 
 ### 5.6 `buildSessionAnnouncement` / `resolveEntitySlug` *(optional, skip for invage-like agents)*
 
@@ -753,6 +767,7 @@ export const invageExtension: DomainExtension = {
 | **No fallback for code/logic errors.** Surface raw errors; fail fast. | Per project policy. Silent fallbacks mask bugs and corrupt state. |
 | **Never duplicate framework exports.** If `loadState` exists in utarus, do not write `loadInvestorState`. | Duplication drifts. The framework I/O is the source of truth. |
 | **Always handle all three channels** in `enrichMessage` and in any domain resolver. | Missing the web branch causes the re-onboarding trap (§3.2). |
+| **Always append `ctx.text` in `enrichMessage`** (or use `REPLY:`). Never return only a domain prefix. | Return value *replaces* the inbound turn. Dropping user text → 答非所问; framework fails fast (§5.5). |
 | **Store only user-visible text** in chat history; enrich is for the model. | Polluted blue bubbles when switching chats ([webui-integration.md](webui-integration.md)). |
 | **Run WebUI in the agent process** (`WEBAPP_PORT` on the same unit as the pool). | Chat SSE has no agent if drive-only. |
 | **`auth_token` is a password.** Never log it; never return it from a `GET`. | Treat like a credential. |
