@@ -115,6 +115,17 @@ export {
   formatDemoModeStatus,
 } from './onboarding/demo-mode.js';
 export type { DemoModeState } from './onboarding/demo-mode.js';
+export {
+  isOpenSignupEnabled,
+  validateWebSignup,
+  createWebSignupUser,
+  emailTaken,
+  SignupValidationError,
+  postSignupRedirect,
+  withLoginEmail,
+  openSignupPublicConfig,
+} from './onboarding/web-signup.js';
+export type { WebSignupInput, WebSignupResult } from './onboarding/web-signup.js';
 /** Shared Telegram formatting helpers (Markdown → HTML). Used by the built-in
  *  Telegram interface; domain agents can reuse them for custom outbound messages. */
 export {

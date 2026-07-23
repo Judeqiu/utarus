@@ -30,6 +30,7 @@ import { createChatRouter } from './chat/router.js';
 import { adminRouter } from './chat/admin-router.js';
 import { onboardRedeemRouter } from './chat/onboard.js';
 import { createWebUiRouter } from './webui-router.js';
+import { createSignupStaticRouter } from './signup-static.js';
 import { mapsRouter } from './maps-router.js';
 import { createWidgetsRouter } from './widgets-router.js';
 import { requireAuth, requireAdmin } from './auth.js';
@@ -176,6 +177,8 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   app.use(createBinDriveApp());
 
   app.use('/api/onboard', onboardRedeemRouter);
+  // Open signup page (UTARUS_OPEN_SIGNUP_ENABLED=true) — before SPA fallback
+  app.use(createSignupStaticRouter());
   app.use('/api/chat', createChatRouter({ framework }));
   app.use('/api/admin', adminRouter);
   app.use('/api/maps', mapsRouter);
@@ -224,7 +227,7 @@ export function buildWebApp(framework: Framework, opts: BuildWebAppOptions = {})
   if (existsSync(webDistDir)) {
     const indexHtml = join(webDistDir, 'index.html');
     app.get(
-      /^\/(?!api\/|logout|health|domain-assets\/|platform-assets\/).*$/,
+      /^\/(?!api\/|logout|health|signup(?:\/|$)|domain-assets\/|platform-assets\/).*$/,
       (req: Request, res: Response, next: NextFunction) => {
         const last = req.path.split('/').pop() ?? '';
         if (last.includes('.')) {

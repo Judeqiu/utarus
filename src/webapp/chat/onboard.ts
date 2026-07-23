@@ -31,6 +31,16 @@ import { resolveUserBySlug, loadState, saveState } from '../../state/index.js';
 import { hashPassword } from '../../auth/password.js';
 import { config } from '../../config.js';
 import { UTARUS_VERSION } from '../../version.js';
+import {
+  createWebSignupUser,
+  isOpenSignupEnabled,
+  openSignupPublicConfig,
+  postSignupRedirect,
+  signOutRequest,
+  SignupValidationError,
+  validateWebSignup,
+  withLoginEmail,
+} from '../../onboarding/web-signup.js';
 
 export const onboardRedeemRouter = Router();
 
@@ -65,7 +75,70 @@ onboardRedeemRouter.get('/demo', (_req, res) => {
     enabled: isDemoModeEnabled(),
     agentName: config.agent.name ?? 'Agent',
     version: UTARUS_VERSION,
+    openSignupEnabled: isOpenSignupEnabled(),
   });
+});
+
+/**
+ * GET /api/onboard/signup-config — public branding for the open-signup page.
+ */
+onboardRedeemRouter.get('/signup-config', (_req, res) => {
+  res.json(openSignupPublicConfig());
+});
+
+/**
+ * GET /api/onboard/signup-reset — force sign-out when opening the signup page.
+ */
+onboardRedeemRouter.get('/signup-reset', (req, res) => {
+  if (!isOpenSignupEnabled()) {
+    res.status(404).json({ error: 'open_signup_disabled', message: 'Open signup is not enabled.' });
+    return;
+  }
+  signOutRequest(req, res);
+  res.status(200).json({ ok: true, signed_out: true });
+});
+
+/**
+ * POST /api/onboard/signup — open web self-signup (email + password).
+ * Does NOT auto-login. Clears any prior session. Redirects to chat-host login.
+ * Requires UTARUS_OPEN_SIGNUP_ENABLED=true.
+ */
+onboardRedeemRouter.post('/signup', async (req, res) => {
+  if (!isOpenSignupEnabled()) {
+    res.status(404).json({ error: 'open_signup_disabled', message: 'Open signup is not enabled.' });
+    return;
+  }
+
+  let input;
+  try {
+    input = validateWebSignup(req.body);
+  } catch (e) {
+    if (e instanceof SignupValidationError) {
+      res.status(400).json({ error: e.message, field: e.field });
+      return;
+    }
+    throw e;
+  }
+
+  signOutRequest(req, res);
+
+  try {
+    const created = await createWebSignupUser(input);
+    const redirect = withLoginEmail(postSignupRedirect(), created.email);
+    res.status(201).json({
+      slug: created.slug,
+      displayName: created.displayName,
+      email: created.email,
+      redirect,
+    });
+  } catch (e) {
+    if (e instanceof SignupValidationError) {
+      const status = e.field === 'email' && /already exists/i.test(e.message) ? 409 : 400;
+      res.status(status).json({ error: e.message, field: e.field });
+      return;
+    }
+    throw e;
+  }
 });
 
 /**
