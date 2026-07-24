@@ -7,9 +7,21 @@ When `UTARUS_OPEN_SIGNUP_ENABLED=true`, Utarus exposes:
 | `GET /signup` | Public signup page (static) |
 | `GET /api/onboard/signup-config` | Branding (`agentName`, `tagline`, `enabled`) |
 | `GET /api/onboard/signup-reset` | Clear session when landing on signup |
-| `POST /api/onboard/signup` | `{ display_name, email, password }` → create user |
+| `POST /api/onboard/signup` | `{ display_name, email, password, reference? }` → create user |
 
 **Does not auto-login.** Response includes `redirect` (usually chat-host `/login?email=…`).
+
+## Attribution (`reference`)
+
+Shareable signup links can include an acquisition / affiliate code:
+
+```
+https://signup.example.com/signup?reference=partner-acme
+```
+
+(`?ref=` is accepted as a short alias on the page only; the API field is `reference`.)
+
+When present and valid, the code is stored on the new user as `user.reference` (and on the `web_signup` log entry). Format: 1–64 characters, starts with alphanumeric, then letters/digits/`.`/`_`/`-`. Omitted when the query param is absent.
 
 ## Env
 

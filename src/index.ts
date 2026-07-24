@@ -118,6 +118,7 @@ export type { DemoModeState } from './onboarding/demo-mode.js';
 export {
   isOpenSignupEnabled,
   validateWebSignup,
+  parseOptionalReference,
   createWebSignupUser,
   emailTaken,
   SignupValidationError,

@@ -29,6 +29,12 @@ export interface UserIdentity {
    * no intro expiry, full paid-plan features. New signups omit this (false/absent).
    */
   beta?: boolean;
+  /**
+   * Acquisition / affiliate reference from open web signup (`?reference=`).
+   * Set once at account creation when present; omitted otherwise.
+   * Downstream products use this for attribution and affiliate payouts.
+   */
+  reference?: string;
 }
 
 /**

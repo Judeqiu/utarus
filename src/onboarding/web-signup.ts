@@ -32,6 +32,8 @@ export interface WebSignupInput {
   display_name: string;
   email: string;
   password: string;
+  /** Optional acquisition/affiliate code from `?reference=` on the signup page. */
+  reference?: string;
 }
 
 export interface WebSignupResult {
@@ -39,10 +41,14 @@ export interface WebSignupResult {
   displayName: string;
   email: string;
   userId: string;
+  reference?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
+/** Affiliate / campaign codes: short, URL-safe, no spaces. */
+const REFERENCE_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+const MAX_REFERENCE = 64;
 
 /** Explicit opt-in — open registration is a product decision per agent. */
 export function isOpenSignupEnabled(): boolean {
@@ -90,7 +96,44 @@ export function validateWebSignup(body: unknown): WebSignupInput {
     throw new SignupValidationError('password', 'Password is too long.');
   }
 
-  return { display_name: displayName, email, password: b.password };
+  const reference = parseOptionalReference(b.reference);
+
+  return {
+    display_name: displayName,
+    email,
+    password: b.password,
+    ...(reference !== undefined ? { reference } : {}),
+  };
+}
+
+/**
+ * Optional signup attribution code. Absent / empty → undefined.
+ * Present but invalid → fail fast (no silent drop).
+ */
+export function parseOptionalReference(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null || raw === '') {
+    return undefined;
+  }
+  if (typeof raw !== 'string') {
+    throw new SignupValidationError('reference', 'Reference must be a string.');
+  }
+  const reference = raw.trim();
+  if (!reference) {
+    return undefined;
+  }
+  if (reference.length > MAX_REFERENCE) {
+    throw new SignupValidationError(
+      'reference',
+      `Reference must be at most ${MAX_REFERENCE} characters.`,
+    );
+  }
+  if (!REFERENCE_RE.test(reference)) {
+    throw new SignupValidationError(
+      'reference',
+      'Reference must be 1–64 characters: letters, digits, dot, underscore, or hyphen (must start with alphanumeric).',
+    );
+  }
+  return reference;
 }
 
 export function emailTaken(email: string): boolean {
@@ -152,10 +195,14 @@ export async function createWebSignupUser(
     contactEmail: input.email,
   });
   state.user.password_hash = await hashPassword(input.password);
+  if (input.reference) {
+    state.user.reference = input.reference;
+  }
   state.log.push({
     ts: new Date().toISOString().slice(0, 10),
     action: 'web_signup',
     web: true,
+    ...(input.reference ? { reference: input.reference } : {}),
   });
   saveState(state);
 
@@ -164,6 +211,7 @@ export async function createWebSignupUser(
     displayName: input.display_name,
     email: input.email,
     userId: state.user.id,
+    ...(input.reference ? { reference: input.reference } : {}),
   };
 }
 

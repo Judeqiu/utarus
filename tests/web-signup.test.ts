@@ -57,6 +57,28 @@ describe('validateWebSignup', () => {
     });
     expect(v.display_name).toBe('Acme');
     expect(v.email).toBe('a@b.com');
+    expect(v.reference).toBeUndefined();
+  });
+
+  it('accepts optional reference', () => {
+    const v = validateWebSignup({
+      display_name: 'Acme',
+      email: 'a@b.com',
+      password: 'password1',
+      reference: ' partner-acme ',
+    });
+    expect(v.reference).toBe('partner-acme');
+  });
+
+  it('rejects invalid reference', () => {
+    expect(() =>
+      validateWebSignup({
+        display_name: 'A',
+        email: 'a@b.co',
+        password: 'password1',
+        reference: 'bad code!',
+      }),
+    ).toThrow(SignupValidationError);
   });
 
   it('rejects short password', () => {
@@ -81,7 +103,22 @@ describe('createWebSignupUser', () => {
     const state = loadState(created.slug);
     expect(state.profile.contact_email).toBe('smoke@example.com');
     expect(state.user.password_hash).toBeTruthy();
+    expect(state.user.reference).toBeUndefined();
     expect(emailTaken('SMOKE@example.com')).toBe(true);
+  });
+
+  it('stores reference on user and log', async () => {
+    const created = await createWebSignupUser({
+      display_name: 'Referred User',
+      email: 'ref@example.com',
+      password: 'password1',
+      reference: 'partner-acme',
+    });
+    expect(created.reference).toBe('partner-acme');
+    const state = loadState(created.slug);
+    expect(state.user.reference).toBe('partner-acme');
+    const signupLog = state.log.find((e) => e.action === 'web_signup');
+    expect(signupLog?.reference).toBe('partner-acme');
   });
 
   it('rejects duplicate email', async () => {

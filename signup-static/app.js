@@ -5,6 +5,19 @@ const agentNameEl = document.getElementById('agent-name');
 const taglineEl = document.getElementById('tagline');
 const loginLink = document.getElementById('login-link');
 
+/** Optional affiliate / acquisition code from `?reference=` (or `?ref=`). */
+function referenceFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('reference') ?? params.get('ref');
+    if (raw == null) return undefined;
+    const value = raw.trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function signOutOnLand() {
   try {
     localStorage.removeItem('utarus_session_user');
@@ -82,17 +95,23 @@ form.addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Creating account…';
 
+  const reference = referenceFromUrl();
+  const payload = {
+    display_name: displayName,
+    email,
+    password,
+  };
+  if (reference) {
+    payload.reference = reference;
+  }
+
   let res;
   try {
     res = await fetch('/api/onboard/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({
-        display_name: displayName,
-        email,
-        password,
-      }),
+      body: JSON.stringify(payload),
     });
   } catch {
     showError('Network error. Check your connection and try again.');
