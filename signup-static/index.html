@@ -6,52 +6,19 @@
   <meta name="theme-color" content="#f8fafc">
   <meta name="robots" content="noindex">
   <title>Sign up</title>
+  <!-- Framework default page chrome + form styles -->
   <link rel="stylesheet" href="/signup/styles.css">
+  <link rel="stylesheet" href="/signup/form.css">
 </head>
 <body>
-  <main>
-    <div class="card">
-      <header>
-        <h1 id="agent-name">Agent</h1>
-        <p class="tagline" id="tagline">Create an account to chat with your agent.</p>
-      </header>
-
-      <form id="signup-form" novalidate autocomplete="on">
-        <label for="display_name">Display name</label>
-        <input id="display_name" name="display_name" type="text"
-               maxlength="60" required
-               placeholder="Your name"
-               autocomplete="name"
-               autofocus>
-
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email"
-               maxlength="254" required
-               placeholder="you@company.com"
-               autocomplete="email"
-               inputmode="email">
-
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password"
-               minlength="8" maxlength="200" required
-               placeholder="At least 8 characters"
-               autocomplete="new-password">
-
-        <label for="password_confirm">Confirm password</label>
-        <input id="password_confirm" name="password_confirm" type="password"
-               minlength="8" maxlength="200" required
-               placeholder="Repeat password"
-               autocomplete="new-password">
-
-        <button type="submit" id="submit-btn">Create account</button>
-        <p id="form-error" class="error" hidden></p>
-      </form>
-
-      <footer>
-        <p>Already have an account? <a id="login-link" href="/login">Sign in</a></p>
-      </footer>
-    </div>
+  <!--
+    Framework default shell. Domains that want a full custom page set
+    webUi.signupPage.shell to an HTML file under staticDir that also
+    includes #utarus-signup-root + /signup/form.css + /signup/embed.js.
+  -->
+  <main class="utarus-signup-page">
+    <div id="utarus-signup-root"></div>
   </main>
-  <script src="/signup/app.js" defer></script>
+  <script src="/signup/embed.js" defer></script>
 </body>
 </html>

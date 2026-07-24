@@ -10,6 +10,9 @@ import {
   postSignupRedirect,
   withLoginEmail,
   isOpenSignupEnabled,
+  openSignupPublicConfig,
+  setOpenSignupPageConfig,
+  normalizeSignupPageConfig,
 } from '../src/onboarding/web-signup.js';
 import { loadState } from '../src/state/index.js';
 
@@ -26,10 +29,13 @@ beforeEach(() => {
   dataRoot = mkdtempSync(join(tmpdir(), 'utarus-signup-'));
   setEnv('UTARUS_DATA_ROOT', dataRoot);
   setEnv('UTARUS_OPEN_SIGNUP_ENABLED', 'true');
+  setEnv('UTARUS_AGENT_NAME', 'TestAgent');
+  setOpenSignupPageConfig(undefined);
   mkdirSync(join(dataRoot, 'users'), { recursive: true });
 });
 
 afterEach(() => {
+  setOpenSignupPageConfig(undefined);
   for (const [k, v] of Object.entries(prevEnv)) {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
@@ -150,5 +156,68 @@ describe('postSignupRedirect', () => {
   it('honors explicit redirect', () => {
     setEnv('UTARUS_POST_SIGNUP_REDIRECT', 'https://chat.example.com/login');
     expect(postSignupRedirect()).toBe('https://chat.example.com/login');
+  });
+});
+
+describe('signupPage customization', () => {
+  it('normalizes domain config and merges into public config', () => {
+    setOpenSignupPageConfig({
+      title: ' Acme ',
+      tagline: ' Join us ',
+      intro: [' Hello '],
+      bullets: [' One ', ' Two '],
+      notice: ' Beta ',
+      footerNote: ' Footer ',
+      submitLabel: ' Go ',
+      accentColor: '#0f766e',
+      formChrome: false,
+    });
+    const cfg = openSignupPublicConfig();
+    expect(cfg.enabled).toBe(true);
+    expect(cfg.shell).toBe(false);
+    expect(cfg.formChrome).toBe(false);
+    expect(cfg.title).toBe('Acme');
+    expect(cfg.tagline).toBe('Join us');
+    expect(cfg.intro).toEqual(['Hello']);
+    expect(cfg.bullets).toEqual(['One', 'Two']);
+    expect(cfg.notice).toBe('Beta');
+    expect(cfg.footerNote).toBe('Footer');
+    expect(cfg.submitLabel).toBe('Go');
+    expect(cfg.accentColor).toBe('#0f766e');
+  });
+
+  it('accepts shell relative path', () => {
+    const n = normalizeSignupPageConfig({ shell: 'signup/shell.html' });
+    expect(n.shell).toBe('signup/shell.html');
+  });
+
+  it('rejects path escape in shell', () => {
+    expect(() =>
+      normalizeSignupPageConfig({ shell: '../etc/passwd.html' }),
+    ).toThrow(/relative path/i);
+  });
+
+  it('uses agent name and default tagline without domain page', () => {
+    setEnv('UTARUS_SIGNUP_TAGLINE', undefined);
+    setOpenSignupPageConfig(undefined);
+    const cfg = openSignupPublicConfig();
+    expect(cfg.title).toBeTruthy();
+    expect(cfg.formChrome).toBe(true);
+    expect(cfg.shell).toBe(false);
+    expect(cfg.submitLabel).toBe('Create account');
+    expect(cfg.intro).toEqual([]);
+    expect(cfg.bullets).toEqual([]);
+  });
+
+  it('rejects invalid accent color', () => {
+    expect(() =>
+      normalizeSignupPageConfig({ accentColor: 'red' }),
+    ).toThrow(/hex/i);
+  });
+
+  it('rejects empty intro entries', () => {
+    expect(() =>
+      normalizeSignupPageConfig({ intro: ['ok', '  '] }),
+    ).toThrow(/intro\[1]/);
   });
 });

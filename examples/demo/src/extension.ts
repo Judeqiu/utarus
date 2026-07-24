@@ -142,6 +142,20 @@ Scope: demo, paywall walkthrough, widget showcase, and info-card showcase. Decli
     productName: 'Demo',
     defaultPath: '/',
     staticDir: demoStaticDir,
+    /**
+     * Open signup: full-page shell is domain-owned (static/signup/shell.html);
+     * only #utarus-signup-root is filled by Utarus (form fields + submit).
+     * See docs/open-signup.md.
+     */
+    signupPage: {
+      shell: 'signup/shell.html',
+      // Marketing lives in the shell; form section is fields-only.
+      formChrome: false,
+      title: 'Demo',
+      submitLabel: 'Join Demo',
+      accentColor: '#0f766e',
+      footerNote: 'After signup you will sign in with the same email.',
+    },
     widgets: [
       {
         id: 'floor-plan-3d',

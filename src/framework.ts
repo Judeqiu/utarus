@@ -46,6 +46,12 @@ import {
 import type { Express } from 'express';
 import type { DomainExtension, Skill } from './extension.js';
 import { assertBillingConfig, isBillingEnabled, setBillingExtension } from './billing/index.js';
+import {
+  setOpenSignupPageConfig,
+  setOpenSignupShell,
+} from './onboarding/web-signup.js';
+import { existsSync, statSync } from 'fs';
+import { resolve as pathResolve } from 'path';
 
 export interface FrameworkOptions {
   extension: DomainExtension;
@@ -340,6 +346,51 @@ When the user **explicitly asks for HTML**, an HTML report/page, or a full repor
 Do **not** dump raw HTML tags into Slack chat. Do not rely on Slack file previews for HTML (they show source on phones).`;
 }
 
+/**
+ * Register open-signup page config and resolve optional domain shell HTML.
+ * Fail fast when shell is set but staticDir/agentKey/file is missing or escapes root.
+ */
+export function registerOpenSignupFromExtension(extension: DomainExtension): void {
+  const page = extension.webUi?.signupPage;
+  setOpenSignupPageConfig(page);
+  setOpenSignupShell(undefined);
+
+  const shellRel = page?.shell?.trim();
+  if (!shellRel) return;
+
+  const agentKey = extension.webUi?.agentKey?.trim();
+  const staticDir = extension.webUi?.staticDir?.trim();
+  if (!agentKey) {
+    throw new Error(
+      'webUi.signupPage.shell requires webUi.agentKey (used for /domain-assets/…).',
+    );
+  }
+  if (!staticDir) {
+    throw new Error(
+      'webUi.signupPage.shell requires webUi.staticDir (shell path is relative to it).',
+    );
+  }
+  if (!existsSync(staticDir) || !statSync(staticDir).isDirectory()) {
+    throw new Error(`webUi.staticDir does not exist or is not a directory: ${staticDir}`);
+  }
+
+  const root = pathResolve(staticDir);
+  const absolutePath = pathResolve(root, shellRel);
+  const rootPrefix = root.endsWith('/') || root.endsWith('\\') ? root : root + '/';
+  if (absolutePath !== root && !absolutePath.startsWith(rootPrefix)) {
+    throw new Error(
+      `webUi.signupPage.shell escapes staticDir: "${shellRel}" → ${absolutePath}`,
+    );
+  }
+  if (!existsSync(absolutePath) || !statSync(absolutePath).isFile()) {
+    throw new Error(
+      `webUi.signupPage.shell file not found under staticDir: ${shellRel} (resolved ${absolutePath})`,
+    );
+  }
+
+  setOpenSignupShell({ absolutePath, agentKey });
+}
+
 export function createFramework(opts: FrameworkOptions): Framework {
   const { extension } = opts;
 
@@ -350,6 +401,9 @@ export function createFramework(opts: FrameworkOptions): Framework {
   if (isBillingEnabled()) {
     assertBillingConfig(extension);
   }
+
+  // Open-signup page: copy + optional full-page domain shell (fail fast).
+  registerOpenSignupFromExtension(extension);
 
   // LLM stack before system prompt (buildSystemPrompt calls getAgentLLM / routing).
   assertLlmConfig();

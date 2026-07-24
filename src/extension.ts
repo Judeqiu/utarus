@@ -112,6 +112,64 @@ export interface ChatEmptyState {
   footer?: string;
 }
 
+/**
+ * Domain customization for open signup (`GET /signup`).
+ *
+ * Two layers:
+ * 1. **Form section** (always Utarus-owned): fields, validation, submit, login link.
+ *    Copy fields below are plain text only (`textContent` — never HTML).
+ * 2. **Full page shell** (optional, domain-owned): any HTML/CSS/JS around a single
+ *    mount point `#utarus-signup-root`. See `shell` and `docs/open-signup.md`.
+ *
+ * Enable with `UTARUS_OPEN_SIGNUP_ENABLED=true`.
+ */
+export interface SignupPageConfig {
+  /**
+   * Path **relative to `webUi.staticDir`** for a full-page HTML shell that
+   * replaces the framework default page at `GET /signup`.
+   *
+   * Requirements:
+   * - `webUi.agentKey` and `webUi.staticDir` must be set
+   * - File must exist under `staticDir` (no `..` escape)
+   * - HTML must include an element with `id="utarus-signup-root"`
+   * - Load framework form assets:
+   *   - `/signup/form.css`
+   *   - `/signup/embed.js` (defer)
+   * - Domain assets: `/domain-assets/<agentKey>/…`
+   *
+   * Utarus only injects the signup form into `#utarus-signup-root`.
+   */
+  shell?: string;
+  /**
+   * When true (default), the form mount includes title / tagline / intro /
+   * bullets / notice from this config. Set `false` when your shell already
+   * has marketing copy and you only want the form fields + submit.
+   */
+  formChrome?: boolean;
+  /** Headline inside the form section (when formChrome). Default: agent name. */
+  title?: string;
+  /**
+   * Subtitle under the title. When set, overrides `UTARUS_SIGNUP_TAGLINE`
+   * and the framework default tagline.
+   */
+  tagline?: string;
+  /** Extra paragraphs above the form (plain text). */
+  intro?: string[];
+  /** Benefit / what-you-get bullets (plain text). */
+  bullets?: string[];
+  /** Optional callout banner above the form (plain text). */
+  notice?: string;
+  /** Extra footer line under the sign-in link (plain text). */
+  footerNote?: string;
+  /** Submit button label. Default: "Create account". */
+  submitLabel?: string;
+  /**
+   * Accent color for the primary button and links (CSS hex only),
+   * e.g. `#0f766e` or `#0f7`.
+   */
+  accentColor?: string;
+}
+
 export interface DomainWebUiExtension {
   /** URL namespace, e.g. "binary" → /api/domain/binary */
   agentKey: string;
@@ -123,6 +181,11 @@ export interface DomainWebUiExtension {
    * a generic framework default.
    */
   chatEmptyState?: ChatEmptyState;
+  /**
+   * Open-signup page branding (`GET /signup` + `GET /api/onboard/signup-config`).
+   * Optional. Plain-text fields only — see {@link SignupPageConfig}.
+   */
+  signupPage?: SignupPageConfig;
   nav?: DomainWebNavItem[];
   routes?: DomainWebRoute[];
   apiRouters?: Array<{

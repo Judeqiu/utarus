@@ -17,6 +17,7 @@ import {
 } from '../state/index.js';
 import { destroySession } from '../webapp/auth.js';
 import { config } from '../config.js';
+import type { SignupPageConfig } from '../extension.js';
 
 export class SignupValidationError extends Error {
   constructor(
@@ -282,17 +283,250 @@ export function withLoginEmail(redirect: string, email: string): string {
   return `${base}${sep}email=${encodeURIComponent(email)}`;
 }
 
-export function openSignupPublicConfig(): {
+/** Public JSON for GET /api/onboard/signup-config (static page consumes this). */
+export interface OpenSignupPublicConfig {
   enabled: boolean;
   agentName: string;
+  /** True when domain supplies a full-page HTML shell. */
+  shell: boolean;
+  /** Whether form mount includes title/intro chrome (default true). */
+  formChrome: boolean;
+  /** Base path for domain static assets, e.g. `/domain-assets/demo`. */
+  domainAssetsBase?: string;
+  /** Page/form h1 — domain title or agent name. */
+  title: string;
   tagline: string;
-} {
+  intro: string[];
+  bullets: string[];
+  notice?: string;
+  footerNote?: string;
+  submitLabel: string;
+  accentColor?: string;
+}
+
+/** Resolved domain shell HTML for GET /signup (absolute filesystem path). */
+export interface OpenSignupShellRegistration {
+  absolutePath: string;
+  agentKey: string;
+}
+
+const MAX_TITLE = 80;
+const MAX_TAGLINE = 240;
+const MAX_INTRO = 6;
+const MAX_INTRO_LEN = 500;
+const MAX_BULLETS = 10;
+const MAX_BULLET_LEN = 200;
+const MAX_NOTICE = 400;
+const MAX_FOOTER = 240;
+const MAX_SUBMIT = 40;
+const MAX_SHELL_PATH = 200;
+const ACCENT_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+/** Relative path under staticDir: no leading slash, no `..`. */
+const SHELL_PATH_RE = /^[a-zA-Z0-9][a-zA-Z0-9._/-]*\.(html|htm)$/;
+
+/** Domain signup page copy registered at createFramework time. */
+let registeredSignupPage: SignupPageConfig | undefined;
+let registeredShell: OpenSignupShellRegistration | undefined;
+
+/**
+ * Register domain `webUi.signupPage` (called from createFramework).
+ * Pass undefined to clear (tests). Does not resolve shell file path —
+ * use {@link setOpenSignupShell} after validating the file on disk.
+ */
+export function setOpenSignupPageConfig(cfg: SignupPageConfig | undefined): void {
+  if (cfg === undefined) {
+    registeredSignupPage = undefined;
+    return;
+  }
+  registeredSignupPage = normalizeSignupPageConfig(cfg);
+}
+
+export function getOpenSignupPageConfig(): SignupPageConfig | undefined {
+  return registeredSignupPage;
+}
+
+/** Register resolved shell HTML path (or clear). */
+export function setOpenSignupShell(
+  shell: OpenSignupShellRegistration | undefined,
+): void {
+  registeredShell = shell;
+}
+
+export function getOpenSignupShell(): OpenSignupShellRegistration | undefined {
+  return registeredShell;
+}
+
+/**
+ * Validate + normalize domain signup page config. Fail fast on bad shapes
+ * (boot-time) so agents see clear errors instead of silent drops.
+ */
+export function normalizeSignupPageConfig(raw: SignupPageConfig): SignupPageConfig {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('webUi.signupPage must be an object when set.');
+  }
+  const out: SignupPageConfig = {};
+
+  if (raw.shell !== undefined) {
+    if (typeof raw.shell !== 'string' || !raw.shell.trim()) {
+      throw new Error('webUi.signupPage.shell must be a non-empty string when set.');
+    }
+    const shell = raw.shell.trim().replace(/^\/+/, '');
+    if (shell.length > MAX_SHELL_PATH) {
+      throw new Error(`webUi.signupPage.shell must be ≤${MAX_SHELL_PATH} characters.`);
+    }
+    if (shell.includes('..') || shell.includes('\\') || !SHELL_PATH_RE.test(shell)) {
+      throw new Error(
+        'webUi.signupPage.shell must be a relative path under staticDir ' +
+          '(e.g. "signup/shell.html"); no ".." or absolute paths.',
+      );
+    }
+    out.shell = shell;
+  }
+
+  if (raw.formChrome !== undefined) {
+    if (typeof raw.formChrome !== 'boolean') {
+      throw new Error('webUi.signupPage.formChrome must be a boolean when set.');
+    }
+    out.formChrome = raw.formChrome;
+  }
+
+  if (raw.title !== undefined) {
+    if (typeof raw.title !== 'string' || !raw.title.trim()) {
+      throw new Error('webUi.signupPage.title must be a non-empty string when set.');
+    }
+    const title = raw.title.trim();
+    if (title.length > MAX_TITLE) {
+      throw new Error(`webUi.signupPage.title must be ≤${MAX_TITLE} characters.`);
+    }
+    out.title = title;
+  }
+
+  if (raw.tagline !== undefined) {
+    if (typeof raw.tagline !== 'string' || !raw.tagline.trim()) {
+      throw new Error('webUi.signupPage.tagline must be a non-empty string when set.');
+    }
+    const tagline = raw.tagline.trim();
+    if (tagline.length > MAX_TAGLINE) {
+      throw new Error(`webUi.signupPage.tagline must be ≤${MAX_TAGLINE} characters.`);
+    }
+    out.tagline = tagline;
+  }
+
+  if (raw.intro !== undefined) {
+    if (!Array.isArray(raw.intro) || raw.intro.length === 0) {
+      throw new Error('webUi.signupPage.intro must be a non-empty string array when set.');
+    }
+    if (raw.intro.length > MAX_INTRO) {
+      throw new Error(`webUi.signupPage.intro supports at most ${MAX_INTRO} paragraphs.`);
+    }
+    out.intro = raw.intro.map((p, i) => {
+      if (typeof p !== 'string' || !p.trim()) {
+        throw new Error(`webUi.signupPage.intro[${i}] must be a non-empty string.`);
+      }
+      const t = p.trim();
+      if (t.length > MAX_INTRO_LEN) {
+        throw new Error(
+          `webUi.signupPage.intro[${i}] must be ≤${MAX_INTRO_LEN} characters.`,
+        );
+      }
+      return t;
+    });
+  }
+
+  if (raw.bullets !== undefined) {
+    if (!Array.isArray(raw.bullets) || raw.bullets.length === 0) {
+      throw new Error('webUi.signupPage.bullets must be a non-empty string array when set.');
+    }
+    if (raw.bullets.length > MAX_BULLETS) {
+      throw new Error(`webUi.signupPage.bullets supports at most ${MAX_BULLETS} items.`);
+    }
+    out.bullets = raw.bullets.map((b, i) => {
+      if (typeof b !== 'string' || !b.trim()) {
+        throw new Error(`webUi.signupPage.bullets[${i}] must be a non-empty string.`);
+      }
+      const t = b.trim();
+      if (t.length > MAX_BULLET_LEN) {
+        throw new Error(
+          `webUi.signupPage.bullets[${i}] must be ≤${MAX_BULLET_LEN} characters.`,
+        );
+      }
+      return t;
+    });
+  }
+
+  if (raw.notice !== undefined) {
+    if (typeof raw.notice !== 'string' || !raw.notice.trim()) {
+      throw new Error('webUi.signupPage.notice must be a non-empty string when set.');
+    }
+    const notice = raw.notice.trim();
+    if (notice.length > MAX_NOTICE) {
+      throw new Error(`webUi.signupPage.notice must be ≤${MAX_NOTICE} characters.`);
+    }
+    out.notice = notice;
+  }
+
+  if (raw.footerNote !== undefined) {
+    if (typeof raw.footerNote !== 'string' || !raw.footerNote.trim()) {
+      throw new Error('webUi.signupPage.footerNote must be a non-empty string when set.');
+    }
+    const footerNote = raw.footerNote.trim();
+    if (footerNote.length > MAX_FOOTER) {
+      throw new Error(`webUi.signupPage.footerNote must be ≤${MAX_FOOTER} characters.`);
+    }
+    out.footerNote = footerNote;
+  }
+
+  if (raw.submitLabel !== undefined) {
+    if (typeof raw.submitLabel !== 'string' || !raw.submitLabel.trim()) {
+      throw new Error('webUi.signupPage.submitLabel must be a non-empty string when set.');
+    }
+    const submitLabel = raw.submitLabel.trim();
+    if (submitLabel.length > MAX_SUBMIT) {
+      throw new Error(`webUi.signupPage.submitLabel must be ≤${MAX_SUBMIT} characters.`);
+    }
+    out.submitLabel = submitLabel;
+  }
+
+  if (raw.accentColor !== undefined) {
+    if (typeof raw.accentColor !== 'string' || !ACCENT_RE.test(raw.accentColor.trim())) {
+      throw new Error(
+        'webUi.signupPage.accentColor must be a CSS hex color (#rgb, #rrggbb, or #rrggbbaa).',
+      );
+    }
+    out.accentColor = raw.accentColor.trim();
+  }
+
+  return out;
+}
+
+export function openSignupPublicConfig(): OpenSignupPublicConfig {
   const agentName = (config.agent.name || 'Agent').trim() || 'Agent';
-  const tagline = (process.env.UTARUS_SIGNUP_TAGLINE || '').trim()
-    || `Sign up to chat with ${agentName}.`;
+  const page = registeredSignupPage;
+
+  const title = page?.title ?? agentName;
+  const envTagline = (process.env.UTARUS_SIGNUP_TAGLINE || '').trim();
+  const tagline =
+    page?.tagline
+    ?? (envTagline || `Sign up to chat with ${agentName}.`);
+
+  const formChrome = page?.formChrome !== false;
+  const domainAssetsBase = registeredShell
+    ? `/domain-assets/${registeredShell.agentKey}`
+    : undefined;
+
   return {
     enabled: isOpenSignupEnabled(),
     agentName,
+    shell: Boolean(registeredShell),
+    formChrome,
+    ...(domainAssetsBase ? { domainAssetsBase } : {}),
+    title,
     tagline,
+    intro: page?.intro ? [...page.intro] : [],
+    bullets: page?.bullets ? [...page.bullets] : [],
+    ...(page?.notice ? { notice: page.notice } : {}),
+    ...(page?.footerNote ? { footerNote: page.footerNote } : {}),
+    submitLabel: page?.submitLabel ?? 'Create account',
+    ...(page?.accentColor ? { accentColor: page.accentColor } : {}),
   };
 }

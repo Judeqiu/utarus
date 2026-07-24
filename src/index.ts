@@ -15,6 +15,7 @@ export type {
   DomainWebRoute,
   DomainWebPageKind,
   ChatEmptyState,
+  SignupPageConfig,
   EnrichMessageContext,
   Skill,
   LoadedSkill,
@@ -125,8 +126,18 @@ export {
   postSignupRedirect,
   withLoginEmail,
   openSignupPublicConfig,
+  setOpenSignupPageConfig,
+  getOpenSignupPageConfig,
+  setOpenSignupShell,
+  getOpenSignupShell,
+  normalizeSignupPageConfig,
 } from './onboarding/web-signup.js';
-export type { WebSignupInput, WebSignupResult } from './onboarding/web-signup.js';
+export type {
+  WebSignupInput,
+  WebSignupResult,
+  OpenSignupPublicConfig,
+  OpenSignupShellRegistration,
+} from './onboarding/web-signup.js';
 /** Shared Telegram formatting helpers (Markdown → HTML). Used by the built-in
  *  Telegram interface; domain agents can reuse them for custom outbound messages. */
 export {

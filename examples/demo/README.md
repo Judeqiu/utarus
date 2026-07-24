@@ -44,6 +44,19 @@ Design: [`docs/knowledge-base-design.md`](../../docs/knowledge-base-design.md).
 
 ---
 
+### Open signup (domain full-page shell)
+
+When `UTARUS_OPEN_SIGNUP_ENABLED=true` (set in `.env`):
+
+1. Open http://localhost:3010/signup (or `?reference=partner-acme` for attribution)
+2. Expect a **split layout**: marketing panel from `static/signup/shell.html` (domain-owned) + signup form mounted by Utarus into `#utarus-signup-root`
+3. Config is `webUi.signupPage` in `src/extension.ts` (`shell`, `formChrome: false`, accent, submit label)
+4. Creating an account does **not** auto-login — you are sent to `/login`
+
+How to build your own shell: [`docs/open-signup.md`](../../docs/open-signup.md).
+
+---
+
 ## Prerequisites
 
 1. This Utarus repo on the **billing branch**, built once:

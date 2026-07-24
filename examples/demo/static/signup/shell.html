@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#042f2e">
+  <meta name="robots" content="noindex">
+  <title>Demo · Sign up</title>
+  <!-- Domain-owned full page chrome -->
+  <link rel="stylesheet" href="/domain-assets/demo/signup/shell.css">
+  <!-- Utarus-owned form section only -->
+  <link rel="stylesheet" href="/signup/form.css">
+</head>
+<body class="demo-signup">
+  <div class="demo-signup__layout">
+    <aside class="demo-signup__marketing" aria-label="About Demo">
+      <p class="demo-signup__eyebrow">Utarus sample agent</p>
+      <h1 class="demo-signup__brand">Demo</h1>
+      <p class="demo-signup__lead">
+        Full-page shell owned by the <strong>domain agent</strong>. Only the form
+        card on the right is rendered by Utarus into
+        <code>#utarus-signup-root</code>.
+      </p>
+      <ul class="demo-signup__points">
+        <li>Stripe free → Pro paywall walkthrough</li>
+        <li>Side-panel widgets &amp; rich documents</li>
+        <li>Knowledge base + info cards</li>
+        <li>Open signup with affiliate <code>?reference=</code></li>
+      </ul>
+      <p class="demo-signup__hint">
+        Peek without signing up: log in as <strong>demo</strong> / <strong>demo1234</strong>
+      </p>
+    </aside>
+
+    <section class="demo-signup__form-panel">
+      <!-- Utarus mounts the controlled signup form here -->
+      <div id="utarus-signup-root"></div>
+    </section>
+  </div>
+  <script src="/signup/embed.js" defer></script>
+</body>
+</html>

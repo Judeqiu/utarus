@@ -26,6 +26,8 @@ How a **domain agent** enables the Utarus browser chat (Claude-style multi-chat,
 | Landing `POST /api/onboard/register` (QR → BIND) | **Domain (optional)** | Mount via `extraRouters` |
 | Domain tools / skills / purpose | **Domain** | Unchanged by WebUI |
 | Chat empty-state copy | **Domain** (`webUi.chatEmptyState`) | WebUI new-conversation hero; optional starter chips |
+| Open-signup page shell | **Domain** (`webUi.signupPage.shell`) | Full HTML page under `staticDir`; form only in `#utarus-signup-root` ([open-signup.md](open-signup.md)) |
+| Open-signup form section | **Utarus** (`/signup/embed.js`) | Fields, validation, POST signup, optional form chrome copy |
 
 **Rule:** Do not copy the SPA or chat routers into your domain repo. Depend on a pinned Utarus commit that includes `web/dist` and call `framework.startWebApp()`.
 
